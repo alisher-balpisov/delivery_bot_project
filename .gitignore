@@ -1,1 +1,48 @@
-.ruff_cache
+# Переменные окружения
+.env
+.env.*
+
+# Виртуальные окружения Python
+.venv/
+venv/
+env/
+.env/
+
+# Python кэш
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Кэш инструментов
+/.ruff_cache/
+/.pytest_cache/
+/.mypy_cache/
+/coverage
+/.coverage
+/htmlcov/
+
+# Артефакты сборки
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# IDE
+.vscode/
+.idea/
+
+# Логи и временные файлы
+*.log
+*.log.*
+*.logs
+logs/
+*.pid
+
+# Локальные базы данных
+*.db
+*.sqlite3
+
+# Системные файлы
+.DS_Store
+Thumbs.db
