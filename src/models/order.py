@@ -1,0 +1,69 @@
+from sqlalchemy import (
+    DECIMAL,
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.orm import relationship
+
+from common.enums import OrderStatus, OrderType
+from core.database import Base
+
+
+class Order(Base):
+    """
+    Представляет заказ в таблице `orders`.
+
+    Это центральная модель бизнес-логики, хранящая всю информацию о доставке,
+    статусе, участниках и деталях заказа.
+    """
+
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True)
+    shop_id = Column(Integer, ForeignKey("shops.id"), nullable=False)
+    # Может быть NULL, если заказ еще не назначен курьеру.
+    courier_id = Column(Integer, ForeignKey("couriers.id"), nullable=True)
+
+    status = Column(Enum(OrderStatus), default=OrderStatus.created, nullable=False, index=True)
+    order_type = Column(Enum(OrderType), default=OrderType.normal, nullable=False)
+    description = Column(Text)
+    recipient_name = Column(String(100))
+    recipient_phone = Column(String(20), nullable=False)
+    recipient_address = Column(String(255), nullable=False)
+    delivery_time = Column(DateTime, nullable=True)  # Ожидаемое время доставки
+    price = Column(DECIMAL(10, 2))  # Используется DECIMAL для точности финансовых расчетов
+
+    pickup_address = Column(String(255), nullable=False)  # Адрес забора
+    courier_notes = Column(Text, nullable=True)  # Заметки курьера
+    completion_notes = Column(Text, nullable=True)  # Заметки о завершении
+
+    # --- Поля для реализации логики из описания ---
+    is_fragile = Column(Boolean, default=False)  # Отметка "Хрупкое"
+    is_bulky = Column(Boolean, default=False)  # Отметка "Крупногабаритное"
+    courier_rating = Column(Integer, nullable=True)  # Оценка курьера от 1 до 5
+    courier_feedback = Column(Text, nullable=True)  # Текстовый отзыв о работе курьера
+
+    # --- Временные метки для отслеживания жизненного цикла заказа ---
+    accepted_at = Column(DateTime, nullable=True)  # Время принятия заказа курьером
+    delivered_at = Column(DateTime, nullable=True)  # Фактическое время доставки
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    shop = relationship("Shop", back_populates="orders")
+    courier = relationship("Courier", back_populates="orders")
+    dispute = relationship(
+        "Dispute", back_populates="order", uselist=False, cascade="all, delete-orphan"
+    )
+    photo_reports = relationship(
+        "PhotoReport", back_populates="order", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self):
+        return f"<Order(id={self.id}, status='{self.status.name}', shop_id={self.shop_id})>"
