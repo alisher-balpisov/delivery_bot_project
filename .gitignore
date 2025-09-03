@@ -28,10 +28,6 @@ dist/
 *.egg
 pip-wheel-metadata/
 
-# IDE
-.vscode/
-.idea/
-
 # Логи и временные файлы
 *.log
 *.log.*

@@ -12,6 +12,7 @@ class Shop(Base):
     """
 
     __tablename__ = "shops"
+    __repr_attrs__ = "name"
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
@@ -21,6 +22,3 @@ class Shop(Base):
     user = relationship("User", back_populates="shop")
     orders = relationship("Order", back_populates="shop", cascade="all, delete-orphan")
     disputes = relationship("Dispute", back_populates="shop")
-
-    def __repr__(self):
-        return f"<Shop(id={self.id}, name='{self.name}')>"

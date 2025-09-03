@@ -11,6 +11,7 @@ class Dispute(Base):
     """
 
     __tablename__ = "disputes"
+    __repr_attrs__ = ("order_id", "status.name")
 
     id = Column(Integer, primary_key=True)
     # Уникальность гарантирует, что по одному заказу может быть только один спор.
@@ -31,6 +32,3 @@ class Dispute(Base):
     order = relationship("Order", back_populates="dispute")
     courier = relationship("Courier", back_populates="disputes")
     shop = relationship("Shop", back_populates="disputes")
-
-    def __repr__(self):
-        return f"<Dispute(id={self.id}, order_id={self.order_id}, status='{self.status.name}')>"

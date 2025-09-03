@@ -1,17 +1,27 @@
 import asyncio
+import logging
 import sys
 from contextlib import asynccontextmanager
 
 import uvicorn
+from aiogram import Bot, Dispatcher
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler
+from config import get_upload_dir, settings, validate_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from src.api.routes import api_router
-from src.core.config import get_upload_dir, settings
-from src.core.database import close_db, init_db
-from src.core.logging import get_logger, setup_logging
 
-logger = get_logger(__name__)
+# Импорты API роутеров
+from api.routes import api_router
+
+# Импорты бота
+from bot.main import create_bot, create_dispatcher
+from bot.webhook import setup_webhook
+from core.database import close_db, init_db
+from core.logging import setup_logging
+from core.redis import close_redis, init_redis
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -24,13 +34,38 @@ async def lifespan(app: FastAPI):
 
     # Инициализация при старте
     try:
+        # Валидация конфигурации
+        validate_settings()
+        logger.info("✅ Конфигурация валидна")
+
         # Инициализация базы данных
         await init_db()
         logger.info("✅ База данных инициализирована")
 
+        # Инициализация Redis
+        await init_redis()
+        logger.info("✅ Redis инициализирован")
+
         # Создание директорий для файлов
         get_upload_dir()
         logger.info("✅ Директории созданы")
+
+        # Инициализация бота
+        bot = create_bot()
+        dp = create_dispatcher()
+
+        # Настройка webhook или polling
+        if settings.telegram.use_webhook:
+            await setup_webhook(bot)
+            logger.info("✅ Webhook настроен")
+        else:
+            # Запуск polling в фоновой задаче
+            asyncio.create_task(start_polling(bot, dp))
+            logger.info("✅ Polling запущен")
+
+        # Сохранение экземпляров в app.state для доступа из других частей
+        app.state.bot = bot
+        app.state.dispatcher = dp
 
         logger.info("🎉 Приложение успешно запущено!")
 
@@ -45,6 +80,13 @@ async def lifespan(app: FastAPI):
         logger.info("🛑 Завершение работы приложения...")
 
         # Закрытие соединений
+        if hasattr(app.state, "bot"):
+            await app.state.bot.session.close()
+            logger.info("✅ Telegram Bot сессия закрыта")
+
+        await close_redis()
+        logger.info("✅ Redis соединение закрыто")
+
         await close_db()
         logger.info("✅ База данных отключена")
 
@@ -52,6 +94,22 @@ async def lifespan(app: FastAPI):
 
     except Exception as e:
         logger.error(f"❌ Ошибка при завершении приложения: {e}")
+
+
+async def start_polling(bot: Bot, dp: Dispatcher):
+    """
+    Запуск бота в режиме polling (для разработки)
+    """
+    try:
+        logger.info("🔄 Запуск polling...")
+        await dp.start_polling(
+            bot,
+            skip_updates=True,  # Пропустить накопившиеся обновления
+            allowed_updates=dp.resolve_used_update_types(),
+        )
+    except Exception as e:
+        logger.error(f"❌ Ошибка в polling: {e}")
+        raise
 
 
 def create_app() -> FastAPI:
@@ -63,6 +121,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
+        description="API для координации работы между магазинами и курьерами",
         docs_url=settings.docs_url,
         redoc_url=settings.redoc_url,
         lifespan=lifespan,
@@ -70,7 +129,13 @@ def create_app() -> FastAPI:
 
     # CORS middleware
     if settings.cors_origins:
-        app.add_middleware(CORSMiddleware, **settings.middleware.cors_kwargs())
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=settings.cors_allow_credentials,
+            allow_methods=settings.cors_allow_methods,
+            allow_headers=settings.cors_allow_headers,
+        )
 
     # Подключение API роутеров
     app.include_router(api_router, prefix=settings.api_prefix)
@@ -78,6 +143,25 @@ def create_app() -> FastAPI:
     # Статические файлы (для загруженных фото)
     upload_dir = get_upload_dir()
     app.mount("/static", StaticFiles(directory=str(upload_dir)), name="static")
+
+    # Webhook для Telegram бота (если используется)
+    if settings.telegram.use_webhook:
+        webhook_handler = SimpleRequestHandler(
+            dispatcher=create_dispatcher(),
+            bot=create_bot(),
+        )
+        webhook_handler.register(app, path=settings.telegram.webhook_path)
+
+    # Health check endpoint
+    @app.get("/health")
+    async def health_check():
+        """Проверка здоровья приложения"""
+        return {
+            "status": "healthy",
+            "app": settings.app_name,
+            "version": settings.app_version,
+            "environment": settings.environment,
+        }
 
     # Root endpoint
     @app.get("/")
@@ -87,6 +171,7 @@ def create_app() -> FastAPI:
             "message": f"Добро пожаловать в {settings.app_name}!",
             "version": settings.app_version,
             "docs": "/docs" if settings.docs_url else "Документация отключена",
+            "health": "/health",
         }
 
     return app
@@ -137,6 +222,11 @@ def main():
     Основная функция для запуска через CLI
     """
     try:
+        # Проверка версии Python
+        if sys.version_info < (3, 8):
+            print("❌ Требуется Python 3.8 или выше")
+            sys.exit(1)
+
         # Запуск приложения
         asyncio.run(run_app())
 
@@ -154,13 +244,37 @@ if __name__ == "__main__":
 # Дополнительные функции для разработки и отладки
 
 
+async def run_bot_only():
+    """
+    Запуск только бота без API (для отладки)
+    """
+    setup_logging()
+    validate_settings()
+
+    await init_db()
+    await init_redis()
+
+    bot = create_bot()
+    dp = create_dispatcher()
+
+    try:
+        logger.info("🤖 Запуск только Telegram бота...")
+        await dp.start_polling(bot, skip_updates=True)
+    finally:
+        await bot.session.close()
+        await close_redis()
+        await close_db()
+
+
 async def run_api_only():
     """
     Запуск только API без бота (для отладки)
     """
     setup_logging()
+    validate_settings()
 
     await init_db()
+    await init_redis()
 
     # Создание упрощенного приложения без бота
     app = FastAPI(title=f"{settings.app_name} API Only")
@@ -173,6 +287,7 @@ async def run_api_only():
         logger.info("🔗 Запуск только API...")
         await server.serve()
     finally:
+        await close_redis()
         await close_db()
 
 
@@ -180,12 +295,15 @@ async def run_api_only():
 if __name__ == "__main__" and len(sys.argv) > 1:
     command = sys.argv[1]
 
-    if command == "api":
+    if command == "bot":
+        asyncio.run(run_bot_only())
+    elif command == "api":
         asyncio.run(run_api_only())
     elif command == "help":
         print("""
 Команды для запуска:
   python main.py       - Запуск полного приложения (API + Bot)
+  python main.py bot   - Запуск только бота
   python main.py api   - Запуск только API
   python main.py help  - Показать эту справку
         """)

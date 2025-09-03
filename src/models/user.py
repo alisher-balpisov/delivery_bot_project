@@ -1,6 +1,4 @@
-from enum import Enum
-
-from sqlalchemy import Column, DateTime, Integer, String, func
+from sqlalchemy import Column, DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import relationship
 
 from common.enums import UserRole
@@ -16,6 +14,7 @@ class User(Base):
     """
 
     __tablename__ = "users"
+    __repr_attrs__ = ("name", "role.name")
 
     id = Column(Integer, primary_key=True)
     telegram_id = Column(Integer, unique=True, nullable=False, index=True)
@@ -30,6 +29,3 @@ class User(Base):
     courier = relationship(
         "Courier", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
-
-    def __repr__(self):
-        return f"<User(id={self.id}, name='{self.name}', role='{self.role.name}')>"

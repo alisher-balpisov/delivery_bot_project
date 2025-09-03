@@ -12,6 +12,7 @@ class Courier(Base):
     """
 
     __tablename__ = "couriers"
+    __repr_attrs__ = ("user_id", "is_active")
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)

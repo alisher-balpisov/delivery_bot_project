@@ -1,6 +1,7 @@
 from sqlalchemy import (
     DECIMAL,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum,
@@ -25,6 +26,13 @@ class Order(Base):
     """
 
     __tablename__ = "orders"
+    __repr_attrs__ = ("status.name", "shop_id")
+    __table_args__ = (
+        CheckConstraint(
+            "courier_rating IS NULL OR (courier_rating >= 1 AND courier_rating <= 5)",
+            name="check_courier_rating_range",
+        ),
+    )
 
     id = Column(Integer, primary_key=True)
     shop_id = Column(Integer, ForeignKey("shops.id"), nullable=False)
@@ -38,7 +46,9 @@ class Order(Base):
     recipient_phone = Column(String(20), nullable=False)
     recipient_address = Column(String(255), nullable=False)
     delivery_time = Column(DateTime, nullable=True)  # Ожидаемое время доставки
-    price = Column(DECIMAL(10, 2))  # Используется DECIMAL для точности финансовых расчетов
+    price = Column(
+        DECIMAL(10, 2), nullable=False
+    )  # Используется DECIMAL для точности финансовых расчетов
 
     pickup_address = Column(String(255), nullable=False)  # Адрес забора
     courier_notes = Column(Text, nullable=True)  # Заметки курьера
@@ -64,6 +74,3 @@ class Order(Base):
     photo_reports = relationship(
         "PhotoReport", back_populates="order", cascade="all, delete-orphan"
     )
-
-    def __repr__(self):
-        return f"<Order(id={self.id}, status='{self.status.name}', shop_id={self.shop_id})>"

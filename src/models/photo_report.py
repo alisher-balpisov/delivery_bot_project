@@ -12,6 +12,7 @@ class PhotoReport(Base):
     """
 
     __tablename__ = "photo_reports"
+    __repr_attrs__ = "order_id"
 
     id = Column(Integer, primary_key=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
@@ -24,6 +25,3 @@ class PhotoReport(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     order = relationship("Order", back_populates="photo_reports")
-
-    def __repr__(self):
-        return f"<PhotoReport(id={self.id}, order_id={self.order_id})>"
