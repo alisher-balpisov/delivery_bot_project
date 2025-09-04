@@ -1,13 +1,58 @@
-from datetime import timedelta
+"""
+Сервис управления заказами.
+
+Обеспечивает создание, назначение и управление жизненным циклом заказов.
+Включает уведомления пользователям при ключевых изменениях статуса.
+"""
+
+from datetime import datetime, timedelta
 
 from sqlalchemy import and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from src.common.enums import OrderStatus, OrderType
+from src.core.logging import get_logger
 from src.models.courier import Courier
 from src.models.order import Order
+from src.models.shop import Shop
+from src.models.user import User
 from src.models.zone import Zone
+from src.notifications.service import notification_service
 from src.schemas.order import OrderCreate, OrderResponse
+
+logger = get_logger(__name__)
+
+
+async def _get_order_participants(
+    db: AsyncSession, order: Order, load_relationships: bool = True
+) -> tuple[User | None, User | None]:
+    """
+    Получить пользователей-участников заказа (магазин и курьер).
+
+    Returns:
+        Tuple[shop_user, courier_user]
+    """
+    if load_relationships:
+        await db.refresh(order, ["shop", "courier"])
+
+    shop_user = order.shop.user if order.shop and hasattr(order.shop, "user") else None
+    courier_user = order.courier.user if order.courier and hasattr(order.courier, "user") else None
+
+    if not shop_user and order.shop_id:
+        # Загрузить магазин отдельно
+        shop = await db.get(Shop, order.shop_id)
+        if shop:
+            await db.refresh(shop, ["user"])
+            shop_user = shop.user if hasattr(shop, "user") else None
+
+    if not courier_user and order.courier_id:
+        # Загрузить курьера отдельно
+        courier = await db.get(Courier, order.courier_id)
+        if courier:
+            await db.refresh(courier, ["user"])
+            courier_user = courier.user if hasattr(courier, "user") else None
+
+    return shop_user, courier_user
 
 
 async def create_order(db: AsyncSession, order_data: OrderCreate) -> OrderResponse:
@@ -129,6 +174,24 @@ async def assign_courier_manually(
 
     await db.commit()
     await db.refresh(order)
+
+    # Отправка уведомления о назначении курьера магазину
+    try:
+        shop_user, _ = await _get_order_participants(db, order)
+        if shop_user:
+            await notification_service.notify_order_assigned(
+                user=shop_user,
+                order_id=order_id,
+                courier_name=courier.user.name if courier.user else "Курьер",
+                pickup_time=str(order.accepted_at).split(" ")[1][:5]
+                if order.accepted_at
+                else "неопределено",
+            )
+    except Exception as e:
+        logger.warning(
+            f"Не удалось отправить уведомление о назначении курьера для заказа {order_id}: {e}"
+        )
+
     return OrderResponse.from_orm(order)
 
 
@@ -161,6 +224,24 @@ async def assign_courier_automatically(db: AsyncSession, order_id: int) -> Order
 
     await db.commit()
     await db.refresh(order)
+
+    # Отправка уведомления о назначении курьера магазину
+    try:
+        shop_user, _ = await _get_order_participants(db, order)
+        if shop_user:
+            await notification_service.notify_order_assigned(
+                user=shop_user,
+                order_id=order_id,
+                courier_name=courier.user.name if courier.user else "Курьер",
+                pickup_time=str(order.accepted_at).split(" ")[1][:5]
+                if order.accepted_at
+                else "неопределено",
+            )
+    except Exception as e:
+        logger.warning(
+            f"Не удалось отправить уведомление о назначении курьера для заказа {order_id}: {e}"
+        )
+
     return OrderResponse.from_orm(order)
 
 
@@ -177,7 +258,7 @@ async def update_order_status(
     old_status = order.status
     order.status = new_status
 
-    now = func.now()
+    now = datetime.now()
 
     if new_status == OrderStatus.picking_up and old_status == OrderStatus.accepted:
         order.accepted_at = now  # уже установлено ранее
@@ -199,6 +280,31 @@ async def update_order_status(
 
     await db.commit()
     await db.refresh(order)
+
+    # Отправка уведомления о изменении статуса
+    try:
+        shop_user, courier_user = await _get_order_participants(db, order)
+        if shop_user and new_status in [OrderStatus.delivered, OrderStatus.accepted]:
+            await notification_service.notify_order_status_changed(
+                user=shop_user,
+                order_id=order_id,
+                new_status=str(new_status).split(".")[1]
+                if "." in str(new_status)
+                else str(new_status),
+            )
+        if courier_user and new_status in [OrderStatus.picking_up]:
+            await notification_service.notify_order_status_changed(
+                user=courier_user,
+                order_id=order_id,
+                new_status=str(new_status).split(".")[1]
+                if "." in str(new_status)
+                else str(new_status),
+            )
+    except Exception as e:
+        logger.warning(
+            f"Не удалось отправить уведомление об изменении статуса для заказа {order_id}: {e}"
+        )
+
     return OrderResponse.from_orm(order)
 
 
@@ -214,10 +320,26 @@ async def confirm_order(db: AsyncSession, order_id: int) -> OrderResponse:
         raise ValueError("Можно подтвердить только доставленный заказ")
 
     order.status = OrderStatus.completed
-    order.confirmed_at = func.now()
+    order.confirmed_at = datetime.now()
 
     await db.commit()
     await db.refresh(order)
+
+    # Отправка уведомления о подтверждении курьеру
+    try:
+        _, courier_user = await _get_order_participants(db, order)
+        if courier_user:
+            await notification_service.notify_system_message(
+                user=courier_user,
+                title=f"Заказ #{order_id} подтвержден",
+                content=f"Магазин подтвердил получение заказа #{order_id}",
+                priority="normal",
+            )
+    except Exception as e:
+        logger.warning(
+            f"Не удалось отправить уведомление о подтверждении для заказа {order_id}: {e}"
+        )
+
     return OrderResponse.from_orm(order)
 
 
@@ -226,7 +348,7 @@ async def auto_confirm_orders(db: AsyncSession) -> int:
     Автоматическое подтверждение доставленных заказов спустя 12 часов.
     Возвращает количество подтвержденных заказов.
     """
-    cutoff_time = func.now() - timedelta(hours=12)
+    cutoff_time = datetime.now() - timedelta(hours=12)
 
     result = await db.execute(
         select(Order).where(

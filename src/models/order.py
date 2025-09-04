@@ -12,7 +12,6 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import relationship
-
 from src.common.enums import OrderStatus, OrderType
 from src.core.database import Base
 
@@ -61,7 +60,9 @@ class Order(Base):
     special_reason = Column(Text, nullable=True)  # Пояснения для особого заказа (размер, хрупкость)
 
     # --- Доплаты для разных типов заказов ---
-    zone_addon = Column(DECIMAL(10, 2), default=0)  # Надбавка за зону (для long_distance, rush_hour)
+    zone_addon = Column(
+        DECIMAL(10, 2), default=0
+    )  # Надбавка за зону (для long_distance, rush_hour)
     rush_hour_addon = Column(DECIMAL(10, 2), default=0)  # Надбавка за внерабочее время (1000-1500)
 
     courier_rating = Column(Integer, nullable=True)  # Оценка курьера от 1 до 5
@@ -70,6 +71,8 @@ class Order(Base):
     # --- Временные метки для отслеживания жизненного цикла заказа ---
     accepted_at = Column(DateTime, nullable=True)  # Время принятия заказа курьером
     delivered_at = Column(DateTime, nullable=True)  # Фактическое время доставки
+    confirmed_at = Column(DateTime, nullable=True)  # Время подтверждения магазином
+    autoconfirmed_at = Column(DateTime, nullable=True)  # Автоподтверждение через 12 часов
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

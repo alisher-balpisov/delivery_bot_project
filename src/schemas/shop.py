@@ -1,4 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
+from src.common.utils import Phone
 
 from .user import UserRead
 
@@ -54,6 +55,6 @@ class ShopRegistration(BaseModel):
 
     telegram_id: int
     name: str = Field(..., max_length=100)
-    phone: str = Field(..., max_length=20)
+    phone: Phone = Field(..., max_length=20)
     shop_name: str = Field(..., max_length=255)
     shop_address: str | None = Field(None, max_length=255)

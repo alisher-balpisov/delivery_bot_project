@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 from src.common.enums import OrderStatus, OrderType
+from src.common.utils import Phone
 
 from .shop import ShopRead
 
@@ -20,7 +21,7 @@ class OrderBase(BaseModel):
 
     description: str | None = None
     recipient_name: str | None = None
-    recipient_phone: str
+    recipient_phone: Phone
     recipient_address: str
     price: float
     pickup_address: str
@@ -28,7 +29,7 @@ class OrderBase(BaseModel):
     is_fragile: bool = False
     is_bulky: bool = False
     special_reason: str | None = None
-    recipient_phone_code: str | None = None  # Optional field for phone code
+    recipient_phone_code: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

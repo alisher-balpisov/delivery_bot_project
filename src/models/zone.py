@@ -11,7 +11,7 @@ class Zone(Base):
     """
 
     __tablename__ = "zones"
-    __repr_attrs__ = ("name", "radius_km")
+    __repr_attrs__ = ("name", "radius_km", "base_price")
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)  # Название зоны (центр города и т.д.)
@@ -22,6 +22,3 @@ class Zone(Base):
     # TODO: добавить координаты центра зоны для гео расчетов
 
     orders = relationship("Order", back_populates="zone")
-
-    def __repr__(self):
-        return f"<Zone(id={self.id}, name={self.name}, radius={self.radius_km}km, base_price={self.base_price})>"

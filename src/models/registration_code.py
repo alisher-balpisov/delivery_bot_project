@@ -25,8 +25,3 @@ class RegistrationCode(Base):
     user = relationship(
         "User", back_populates="registration_code", uselist=False, cascade="all, delete-orphan"
     )
-
-    def __repr__(self):
-        return (
-            f"<RegistrationCode(code='{self.code}', role={self.role.value}, used={self.is_used})>"
-        )

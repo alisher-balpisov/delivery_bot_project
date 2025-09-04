@@ -30,10 +30,16 @@ async def get_order_details(order_id: int, db: AsyncSession = Depends(get_db)):
 async def update_existing_order(
     order_id: int, order_in: OrderUpdate, db: AsyncSession = Depends(get_db)
 ):
-    """
-    Обновление заказа (например, смена статуса).
-    """
-    updated_order = await service.update_order(db=db, order_id=order_id, update_data=order_in)
+    if order_in.status:
+        updated_order = await service.update_order_status(
+            db=db,
+            order_id=order_id,
+            new_status=order_in.status,
+            courier_notes=order_in.courier_notes,
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Only status updates supported")
+
     if not updated_order:
         raise HTTPException(status_code=404, detail="Order not found")
     return updated_order

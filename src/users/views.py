@@ -15,10 +15,10 @@ async def register_shop_user(
     """
     Регистрация нового пользователя с ролью "магазин" и создание профиля магазина.
     """
-    # TODO: Добавить проверку на существование пользователя по telegram_id или phone
-    # user = await service.get_user_by_telegram_id(db, registration_data.telegram_id)
-    # if user:
-    #     raise HTTPException(status_code=400, detail="User with this Telegram ID already exists")
+    # Проверить существование пользователя по telegram_id
+    user = await service.get_user_response_by_telegram_id(db, registration_data.telegram_id)
+    if user:
+        raise HTTPException(status_code=400, detail="User with this Telegram ID already exists")
 
     new_user = await service.register_shop(db=db, registration_data=registration_data)
     return new_user

@@ -276,8 +276,8 @@ def is_admin(telegram_id: int) -> bool:
 
 def get_upload_dir() -> Path:
     """Получить директорию для загрузок. Создаёт, если нет."""
-    upload_dir = settings.file_storage.upload_dir
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
     return upload_dir
 
 

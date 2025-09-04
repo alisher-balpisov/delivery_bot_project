@@ -1,15 +1,22 @@
 import asyncio
+import re
 import sys
+import time
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 from src.api.routes import api_router
 from src.core.config import get_upload_dir, settings
 from src.core.database import close_db, init_db
 from src.core.logging import get_logger, setup_logging
+from src.notifications.service import initialize_notification_service
 
 logger = get_logger(__name__)
 
@@ -25,6 +32,11 @@ async def lifespan(app: FastAPI):
     # Инициализация при старте
     try:
         # Инициализация базы данных
+        # Инициализация сервиса уведомлений
+        await initialize_notification_service(app)
+        logger.info("✅ Сервис уведомлений инициализирована")
+
+        logger.info("🎉 Приложение успешно запущено!")
         await init_db()
         logger.info("✅ База данных инициализирована")
 
@@ -68,8 +80,71 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Настройка rate limiting
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
+
+    # Middleware для санитизации и валидации входных данных
+    @app.middleware("http")
+    async def sanitize_input(request: Request, call_next):
+        # Паттерны для потенциально опасных данных
+        dangerous_patterns = [
+            r";\s*--",  # SQL комментарии
+            r";\s*/\*",  # Начало SQL блока комментариев
+            r"<\s*script",  # XSS script tags
+            r"javascript\s*:",  # JavaScript URI
+            r"on\w+\s*=",  # XSS event handlers
+        ]
+
+        try:
+            # Получаем тело запроса если это POST/PUT/PATCH
+            if request.method in ["POST", "PUT", "PATCH"]:
+                body = await request.body()
+                body_str = body.decode("utf-8", errors="ignore")
+
+                for pattern in dangerous_patterns:
+                    if re.search(pattern, body_str, re.IGNORECASE):
+                        logger.warning(f"🚨 Suspicious input detected in request: {request.url}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Invalid input detected. Request blocked for security reasons.",
+                        )
+
+            response = await call_next(request)
+            return response
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            # Если не HTTPException, пропускаем и логируем
+            logger.error(f"Error in sanitize middleware: {e}")
+            response = await call_next(request)
+            return response
+
     # CORS middleware
     app.add_middleware(CORSMiddleware, **settings.middleware.cors_kwargs())
+
+    # middleware для логирования запросов
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        start_time = time.time()
+
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            logger.info(
+                f"{request.method} {request.url} - {response.status_code} - {process_time:.4f}s"
+            )
+            return response
+        except Exception as e:
+            process_time = time.time() - start_time
+            logger.error(
+                f"{request.method} {request.url} - ERROR: {type(e).__name__}: {e} - {process_time:.4f}s"
+            )
+            # Re-raise the exception to let FastAPI handle it properly
+            raise
 
     # Подключение API роутеров
     app.include_router(api_router, prefix=settings.api_prefix)
@@ -100,6 +175,9 @@ def create_app() -> FastAPI:
         }
 
     return app
+
+
+app = create_app()
 
 
 async def run_app():

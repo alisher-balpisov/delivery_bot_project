@@ -1,4 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.core.logging import get_logger
 from src.models.dispute import Dispute
 from src.models.order import Order
 from src.schemas.dispute import DisputeCreate, DisputeRead, DisputeUpdate
@@ -15,7 +16,8 @@ async def create_dispute(db: AsyncSession, dispute_data: DisputeCreate) -> Dispu
     Returns:
         Схема с данными созданного спора.
     """
-    from src.core.logging import logger
+
+    logger = get_logger(__name__)
 
     logger.info(
         f"Создание спора для заказа {dispute_data.order_id} с описанием: {dispute_data.description[:50]}..."
@@ -66,7 +68,8 @@ async def get_dispute_by_id(db: AsyncSession, dispute_id: int) -> DisputeRead | 
     Returns:
         Схема с данными спора или None, если спор не найден.
     """
-    from src.core.logging import logger
+
+    logger = get_logger(__name__)
 
     logger.info(f"Получение спора ID {dispute_id}")
 
@@ -93,7 +96,8 @@ async def update_dispute(
     Returns:
         Схема с обновленными данными спора или None, если спор не найден.
     """
-    from src.core.logging import logger
+
+    logger = get_logger(__name__)
 
     logger.info(
         f"Обновление спора ID {dispute_id} с данными: {update_data.dict(exclude_unset=True)}"

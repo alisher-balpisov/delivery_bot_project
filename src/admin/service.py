@@ -1,6 +1,8 @@
+import hashlib
 import json
 import secrets
 import string
+from datetime import datetime
 
 import redis.asyncio as redis
 from src.core.config import settings
@@ -37,32 +39,32 @@ async def generate_one_time_code(telegram_id: int, user_role: str) -> OneTimeCod
         Схема с данными сгенерированного кода.
     """
     try:
-        # Get Redis client
         client = await init_redis_client()
-
-        # Generate unique code with collision check
-        max_attempts = 10
-        for _ in range(max_attempts):
+        # Более безопасная генерация с проверкой на столкновения
+        for _ in range(10):
             code = "".join(secrets.choice(string.digits) for _ in range(6))
 
-            # Check if code exists in Redis
-            existing = await client.get(f"otc:{code}")
-            if not existing:
+            # Проверить уникальность
+            if not await client.exists(f"otc:{code}"):
                 break
         else:
-            logger.error("❌ Failed to generate unique OTC after multiple attempts")
-            raise RuntimeError("Cannot generate unique code")
+            raise RuntimeError("Cannot generate unique code after 10 attempts")
 
-        # Store in Redis with TTL
+        # Добавить хеширование для дополнительной безопасности
+        code_hash = hashlib.sha256(f"{code}{telegram_id}".encode()).hexdigest()[:8]
+
         data = {
             "telegram_id": telegram_id,
             "user_role": user_role,
             "is_used": False,
-            "created_at": str(__import__("datetime").func.now()),
+            "created_at": datetime.now().isoformat(),
+            "code_hash": code_hash,  # Для дополнительной проверки
         }
-        await client.setex(f"otc:{code}", 3600, json.dumps(data))
 
-        logger.info(f"🔑 Generated OTC: {code} for user {telegram_id} with role {user_role}")
+        # Сократить TTL для безопасности
+        await client.setex(f"otc:{code}", 1800, json.dumps(data))  # 30 минут вместо часа
+
+        logger.info(f"🔑 Generated OTC for user {telegram_id} with role {user_role}")
         return OneTimeCodeRead(code=code, user_role=user_role, is_used=False)
 
     except Exception as e:
