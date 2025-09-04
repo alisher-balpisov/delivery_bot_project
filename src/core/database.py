@@ -1,14 +1,14 @@
-from config import settings
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from src.core.config import settings
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 # Создаём асинхронный движок SQLAlchemy
 engine = create_async_engine(
-    settings.database.URL._secret_value, *settings.database.engine_kwargs()
+    settings.database.URL._secret_value, **settings.database.engine_kwargs()
 )
 
 # Фабрика для создания асинхронных сессий

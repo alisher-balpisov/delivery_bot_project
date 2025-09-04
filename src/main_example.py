@@ -6,20 +6,20 @@ from contextlib import asynccontextmanager
 import uvicorn
 from aiogram import Bot, Dispatcher
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler
-from config import get_upload_dir, settings, validate_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from src.core.config import get_upload_dir, settings
 
 # Импорты API роутеров
 from api.routes import api_router
 
 # Импорты бота
-from bot.main import create_bot, create_dispatcher
-from bot.webhook import setup_webhook
-from core.database import close_db, init_db
-from core.logging import setup_logging
-from core.redis import close_redis, init_redis
+from src.bot.main import create_bot, create_dispatcher
+from src.bot.webhook import setup_webhook
+from src.core.database import close_db, init_db
+from src.core.logging import setup_logging
+from src.core.redis import close_redis, init_redis
 
 logger = logging.getLogger(__name__)
 

@@ -13,8 +13,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
-from common.enums import OrderStatus, OrderType
-from core.database import Base
+from src.common.enums import OrderStatus, OrderType
+from src.core.database import Base
 
 
 class Order(Base):
@@ -36,6 +36,7 @@ class Order(Base):
 
     id = Column(Integer, primary_key=True)
     shop_id = Column(Integer, ForeignKey("shops.id"), nullable=False)
+    zone_id = Column(Integer, ForeignKey("zones.id"), nullable=False)
     # Может быть NULL, если заказ еще не назначен курьеру.
     courier_id = Column(Integer, ForeignKey("couriers.id"), nullable=True)
 
@@ -57,6 +58,12 @@ class Order(Base):
     # --- Поля для реализации логики из описания ---
     is_fragile = Column(Boolean, default=False)  # Отметка "Хрупкое"
     is_bulky = Column(Boolean, default=False)  # Отметка "Крупногабаритное"
+    special_reason = Column(Text, nullable=True)  # Пояснения для особого заказа (размер, хрупкость)
+
+    # --- Доплаты для разных типов заказов ---
+    zone_addon = Column(DECIMAL(10, 2), default=0)  # Надбавка за зону (для long_distance, rush_hour)
+    rush_hour_addon = Column(DECIMAL(10, 2), default=0)  # Надбавка за внерабочее время (1000-1500)
+
     courier_rating = Column(Integer, nullable=True)  # Оценка курьера от 1 до 5
     courier_feedback = Column(Text, nullable=True)  # Текстовый отзыв о работе курьера
 

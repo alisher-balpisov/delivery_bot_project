@@ -69,7 +69,7 @@ def create_app() -> FastAPI:
     )
 
     # CORS middleware
-    if settings.cors_origins:
+    if settings.middleware.allow_origins:
         app.add_middleware(CORSMiddleware, **settings.middleware.cors_kwargs())
 
     # Подключение API роутеров
@@ -90,6 +90,9 @@ def create_app() -> FastAPI:
         }
 
     return app
+
+
+app = create_app()
 
 
 async def run_app():
@@ -152,8 +155,6 @@ if __name__ == "__main__":
 
 
 # Дополнительные функции для разработки и отладки
-
-
 async def run_api_only():
     """
     Запуск только API без бота (для отладки)

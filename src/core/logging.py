@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import ClassVar
 
-from config import settings
+from src.core.config import settings
 
 
 class ColoredFormatter(logging.Formatter):

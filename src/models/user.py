@@ -1,8 +1,7 @@
-from sqlalchemy import Column, DateTime, Enum, Integer, String, func
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, func
 from sqlalchemy.orm import relationship
-
-from common.enums import UserRole
-from core.database import Base
+from src.common.enums import UserRole
+from src.core.database import Base
 
 
 class User(Base):
@@ -21,6 +20,11 @@ class User(Base):
     name = Column(String(100))
     phone = Column(String(20), unique=True)
     role = Column(Enum(UserRole), nullable=False)
+    registration_code_id = Column(Integer, ForeignKey("registration_codes.id"), nullable=True)
+    registration_attempts = Column(Integer, default=0, nullable=False)  # Попытки ввода кода
+    is_blocked = Column(
+        Boolean, default=False, nullable=False
+    )  # Заблокирован после 3 неудачных попыток
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

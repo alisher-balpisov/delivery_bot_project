@@ -1,7 +1,6 @@
 from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer
 from sqlalchemy.orm import relationship
-
-from core.database import Base
+from src.core.database import Base
 
 
 class Courier(Base):

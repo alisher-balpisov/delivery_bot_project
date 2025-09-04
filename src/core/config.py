@@ -203,7 +203,7 @@ class Settings(BaseSettings):
     admin: AdminConfig = Field(default_factory=AdminConfig)
 
     api_host: str = "localhost"
-    api_port: int = 5432
+    api_port: int = 8000
     api_prefix: str = "/api/v1"
 
     default_encoding: str = "utf-8"

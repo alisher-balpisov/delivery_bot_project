@@ -11,9 +11,14 @@ requires-python = ">=3.13"
 # Основные зависимости
 dependencies = [
     "aiogram>=3.22.0",
+    "aiosqlite>=0.21.0",
+    "asyncpg>=0.30.0",
     "fastapi>=0.116.1",
+    "greenlet>=3.0.0",
+    "psycopg2-binary>=2.9.7",
     "pydantic>=2.11.7",
     "pydantic-settings>=2.10.1",
+    "redis>=6.4.0",
     "sqlalchemy>=2.0.43",
     "uvicorn>=0.35.0",
 ]
@@ -91,6 +96,7 @@ ignore = [
     "RUF001",
     "RUF002",
     "RUF003",
+    "B904"
 ]
 
 # Включить автоматическое исправление для всех правил, которые это поддерживают.

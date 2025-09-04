@@ -8,5 +8,10 @@
     },
     "[jsonc]": {
         "editor.defaultFormatter": "vscode.json-language-features"
+    },
+    "files.exclude": {
+        "": true,
+        "**/__pycache__": true,
+        "**/*.pyc": true
     }
 }
