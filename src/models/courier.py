@@ -31,6 +31,3 @@ class Courier(Base):
     user = relationship("User", back_populates="courier")
     orders = relationship("Order", back_populates="courier")
     disputes = relationship("Dispute", back_populates="courier")
-
-    def __repr__(self):
-        return f"<Courier(id={self.id}, user_id={self.user_id}, is_active={self.is_active})>"

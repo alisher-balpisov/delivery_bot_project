@@ -143,7 +143,7 @@ class LoggingConfig(BaseModel):
         return {
             "maxBytes": self.max_file_size,
             "backupCount": self.backup_count,
-            "encoding": settings.default_encoding,
+            "encoding": "utf-8",
         }
 
 
@@ -247,7 +247,7 @@ class Settings(BaseSettings):
     # Конфиг для pydantic_settings
     model_config = SettingsConfigDict(
         env_file=".env",  # Загружать переменные из .env
-        env_file_encoding=default_encoding,
+        env_file_encoding="utf-8",
         env_nested_delimiter="__",  # Для вложенных конфигов DATABASE__URL
         case_sensitive=False,
     )

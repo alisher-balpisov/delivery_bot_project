@@ -69,8 +69,7 @@ def create_app() -> FastAPI:
     )
 
     # CORS middleware
-    if settings.middleware.allow_origins:
-        app.add_middleware(CORSMiddleware, **settings.middleware.cors_kwargs())
+    app.add_middleware(CORSMiddleware, **settings.middleware.cors_kwargs())
 
     # Подключение API роутеров
     app.include_router(api_router, prefix=settings.api_prefix)
@@ -89,10 +88,18 @@ def create_app() -> FastAPI:
             "docs": "/docs" if settings.docs_url else "Документация отключена",
         }
 
+    # Health check endpoint
+    @app.get("/health")
+    async def health_check():
+        """Проверка здоровья приложения"""
+        return {
+            "status": "healthy",
+            "app": settings.app_name,
+            "version": settings.app_version,
+            "environment": settings.environment,
+        }
+
     return app
-
-
-app = create_app()
 
 
 async def run_app():

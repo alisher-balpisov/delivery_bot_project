@@ -10,7 +10,7 @@ class Dispute(Base):
     """
 
     __tablename__ = "disputes"
-    __repr_attrs__ = ("order_id", "status.name")
+    __repr_attrs__ = ("order_id", "status")
 
     id = Column(Integer, primary_key=True)
     # Уникальность гарантирует, что по одному заказу может быть только один спор.

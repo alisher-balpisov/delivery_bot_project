@@ -8,13 +8,81 @@ logger = get_logger(__name__)
 
 # Создаём асинхронный движок SQLAlchemy
 engine = create_async_engine(
-    settings.database.URL._secret_value, **settings.database.engine_kwargs()
+    settings.database.URL.get_secret_value(), **settings.database.engine_kwargs()
 )
 
 # Фабрика для создания асинхронных сессий
 AsyncSessionLocal = sessionmaker(
     bind=engine, class_=AsyncSession, **settings.database.session_kwargs()
 )
+
+
+class Base(DeclarativeBase):
+    """
+    Базовый класс для всех ORM-моделей.
+
+    Содержит улучшенный __repr__, который
+    выводит id и указанные в __repr_attrs__ поля.
+    """
+
+    # Атрибуты, которые нужно показывать в __repr__
+    __repr_attrs__: tuple[str, ...] = ()
+    # Максимальная длина значения атрибута в __repr__
+    __repr_max_length__: int = 15
+
+    @property
+    def _id_str(self) -> str | None:
+        """
+        Возвращает строковое представление id,
+        если атрибут 'id' присутствует и не None.
+        """
+        return str(self.id) if getattr(self, "id", None) is not None else None
+
+    @property
+    def _repr_attrs_str(self) -> str:
+        """
+        Формирует строку с атрибутами для __repr__.
+
+        Обрезает слишком длинные значения до __repr_max_length__.
+        Для строк добавляет кавычки.
+        """
+        if not self.__repr_attrs__:
+            return ""
+
+        max_length = self.__repr_max_length__
+        values: list[str] = []
+        single_attr = len(self.__repr_attrs__) == 1
+
+        for key in self.__repr_attrs__:
+            # Проверяем, что атрибут реально существует
+            if not hasattr(self, key):
+                raise KeyError(
+                    f"Неверный атрибут '{key}' в __repr_attrs__ класса {self.__class__.__name__}"
+                )
+
+            val = getattr(self, key)
+            is_str = isinstance(val, str)
+
+            val_str = str(val)
+            if len(val_str) > max_length:
+                val_str = val_str[:max_length] + "..."
+
+            if is_str:
+                val_str = f"'{val_str}'"
+
+            values.append(val_str if single_attr else f"{key}:{val_str}")
+
+        return " ".join(values)
+
+    def __repr__(self) -> str:
+        """
+        Красивое строковое представление модели.
+
+        Пример: <User #1 name:'John'>
+        """
+        id_part = f"#{self._id_str}" if self._id_str else ""
+        attrs_part = f" {self._repr_attrs_str}" if self._repr_attrs_str else ""
+        return f"<{self.__class__.__name__} {id_part}{attrs_part}>"
 
 
 async def get_db():
@@ -87,7 +155,6 @@ async def init_db() -> None:
         logger.info("✅ Соединение с базой данных установлено")
 
         # Импорт всех моделей для регистрации в метаданных
-        # ВАЖНО: импортируйте здесь все ваши модели
         from src.models.shop import Shop  # noqa
         from src.models.courier import Courier  # noqa
         from src.models.user import User  # noqa
@@ -132,7 +199,6 @@ async def reset_database() -> None:
     logger.warning("🔄 Полный сброс базы данных...")
 
     # Импорт всех моделей для регистрации в метаданных
-    # ВАЖНО: импортируйте здесь все ваши модели
     from src.models.shop import Shop  # noqa
     from src.models.courier import Courier  # noqa
     from src.models.user import User  # noqa
@@ -157,74 +223,6 @@ async def get_db_session() -> AsyncSession:
         pass
     """
     return AsyncSessionLocal()
-
-
-class Base(DeclarativeBase):
-    """
-    Базовый класс для всех ORM-моделей.
-
-    Содержит улучшенный __repr__, который
-    выводит id и указанные в __repr_attrs__ поля.
-    """
-
-    # Атрибуты, которые нужно показывать в __repr__
-    __repr_attrs__: tuple[str, ...] = ()
-    # Максимальная длина значения атрибута в __repr__
-    __repr_max_length__: int = 15
-
-    @property
-    def _id_str(self) -> str | None:
-        """
-        Возвращает строковое представление id,
-        если атрибут 'id' присутствует и не None.
-        """
-        return str(self.id) if getattr(self, "id", None) is not None else None
-
-    @property
-    def _repr_attrs_str(self) -> str:
-        """
-        Формирует строку с атрибутами для __repr__.
-
-        Обрезает слишком длинные значения до __repr_max_length__.
-        Для строк добавляет кавычки.
-        """
-        if not self.__repr_attrs__:
-            return ""
-
-        max_length = self.__repr_max_length__
-        values: list[str] = []
-        single_attr = len(self.__repr_attrs__) == 1
-
-        for key in self.__repr_attrs__:
-            # Проверяем, что атрибут реально существует
-            if not hasattr(self, key):
-                raise KeyError(
-                    f"Неверный атрибут '{key}' в __repr_attrs__ класса {self.__class__.__name__}"
-                )
-
-            val = getattr(self, key)
-            is_str = isinstance(val, str)
-
-            val_str = str(val)
-            if len(val_str) > max_length:
-                val_str = val_str[:max_length] + "..."
-
-            if is_str:
-                val_str = f"'{val_str}'"
-
-            values.append(val_str if single_attr else f"{key}:{val_str}")
-
-        return " ".join(values)
-
-    def __repr__(self) -> str:
-        """
-        Красивое строковое представление модели.
-
-        Пример: <User #1 name:'John'>
-        """
-        id_part = f"#{self._id_str}" if self._id_str else ""
-        attrs_part = f" {self._repr_attrs_str}" if self._repr_attrs_str else ""
-        return f"<{self.__class__.__name__} {id_part}{attrs_part}>"
 
 
 # Экспорт основных компонентов
