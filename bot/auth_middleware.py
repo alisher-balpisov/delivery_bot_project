@@ -6,6 +6,7 @@ Middleware для ЗАЩИТЫ роутов. Проверяет наличие �
 """
 
 import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -17,8 +18,36 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from bot.auth_client import AuthClient
+from bot.constants import UserRole
 
 logger = get_logger(__name__)
+
+
+class LRUCache:
+    """Simple LRU cache implementation with size limit."""
+
+    def __init__(self, max_size: int = 100):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+
+    def get(self, key: int) -> dict | None:
+        if key in self.cache:
+            # Move to end (most recently used)
+            self.cache.move_to_end(key)
+            # Check expiration
+            if self.cache[key].get("expires_at", 0) > time.time():
+                return self.cache[key]
+            else:
+                del self.cache[key]
+        return None
+
+    def set(self, key: int, value: dict):
+        if key in self.cache:
+            del self.cache[key]
+        elif len(self.cache) >= self.max_size:
+            # Remove least recently used
+            self.cache.popitem(last=False)
+        self.cache[key] = value
 
 
 class AuthMiddleware(BaseMiddleware):
@@ -31,13 +60,14 @@ class AuthMiddleware(BaseMiddleware):
         encryption_key: str | None = None,
         rate_limit: int = 10,
         cache_ttl: int = 300,
+        cache_max_size: int = 100,
     ):
         self.auth_client = auth_client
         self.redis = redis
         self.rate_limit = rate_limit
         self.fernet = Fernet(encryption_key.encode()) if encryption_key else None
         self.cache_ttl = cache_ttl
-        self.token_cache: dict[int, dict[str, Any]] = {}
+        self.token_cache = LRUCache(max_size=cache_max_size)
 
     def _encrypt_token(self, token: str) -> str:
         if self.fernet:
@@ -46,7 +76,7 @@ class AuthMiddleware(BaseMiddleware):
 
     async def _check_rate_limit(self, telegram_id: int, user_role: str | None) -> tuple[bool, int]:
         # ... (код этой функции не меняется)
-        if user_role == "admin":
+        if user_role == UserRole.ADMIN:
             return True, 0
         if not self.redis:
             return True, 0
@@ -74,14 +104,16 @@ class AuthMiddleware(BaseMiddleware):
             return True, 0
 
     async def _validate_token_cached(self, token: str, telegram_id: int) -> dict | None:
-        # ... (код этой функции не меняется)
+        # Проверяем кэш
         cached = self.token_cache.get(telegram_id)
-        if cached and cached.get("expires_at", 0) > time.time():
+        if cached:
             return cached
+
         validated = await self.auth_client.validate_token(token)
         if validated:
             validated["expires_at"] = time.time() + self.cache_ttl
-            self.token_cache[telegram_id] = validated
+            self.token_cache.set(telegram_id, validated)
+
         return validated
 
     async def _set_user_data(self, data: dict[str, Any], user_data: dict[str, Any]):

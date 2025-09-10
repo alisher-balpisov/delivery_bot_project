@@ -1,5 +1,6 @@
 from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer
 from sqlalchemy.orm import relationship
+
 from backend.src.core.database import Base
 
 

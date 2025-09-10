@@ -116,7 +116,7 @@ async def test_user(db_session):
         username=f"testuser_{uuid.uuid4().hex[:4]}",
         name="Test User",
         password_hash="$2b$12$WmalAiwLS8iZMHhF.iEvV.b2S6pfb7fLz3m0LxYI29PxIlidv/UuS",  # password: testpass
-        role="shop",
+        role=UserRole.SHOP,
     )
     db_session.add(user)
     await db_session.commit()
@@ -143,7 +143,7 @@ async def test_telegram_user(db_session):
     user = User(
         telegram_id=telegram_id,
         name="Test Telegram User",
-        role="shop",
+        role=UserRole.SHOP,
         is_active=True,
     )
     db_session.add(user)

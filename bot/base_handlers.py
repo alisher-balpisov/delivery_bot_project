@@ -2,6 +2,8 @@
 Обработчики команд и сообщений для Telegram бота
 """
 
+from functools import cache
+
 import httpx
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -9,27 +11,17 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from backend.src.core.logging import get_logger
 
 from bot.client_manager import client_manager
+from bot.constants import ROLE_COMMANDS, DisputeStatus, UserRole
 
 logger = get_logger(__name__)
 
-# ИСПРАВЛЕНО: Роутеры разделены на публичные и защищенные
 # Публичный роутер (команды типа /help, /start)
 public_router = Router(name="public_handlers")
 # Защищенный роутер (требует авторизации)
 protected_router = Router(name="protected_handlers")
 
-
-ROLE_COMMANDS: dict[str, dict[str, str]] = {
-    "admin": {
-        "icon": "👑",
-        "title": "Администратор:",
-        "commands": [
-            "/admin - управление системой\n",
-        ],
-    },
-    "shop": {"icon": "🏪", "title": "Магазин:", "commands": ["/orders - мои заказы\n"]},
-    "courier": {"icon": "🏍️", "title": "Курьер:", "commands": ["/orders - назначенные заказы\n"]},
-}
+DEFAULT_MENU_HEADER = "🏠 Главное меню:\n\n"
+GUEST_ROLE = UserRole.GUEST
 
 
 @protected_router.message(Command("test_api"))
@@ -88,14 +80,89 @@ async def user_stats_handler(message: Message, user_data: dict):
     await message.answer(text)
 
 
+@cache
+def generate_menu_text(role: str) -> str:
+    """Генерирует текст главного меню на основе роли пользователя.
+
+    Args:
+        role (str): Роль пользователя ('admin', 'shop', 'courier' или 'guest').
+
+    Returns:
+        str: Форматированный текст меню.
+    """
+    if not role:
+        role = GUEST_ROLE
+
+    text = DEFAULT_MENU_HEADER
+    text += "👋 Добро пожаловать!\n\n"
+
+    # Общие команды
+    text += "📋 Основные команды:\n"
+    text += "/help - Справка\n"
+
+    if role != GUEST_ROLE:
+        text += "/me - Мой профиль\n"
+        text += "/logout - Выход\n"
+        text += "/user_stats - Статистика\n"
+
+    # Ролевые команды из конфига
+    role_config = ROLE_COMMANDS.get(role)
+    if role_config:
+        text += f"\n{role_config['icon']} {role_config['title']}\n"
+        text += "".join(role_config["commands"])
+
+    if role == UserRole.ADMIN:
+        text += "/admin - Панель администратора\n"
+
+    return text
+
+
 @protected_router.callback_query(F.data == "show_menu")
 async def show_menu_callback(callback: CallbackQuery, user_data: dict):
-    """Показать меню команд (через callback, требует авторизации)."""
-    role = user_data.get("role", "guest")
-    text = "🏠 Главное меню:\n\n"
-    # ... (логика генерации меню)
-    await callback.message.edit_text(text)
-    await callback.answer()
+    """Показать меню команд (через callback, требует авторизации).
+
+    Args:
+        callback (CallbackQuery): Объект callback от Telegram.
+        user_data (dict): Данные пользователя из middleware.
+
+    Raises:
+        Aiogram exceptions при проблемах с Telegram API.
+    """
+    # Валидация входных данных
+    if not user_data:
+        logger.warning("user_data отсутствует в show_menu_callback")
+        await callback.answer("❌ Ошибка: данные пользователя недоступны.")
+        return
+
+    if not callback.message:
+        logger.error("callback.message отсутствует")
+        await callback.answer("❌ Ошибка: сообщение недоступно.")
+        return
+
+    # Получение роли с fallback
+    role = user_data.get("role", GUEST_ROLE)
+
+    try:
+        # Генерация текста меню
+        text = generate_menu_text(role)
+
+        # Обновление сообщения
+        await callback.message.edit_text(text)
+
+        # Подтверждение callback
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Ошибка в show_menu_callback для роли {role}: {e}", exc_info=True)
+        # Fallback: показать общее меню без ошибок
+        try:
+            await callback.message.edit_text(
+                f"{DEFAULT_MENU_HEADER}❌ Произошла ошибка. Попробуйте /help"
+            )
+            await callback.answer("❌ Ошибка при загрузке меню")
+        except Exception as fallback_e:
+            logger.error(f"Ошибка fallback в show_menu_callback: {fallback_e}", exc_info=True)
+            await callback.answer("❌ Критическая ошибка")
 
 
 def generate_help_text(role: str) -> str:
@@ -106,7 +173,7 @@ def generate_help_text(role: str) -> str:
     help_text += "/register - Регистрация\n"
     help_text += "/help - Эта справка\n"
 
-    if role != "guest":
+    if role != UserRole.GUEST:
         help_text += "/me - Мой профиль\n"
         help_text += "/logout - Выход\n"
 
@@ -120,7 +187,7 @@ def generate_help_text(role: str) -> str:
 @public_router.message(Command("help"))
 async def help_handler(message: Message, user_data: dict):
     """Показать доступные команды."""
-    role = user_data.get("role", "guest")
+    role = user_data.get("role", UserRole.GUEST)
     await message.answer(generate_help_text(role))
 
 
@@ -128,11 +195,11 @@ async def help_handler(message: Message, user_data: dict):
 async def orders_handler(message: Message, user_data: dict):
     """Показать заказы в зависимости от роли (требует авторизации)."""
     role = user_data.get("role", "unknown")
-    if role == "shop":
+    if role == UserRole.SHOP:
         await message.answer("🏪 Ваши заказы:\n\n📦 Создайте новый заказ командой /new_order")
-    elif role == "courier":
+    elif role == UserRole.COURIER:
         await message.answer("🏍️ Назначенные заказы:\n\n🚚 Доступные заказы появятся здесь")
-    elif role == "admin":
+    elif role == UserRole.ADMIN:
         await message.answer(
             "👑 Управление заказами:\n\n⚙️ Все заказы системы доступны в панели администратора"
         )
@@ -140,17 +207,67 @@ async def orders_handler(message: Message, user_data: dict):
         await message.answer("❓ Доступные заказы не найдены для вашей роли.")
 
 
-@protected_router.message(Command("admin"))
+@protected_router.message(Command("dispute"))
+async def dispute_handler(message: Message, user_data: dict):
+    """Открыть новый спор (для магазинов и курьеров)."""
+    role = user_data.get("role", "unknown")
+    if role not in [UserRole.SHOP, UserRole.COURIER]:
+        await message.answer("❌ Доступ запрещен. Только магазины и курьеры могут открывать споры.")
+        return
+
+    await message.answer(
+        "⚠️ Открыть спор:\n\n"
+        "Если с доставкой возникли проблемы, отправьте ID заказа для открытия спора.\n"
+        "Пример: /dispute 123\n\n"
+        f"Статус: {DisputeStatus.OPEN.value} (будет установлен автоматически)"
+    )
+
+
+@protected_router.message(Command("disputes"))
+async def disputes_handler(message: Message, user_data: dict):
+    """Показать споры пользователя."""
+    role = user_data.get("role", "unknown")
+    if role not in [UserRole.SHOP, UserRole.COURIER, UserRole.ADMIN]:
+        await message.answer("❌ Доступ запрещен.")
+        return
+
+    token = user_data.get("access_token")
+    await message.answer("⚠️ Загружаю ваши споры...")
+
+    try:
+        disputes = await client_manager.disputes.get_my_disputes(token)
+        if disputes and isinstance(disputes, list) and len(disputes) > 0:
+            text = "⚠️ Ваши споры:\n\n"
+            for dispute in disputes[:5]:
+                status_emoji = {
+                    DisputeStatus.OPEN: "🟡",
+                    DisputeStatus.IN_REVIEW: "🟠",
+                    DisputeStatus.RESOLVED: "🟢",
+                    DisputeStatus.CLOSED: "🔴",
+                }.get(DisputeStatus(dispute.get("status")), "⚪")
+
+                text += (
+                    "04d"
+                    f"{status_emoji} {DisputeStatus(dispute.get('status')).value}\n"
+                    f"📝 {dispute.get('description', 'без описания')[:100]}...\n\n"
+                )
+            await message.answer(text)
+        else:
+            await message.answer("⚠️ У вас нет активных споров.")
+    except Exception as e:
+        logger.error(f"Ошибка при получении споров: {e}", exc_info=True)
+        await message.answer("❌ Ошибка при загрузке споров.")
+
+
+@protected_router.message(Command(UserRole.ADMIN))
 async def admin_handler(message: Message, user_data: dict):
     """Показать панель администратора (требует авторизации и роли admin)."""
-    role = user_data.get("role", "guest")
-    if role != "admin":
+    role = user_data.get("role", UserRole.GUEST)
+    if role != UserRole.ADMIN:
         await message.answer(
             "❌ Доступ запрещен. Только администраторы могут использовать эту команду."
         )
         return
-
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -163,6 +280,7 @@ async def admin_handler(message: Message, user_data: dict):
             ],
         ]
     )
+    await message.answer("👑 Панель администратора:\n\nВыберите действие:", reply_markup=keyboard)
 
 
 @protected_router.callback_query(F.data.startswith("admin_"))
@@ -172,8 +290,6 @@ async def admin_callback_handler(callback: CallbackQuery, user_data: dict):
     token = user_data.get("access_token")
 
     try:
-        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
         if data == "admin_create_code":
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -196,7 +312,7 @@ async def admin_callback_handler(callback: CallbackQuery, user_data: dict):
             await callback.answer()
         elif data.startswith("admin_create_code_") and data != "admin_create_code":
             role = data.split("_")[-1]
-            if role not in ["shop", "courier"]:
+            if role not in [UserRole.SHOP, UserRole.COURIER]:
                 await callback.message.answer("❌ Неверная роль.")
                 await callback.answer()
                 return
@@ -240,7 +356,7 @@ async def admin_callback_handler(callback: CallbackQuery, user_data: dict):
             await callback.message.edit_text("📊 Загружаю статистику...")
             stats = await client_manager.admin.get_system_stats(token)
             if stats and isinstance(stats, dict):
-                text = f"📊 Системная статистика:\n\n"
+                text = "📊 Системная статистика:\n\n"
                 stats_data = [
                     f"Пользователей: {stats.get('total_users', 0)}",
                     f"Админов: {stats.get('total_admins', 0)}",
@@ -270,7 +386,7 @@ async def admin_callback_handler(callback: CallbackQuery, user_data: dict):
 @public_router.message(F.text)
 async def handle_plain_text(message: Message, user_data: dict):
     """Обработчик обычных текстовых сообщений."""
-    role = user_data.get("role", "guest")
+    role = user_data.get("role", UserRole.GUEST)
     text_lower = message.text.lower()
 
     if text_lower in ["меню", "menu", "помощь"]:
@@ -285,130 +401,8 @@ async def handle_plain_text(message: Message, user_data: dict):
         )
 
 
-async def admin_handler(message: Message, user_data: dict):
-    """Показать панель администратора (требует авторизации и роли admin)."""
-    role = user_data.get("role", "guest")
-    if role != "admin":
-        await message.answer(
-            "❌ Доступ запрещен. Только администраторы могут использовать эту команду."
-        )
-        return
-
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📝 Создать код", callback_data="admin_create_code"),
-                InlineKeyboardButton(text="📋 Просмотр кодов", callback_data="admin_view_codes"),
-            ],
-            [
-                InlineKeyboardButton(text="📊 Статистика", callback_data="admin_system_stats"),
-            ],
-        ]
-    )
-
-    await message.answer("👑 Панель администратора:\n\nВыберите действие:", reply_markup=keyboard)
-
-
-@protected_router.callback_query(F.data.startswith("admin_"))
-async def admin_callback_handler(callback: CallbackQuery, user_data: dict):
-    """Обработчик callback для админских функций."""
-    data = callback.data
-    token = user_data.get("access_token")
-
-    try:
-        if data == "admin_create_code":
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="🏪 Магазин", callback_data="admin_create_code_shop"
-                        ),
-                        InlineKeyboardButton(
-                            text="🏍️ Курьер", callback_data="admin_create_code_courier"
-                        ),
-                    ],
-                    [
-                        InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back_to_menu"),
-                    ],
-                ]
-            )
-            await callback.message.edit_text(
-                "📝 Выберите роль для создания регистрационного кода:", reply_markup=keyboard
-            )
-            await callback.answer()
-        elif data.startswith("admin_create_code_") and data != "admin_create_code":
-            role = data.split("_")[-1]
-            if role not in ["shop", "courier"]:
-                await callback.message.answer("❌ Неверная роль.")
-                await callback.answer()
-                return
-            result = await client_manager.admin.create_registration_code(token, role)
-            if result and result.get("success") is not False:
-                code = result.get("code", "не указано")
-                await callback.message.answer(
-                    f"✅ Код для роли {role.upper()} создан: `{code}`", parse_mode="Markdown"
-                )
-                await admin_back_to_menu(callback)
-            else:
-                detail = result.get("detail", "неизвестная ошибка") if result else "ошибка связи"
-                await callback.message.answer(f"❌ Ошибка создания кода: {detail}")
-                await callback.answer()
-        elif data == "admin_view_codes":
-            await callback.message.edit_text("📋 Загружаю список кодов...")
-            codes = await client_manager.admin.get_all_registration_codes(token)
-            if codes and isinstance(codes, list):
-                text = "📋 Регистрационные коды:\n\n"
-                for code_info in codes[:10]:  # Ограничим до 10 для длинны сообщения
-                    text += f"Код: `{code_info.get('code', '?')}` Роль: {code_info.get('role', '?')} Статус: {'использован' if code_info.get('is_used') else 'активен'}\n"
-                if len(codes) > 10:
-                    text += f"\n... и ещё {len(codes) - 10} кодов"
-                await callback.message.edit_text(text, parse_mode="Markdown")
-            else:
-                await callback.message.edit_text("❌ Не удалось получить коды.")
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back_to_menu")]
-                ]
-            )
-            await callback.message.edit_reply_markup(reply_markup=keyboard)
-            await callback.answer()
-        elif data == "admin_system_stats":
-            await callback.message.edit_text("📊 Загружаю статистику...")
-            stats = await client_manager.admin.get_system_stats(token)
-            if stats and isinstance(stats, dict):
-                text = f"📊 Системная статистика:\n\n"
-                stats_data = [
-                    f"Пользователей: {stats.get('total_users', 0)}",
-                    f"Админов: {stats.get('total_admins', 0)}",
-                    f"Магазинов: {stats.get('total_shops', 0)}",
-                    f"Курьеров: {stats.get('total_couriers', 0)}",
-                    f"Заказов: {stats.get('total_orders', 0)}",
-                ]
-                text += "\n".join(stats_data)
-            else:
-                text = "❌ Не удалось получить статистику."
-            await callback.message.edit_text(text)
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back_to_menu")]
-                ]
-            )
-            await callback.message.edit_reply_markup(reply_markup=keyboard)
-            await callback.answer()
-        elif data == "admin_back_to_menu":
-            await admin_back_to_menu(callback)
-    except Exception as e:
-        logger.error(f"Ошибка в admin_callback_handler: {e}", exc_info=True)
-        await callback.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
-        await callback.answer()
-
-
 async def admin_back_to_menu(callback: CallbackQuery):
     """Вернуться в главное меню админа."""
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [

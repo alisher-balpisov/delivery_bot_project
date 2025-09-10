@@ -33,7 +33,7 @@ async def _get_order_participants(
         Tuple[shop_user, courier_user]
     """
     if load_relationships:
-        await db.refresh(order, ["shop", "courier"])
+        await db.refresh(order, [UserRole.SHOP, UserRole.COURIER])
 
     shop_user = order.shop.user if order.shop and hasattr(order.shop, "user") else None
     courier_user = order.courier.user if order.courier and hasattr(order.courier, "user") else None

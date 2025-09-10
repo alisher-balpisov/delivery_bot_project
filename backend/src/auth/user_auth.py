@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from logging import getLogger
 from typing import Any
 
@@ -28,7 +28,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
 
     # Устанавливаем время выдачи (UTC timezone-aware)
-    issued_at = datetime.now(timezone.utc)
+    issued_at = datetime.now(UTC)
     to_encode.update({"iat": issued_at.timestamp()})  # Хранить как timestamp
 
     # Устанавливаем время истечения
@@ -48,7 +48,9 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
         algorithm=settings.auth.jwt_algorithm,
     )
 
-    logger.debug(f"Создан токен для пользователя {data.get('sub', 'unknown')} с истечением {expire}")
+    logger.debug(
+        f"Создан токен для пользователя {data.get('sub', 'unknown')} с истечением {expire}"
+    )
     return encoded_jwt
 
 
@@ -90,7 +92,7 @@ def decode_access_token(token: str):
         # Проверка на будущую дату выдачи (iat)
         iat = payload.get("iat")
         if iat:
-            current_time = datetime.now(timezone.utc).timestamp()
+            current_time = datetime.now(UTC).timestamp()
             if iat > current_time + 60:  # Токен выдан в будущем (с запасом 1 минуту)
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -102,14 +104,16 @@ def decode_access_token(token: str):
         return payload
 
     except jwt.ExpiredSignatureError:
-        logger.warning(f"Истек срок действия токена для пользователя: {payload.get('sub') if 'payload' in locals() else 'неизвестен'}")
+        logger.warning(
+            f"Истек срок действия токена для пользователя: {payload.get('sub') if 'payload' in locals() else 'неизвестен'}"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Срок действия токена истек",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except jwt.JWTError as e:
-        logger.warning(f"Невалидный токен: {str(e)}")
+        logger.warning(f"Невалидный токен: {e!s}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Невалидный токен",
@@ -192,7 +196,7 @@ def require_role(required_role: str):
     """
 
     async def role_dependency(user=Depends(get_current_user)):
-        if user.role.value != required_role and user.role.value != "admin":
+        if user.role.value != required_role and user.role.value != UserRole.ADMIN:
             logger.warning(
                 f"Access denied: user {user.telegram_id} has role {user.role.value}, "
                 f"required {required_role}"
@@ -209,12 +213,12 @@ def require_role(required_role: str):
 
 # Короткие алиасы для удобства
 def require_admin():
-    return require_role("admin")
+    return require_role(UserRole.ADMIN)
 
 
 def require_shop():
-    return require_role("shop")
+    return require_role(UserRole.SHOP)
 
 
 def require_courier():
-    return require_role("courier")
+    return require_role(UserRole.COURIER)

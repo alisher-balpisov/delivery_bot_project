@@ -104,7 +104,7 @@ async def get_unused_registration_codes_count(db: AsyncSession) -> dict:
     )
 
     return {
-        "shop": len(shop_count.scalars().all()),
-        "courier": len(courier_count.scalars().all()),
+        UserRole.SHOP: len(shop_count.scalars().all()),
+        UserRole.COURIER: len(courier_count.scalars().all()),
         "total": len(shop_count.scalars().all()) + len(courier_count.scalars().all()),
     }

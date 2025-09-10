@@ -11,9 +11,10 @@ from backend.src.core.logging import get_logger, setup_logging
 from bot.auth import auth_router, generate_fernet_key
 from bot.auth import protected_router as protected_auth_router
 from bot.auth_middleware import AuthMiddleware
+from bot.base_handlers import protected_router as protected_handlers_router
+from bot.base_handlers import public_router
 from bot.client_manager import client_manager
-from bot.handlers import protected_router as protected_handlers_router
-from bot.handlers import public_router
+from bot.orders_handlers import orders_router
 from bot.user_data_middleware import UserDataMiddleware
 
 logger = get_logger(__name__)
@@ -51,12 +52,12 @@ def create_dispatcher(storage) -> Dispatcher:
     protected_handlers_router.message.middleware(auth_middleware)
     protected_handlers_router.callback_query.middleware(auth_middleware)
 
-    # ИСПРАВЛЕНО: Изменен порядок регистрации роутеров.
     # Сначала роутеры с конкретными командами, в конце - с общим обработчиком текста.
     dp.include_router(auth_router)
     dp.include_router(protected_auth_router)
     dp.include_router(protected_handlers_router)
-    dp.include_router(public_router)  # <-- Этот роутер теперь последний
+    dp.include_router(public_router)
+    dp.include_router(orders_router)
 
     return dp
 

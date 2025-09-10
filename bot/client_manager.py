@@ -5,6 +5,7 @@
 
 from bot.admin_client import AdminClient
 from bot.auth_client import AuthClient
+from bot.disputes_client import DisputesClient
 from bot.notifications_client import NotificationsClient
 from bot.orders_client import OrdersClient
 from bot.system_client import SystemClient
@@ -20,6 +21,7 @@ class ClientManager:
         self.orders = OrdersClient()
         self.notifications = NotificationsClient()
         self.admin = AdminClient()
+        self.disputes = DisputesClient()
         self.system = SystemClient()
 
 

@@ -25,7 +25,7 @@ class AuthClient(BaseApiClient):
             json_data={"telegram_id": telegram_id},
             expected_status=200,
         )
-        if response and not response.get("success") is False:
+        if response and response.get("success") is not False:
             logger.info(f"✅ Успешная авторизация пользователя {telegram_id}")
             return response
 
@@ -36,7 +36,7 @@ class AuthClient(BaseApiClient):
         """Проверить валидность токена."""
         user_data = await self._make_request("GET", "/users/me", token=token)
 
-        if user_data and isinstance(user_data, dict) and not user_data.get("success") is False:
+        if user_data and isinstance(user_data, dict) and user_data.get("success") is not False:
             return {"access_token": token, "user": user_data, "role": user_data.get("role")}
 
         logger.warning("❌ Токен недействителен.")

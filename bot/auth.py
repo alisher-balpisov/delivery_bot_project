@@ -17,6 +17,7 @@ from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
 
 from bot.client_manager import client_manager
+from bot.constants import UserRole
 
 logger = get_logger(__name__)
 
@@ -80,7 +81,7 @@ async def start_handler(message: Message, state: FSMContext):
 
         if auth_data:
             await state.update_data(**auth_data)
-            role_emoji = {"admin": "👑", "shop": "🏪", "courier": "🏍️"}.get(
+            role_emoji = {UserRole.ADMIN: "👑", UserRole.SHOP: "🏪", UserRole.COURIER: "🏍️"}.get(
                 auth_data.get("role"), "👤"
             )
             text = (
@@ -122,7 +123,9 @@ async def register_code_handler(message: Message, state: FSMContext):
         await loading_msg.delete()
 
         if result and result.get("success"):
-            role_emoji = {"admin": "👑", "shop": "🏪", "courier": "🏍️"}.get(result.get("role"), "👤")
+            role_emoji = {UserRole.ADMIN: "👑", UserRole.SHOP: "🏪", UserRole.COURIER: "🏍️"}.get(
+                result.get("role"), "👤"
+            )
             text = f"✅ Регистрация успешна {role_emoji}\nТеперь используйте /start для входа в систему."
             await state.clear()
         else:
@@ -151,7 +154,7 @@ async def logout_handler(message: Message, state: FSMContext):
 async def me_handler(message: Message, user_data: dict):
     """Показывает информацию о текущем пользователе."""
     user = user_data.get("user", {})
-    # ИСПРАВЛЕНО: Используется безопасное форматирование MarkdownV2
+    print(user_data.get("role"), "<-----")
     text_parts = [
         hbold("👤 Ваш профиль:"),
         f"  - ID в Telegram: {hcode(message.from_user.id)}",
