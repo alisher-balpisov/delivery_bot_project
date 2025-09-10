@@ -1,8 +1,8 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
-from src.common.enums import OrderStatus, OrderType
-from src.common.utils import Phone
+from backend.src.common.enums import OrderStatus, OrderType
+from backend.src.common.utils import Phone
 
 from .shop import ShopRead
 
@@ -33,25 +33,38 @@ class OrderBase(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator("description", "recipient_name", "recipient_address", "pickup_address", "special_reason", mode="before")
+    @field_validator(
+        "description",
+        "recipient_name",
+        "recipient_address",
+        "pickup_address",
+        "special_reason",
+        mode="before",
+    )
     @classmethod
     def sanitize_strings(cls, v):
         if isinstance(v, str):
             # Basic XSS removal
             import re
+
             v = re.sub(r"<.*?>", "", v)  # Remove HTML tags
             v = re.sub(r"javascript\s*:", "", v, flags=re.IGNORECASE)  # Remove JS URIs
         return v
 
 
-class OrderCreate(OrderBase):
-    """Схема для создания нового заказа магазином."""
+class OrderCreateRequest(OrderBase):
+    """Схема для создания нового заказа магазином (входные данные)."""
 
-    telegram_id: int  # Добавлено для соответствия описанию аутентификации
     zone_id: int
     order_type: OrderType = OrderType.normal
     zone_addon: float = 0.0
     rush_hour_addon: float = 0.0
+
+
+class OrderCreate(OrderCreateRequest):
+    """Схема для создания нового заказа (внутреннее использование)."""
+
+    telegram_id: int
 
 
 class OrderUpdate(BaseModel):

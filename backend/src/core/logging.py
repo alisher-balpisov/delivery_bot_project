@@ -4,9 +4,9 @@ import sys
 from pathlib import Path
 from typing import ClassVar
 
-from src.core.config import settings
+from backend.src.core.config import settings
 
-# from src.core.config import settings  # Will be imported lazily to avoid circular import
+# from backend.src.core.config import settings  # Will be imported lazily to avoid circular import
 
 
 class ColoredFormatter(logging.Formatter):
@@ -51,7 +51,7 @@ def setup_console_handler() -> logging.Handler:
     """
     Настройка обработчика для вывода в консоль
     """
-    from src.core.config import settings  # Lazy import to avoid circular dependency
+    from backend.src.core.config import settings  # Lazy import to avoid circular dependency
 
     console_handler = logging.StreamHandler(sys.stdout)
 

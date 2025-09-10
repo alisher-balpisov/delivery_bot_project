@@ -1,6 +1,6 @@
 from sqlalchemy import DECIMAL, Column, Integer, String
 from sqlalchemy.orm import relationship
-from src.core.database import Base
+from backend.src.core.database import Base
 
 
 class Zone(Base):

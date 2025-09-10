@@ -7,8 +7,9 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from src.core.database import Base
-from src.models.user import User
+
+from backend.src.core.database import Base
+from backend.src.models.user import User
 
 # In-memory SQLite database for tests
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -57,11 +58,12 @@ async def db_session(test_session_factory):
 
 @pytest.fixture
 async def client(test_session_factory):
-    from src.api.deps import get_db as deps_get_db
+    from backend.src.api.deps import get_db as deps_get_db
 
     """Create test client."""
     from httpx import ASGITransport, AsyncClient
-    from src.core.database import get_db
+
+    from backend.src.core.database import get_db
 
     from ..src.main import app
 

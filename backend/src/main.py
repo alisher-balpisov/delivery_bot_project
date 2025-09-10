@@ -13,11 +13,12 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
-from src.api.routes import api_router
-from src.core.config import get_upload_dir, settings
-from src.core.database import close_db, init_db
-from src.core.logging import get_logger, setup_logging
-from src.notifications.service import initialize_notification_service
+
+from backend.src.api.routes import api_router
+from backend.src.core.config import get_upload_dir, settings
+from backend.src.core.database import close_db, init_db
+from backend.src.core.logging import get_logger, setup_logging
+from backend.src.notifications.service import initialize_notification_service
 
 logger = get_logger(__name__)
 

@@ -1,78 +1,60 @@
+from logging import getLogger
+
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.admin import service as admin_service
-from src.auth.bot_auth import verify_bot_token
-from src.common.enums import UserRole
-from src.core.config import is_admin
-from src.core.database import get_db
-from src.schemas.registration_code import RegistrationCodeResponse
 
+from backend.src.admin import service as admin_service
+from backend.src.auth.user_auth import require_role
+from backend.src.common.enums import UserRole
+from backend.src.core.database import get_db
+from backend.src.schemas.admin import RegistrationCodeResponse
 
-class AdminVerificationRequest(BaseModel):
-    telegram_id: int
-
-    class Config:
-        from_attributes = True
-
-
-class GenerateCodeRequest(BaseModel):
-    role: UserRole
-    admin_telegram_id: int
-
-    class Config:
-        from_attributes = True
+logger = getLogger(__name__)
 
 
 router = APIRouter()
 
 
-def require_admin_verification(admin_data: AdminVerificationRequest) -> int:
-    """
-    Зависимость для проверки прав администратора.
-
-    Args:
-        admin_data: Данные для верификации администратора
-
-    Returns:
-        telegram_id администратора если верификация успешна
-
-    Raises:
-        HTTPException: Если доступ запрещен
-    """
-    if not is_admin(admin_data.telegram_id):
-        raise HTTPException(
-            status_code=403, detail="Insufficient permissions. Admin access required."
-        )
-
-    return admin_data.telegram_id
-
-
-@router.post(
-    "/generate-registration-code", response_model=RegistrationCodeResponse, status_code=201
-)
-async def generate_registration_code(
-    role: UserRole, db: AsyncSession = Depends(get_db), bot_token=Depends(verify_bot_token)
+@router.post("/create-code/{role}", response_model=RegistrationCodeResponse, status_code=201)
+async def create_registration_code(
+    role: str, current_user=Depends(require_role("admin")), db: AsyncSession = Depends(get_db)
 ):
     """
-    Генерирует одноразовый код для регистрации пользователя с определенной ролью.
-    Защищено JWT токеном бота.
+    Генерирует одноразовый код для регистрации пользователя определенной роли.
+    Доступно только администраторам.
+
+    Args:
+        role: роли курьера или магазина ('courier' или 'shop')
     """
+    # Проверяем, что role допустимая
+    if role not in ["courier", "shop"]:
+        raise HTTPException(
+            status_code=400, detail="Недопустимая роль. Используйте 'courier' или 'shop'"
+        )
+
+    user_role = UserRole.courier if role == "courier" else UserRole.shop
+
+    logger.info(f"Admin {current_user.telegram_id} generating {role} registration code")
     try:
-        new_code = await admin_service.generate_registration_code(db=db, role=role)
+        new_code = await admin_service.generate_registration_code(db=db, role=user_role)
+        logger.info(f"{role.capitalize()} registration code generated successfully")
         return new_code
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Не удалось сгенерировать код: {e!s}")
+        logger.error(f"Failed to generate {role} code: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Не удалось сгенерировать код для {role}: {e!s}"
+        )
 
 
 @router.get("/registration-codes", response_model=list[RegistrationCodeResponse])
 async def get_all_registration_codes(
-    db: AsyncSession = Depends(get_db), bot_token=Depends(verify_bot_token)
+    current_user=Depends(require_role("admin")), db: AsyncSession = Depends(get_db)
 ):
     """
     Получить все коды регистрации (для администраторов).
-    Защищено JWT токеном бота.
+    Доступно только администраторам.
     """
+    logger.info(f"Admin {current_user.telegram_id} requesting all registration codes")
     try:
         codes = await admin_service.get_all_registration_codes(db=db)
         return codes
@@ -82,12 +64,13 @@ async def get_all_registration_codes(
 
 @router.get("/registration-codes/{role}", response_model=list[RegistrationCodeResponse])
 async def get_registration_codes_by_role(
-    role: UserRole, db: AsyncSession = Depends(get_db), bot_token=Depends(verify_bot_token)
+    role: UserRole, current_user=Depends(require_role("admin")), db: AsyncSession = Depends(get_db)
 ):
     """
     Получить все коды регистрации для определенной роли.
-    Защищено JWT токеном бота.
+    Доступно только администраторам.
     """
+    logger.info(f"Admin {current_user.telegram_id} requesting registration codes for role {role}")
     try:
         codes = await admin_service.get_registration_codes_by_role(db=db, role=role)
         return codes
@@ -97,12 +80,13 @@ async def get_registration_codes_by_role(
 
 @router.get("/registration-codes/stats", response_model=dict)
 async def get_registration_codes_stats(
-    db: AsyncSession = Depends(get_db), bot_token=Depends(verify_bot_token)
+    current_user=Depends(require_role("admin")), db: AsyncSession = Depends(get_db)
 ):
     """
     Получить статистику кодов регистрации.
-    Защищено JWT токеном бота.
+    Доступно только администраторам.
     """
+    logger.info(f"Admin {current_user.telegram_id} requesting registration codes stats")
     try:
         stats = await admin_service.get_unused_registration_codes_count(db=db)
         return stats

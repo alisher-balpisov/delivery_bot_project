@@ -54,4 +54,6 @@ class NotificationBulkResponse(BaseModel):
 
     total_sent: int = Field(..., description="Количество успешно отправленных уведомлений")
     total_failed: int = Field(..., description="Количество неудачных отправок")
-    results: list[NotificationResponse] = Field(..., description="Детальные результаты по каждому пользователю")
+    results: list[NotificationResponse] = Field(
+        ..., description="Детальные результаты по каждому пользователю"
+    )

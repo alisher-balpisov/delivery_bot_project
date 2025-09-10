@@ -1,9 +1,9 @@
 from datetime import datetime
 
+from backend.src.common.enums import UserRole
+from backend.src.common.utils import Phone
+from backend.src.core.validators import validate_no_malicious_content, validate_string_length
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from src.common.enums import UserRole
-from src.common.utils import Phone
-from src.core.validators import validate_no_malicious_content, validate_string_length
 
 
 class UserBase(BaseModel):
@@ -54,6 +54,7 @@ class UserResponse(UserBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class UserCreateWithoutPassword(BaseModel):
     """Схема для регистрации пользователя без пароля - только данные для сбора после активации кода."""

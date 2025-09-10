@@ -1,8 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.core.logging import get_logger
-from src.models.dispute import Dispute
-from src.models.order import Order
-from src.schemas.dispute import DisputeCreate, DisputeRead, DisputeUpdate
+from backend.src.core.logging import get_logger
+from backend.src.models.dispute import Dispute
+from backend.src.models.order import Order
+from backend.src.schemas.dispute import DisputeCreate, DisputeRead, DisputeUpdate
 
 
 async def create_dispute(db: AsyncSession, dispute_data: DisputeCreate) -> DisputeRead:

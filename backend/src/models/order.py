@@ -13,8 +13,8 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import relationship
-from src.common.enums import OrderStatus, OrderType
-from src.core.database import Base
+from backend.src.common.enums import OrderStatus, OrderType
+from backend.src.core.database import Base
 
 
 class Order(Base):

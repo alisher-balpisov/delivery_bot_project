@@ -1,5 +1,5 @@
+from backend.src.common.utils import Phone
 from pydantic import BaseModel, ConfigDict, Field
-from src.common.utils import Phone
 
 from .user import UserRead
 
@@ -54,6 +54,7 @@ class ShopRegistration(BaseModel):
     """
 
     telegram_id: int
+    code: str = Field(..., max_length=20)
     name: str = Field(..., max_length=100)
     phone: Phone = Field(..., max_length=20)
     shop_name: str = Field(..., max_length=255)

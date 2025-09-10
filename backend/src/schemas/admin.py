@@ -1,48 +1,46 @@
-from typing import Literal
+from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
-
-
-class OneTimeCodeBase(BaseModel):
-    """Базовая схема для одноразового кода."""
-
-    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
-    user_role: Literal["shop", "courier", "admin"] = Field(
-        ..., description="User role for the code"
-    )
-
-    @field_validator("code")
-    @classmethod
-    def validate_code_format(cls, v):
-        """Валидировать, что код состоит только из цифр."""
-        if not v.isdigit():
-            raise ValueError("Code must contain only digits")
-        return v
+from pydantic import BaseModel, ConfigDict, Field
+from backend.src.common.enums import UserRole
 
 
-class OneTimeCodeCreate(BaseModel):
-    """Схема для запроса на создание кода (например, от админа)."""
+class RegistrationCodeBase(BaseModel):
+    code: str = Field(..., max_length=20)
+    role: UserRole
 
-    telegram_id: int = Field(..., gt=0, description="Valid Telegram user ID")
-    user_role: Literal["shop", "courier", "admin"] = Field(..., description="User role to assign")
-
-    @field_validator("telegram_id")
-    @classmethod
-    def validate_telegram_id(cls, v):
-        """Валидировать корректность Telegram ID."""
-        if v <= 0:
-            raise ValueError("Telegram ID must be positive")
-        return v
+    model_config = ConfigDict(from_attributes=True)
 
 
-class OneTimeCodeRead(OneTimeCodeBase):
-    """Схема для чтения кода (например, из Redis)."""
-
-    is_used: bool = False
+class RegistrationCodeCreate(RegistrationCodeBase):
+    pass
 
 
-class AdminVerificationRequest(BaseModel):
-    """Схема для запроса верификации администратора."""
+class RegistrationCodeResponse(RegistrationCodeBase):
+    id: int
+    is_used: bool
+    user_id: int | None = None
+    created_at: datetime
+    expires_at: datetime | None = None
 
-    telegram_id: int = Field(..., gt=0, description="Admin's Telegram ID")
-    token: str | None = None  # Optional authentication token for additional security
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CodeActivationRequest(BaseModel):
+    """Схема для активации одноразового кода регистрации."""
+
+    telegram_id: int
+    code: str
+    role: UserRole | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CodeActivationResponse(BaseModel):
+    """Модель ответа для активации кода регистрации."""
+
+    success: bool
+    user_id: int | None = None
+    role: str | None = None
+    attempts_left: int | None = None
+    blocked: bool = False
+    detail: str | None = None

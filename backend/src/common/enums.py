@@ -5,6 +5,7 @@ class UserRole(Enum):
     admin = "admin"  # Администратор системы
     shop = "shop"  # Магазин
     courier = "courier"  # Курьер
+    pending = "pending"  # Временная роль для незарегистрированных пользователей
 
 
 class OrderStatus(Enum):

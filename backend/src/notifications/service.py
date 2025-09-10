@@ -15,9 +15,9 @@ import asyncio
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
-from src.core.config import settings
-from src.core.logging import get_logger
-from src.models.user import User
+from backend.src.core.config import settings
+from backend.src.core.logging import get_logger
+from backend.src.models.user import User
 
 logger = get_logger(__name__)
 

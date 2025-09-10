@@ -17,4 +17,5 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 alembic==1.14.0
 faker==26.0.0
+httpx==0.25.2
 psutil==5.9.0

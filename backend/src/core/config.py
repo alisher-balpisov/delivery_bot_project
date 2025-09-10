@@ -76,6 +76,7 @@ class TelegramConfig(BaseModel):
     webhook_secret: str | None = None  # Секрет для подписи вебхука
     webhook_path: str = "/webhook"  # Путь вебхука
     use_webhook: bool = False  # True — использовать вебхуки, False — long polling
+    skip_updates: bool = True  # Пропускать ли накопившиеся обновления
     parse_mode: str = "HTML"  # Режим форматирования сообщений
     disable_web_page_preview: bool = True  # Отключить предпросмотр ссылок
     rate_limit_messages: int = 30  # Кол-во сообщений в окне
@@ -87,14 +88,23 @@ class AuthConfig(BaseModel):
 
     jwt_secret: SecretStr  # Ключ для подписи JWT
     jwt_algorithm: str = "HS256"  # Алгоритм JWT
-    access_token_expire_minutes: int = 30 * 24 * 60  # Время жизни токена (30 дней)
+    access_token_expire_minutes: int = 30  # Время жизни токена (30 минут - безопасно)
+    refresh_token_expire_days: int = 30  # Время жизни refresh токена (30 дней)
     bot_api_key: str | None = None  # API ключ для аутентификации бота
     bcrypt_rounds: int = 12  # Количество раундов хэширования пароля
+
+    @field_validator("access_token_expire_minutes")
+    def validate_access_token_expiry(cls, v):
+        """Валидация времени жизни access токена (не более 1 часа для безопасности)"""
+        if v > 60:
+            raise ValueError("Access token expiry should not exceed 60 minutes for security")
+        return v
 
 
 class RedisConfig(BaseModel):
     """Конфигурация Redis."""
 
+    use_redis: bool = False  # Включить использование Redis для хранения состояний
     url: str = "redis://localhost:6379/0"  # URL подключения к Redis
     max_connections: int = 20  # Максимальное количество соединений
     user_cache_ttl: int = 300  # TTL кэша пользователя
@@ -261,11 +271,11 @@ settings = Settings()
 
 # Функции для получения специфических настроек
 def get_database_url() -> str:
-    return settings.database.url
+    return settings.database.url.get_secret_value()
 
 
 def get_bot_token() -> str:
-    return settings.telegram.bot_token
+    return settings.telegram.bot_token.get_secret_value()
 
 
 def get_redis_url() -> str:

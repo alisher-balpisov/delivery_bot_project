@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.core.database import get_db
-from src.photo_reports.service import (
+from backend.src.core.database import get_db
+from backend.src.photo_reports.service import (
     create_photo_report,
     delete_photo_report,
     get_all_photo_reports,
@@ -9,7 +9,7 @@ from src.photo_reports.service import (
     get_photo_reports_by_order_id,
     update_photo_report,
 )
-from src.schemas.photo_report import (
+from backend.src.schemas.photo_report import (
     PhotoReportCreate,
     PhotoReportListResponse,
     PhotoReportResponse,

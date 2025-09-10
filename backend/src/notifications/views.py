@@ -1,24 +1,19 @@
-"""
-API роуты для управления уведомлениями.
-
-Предоставляет REST API для отправки уведомлений пользователям.
-"""
-
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from src.core.database import get_db
-from src.models.user import User
-from src.notifications.service import NotificationService, notification_service
-from src.schemas.notification import (
+from backend.src.auth.user_auth import require_role
+from backend.src.core.database import get_db
+from backend.src.models.user import User
+from backend.src.notifications.service import NotificationService, notification_service
+from backend.src.schemas.notification import (
     NotificationBulkRequest,
     NotificationBulkResponse,
     NotificationOrderUpdateRequest,
     NotificationResponse,
     NotificationSendRequest,
 )
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 # Создаем новый router
 router = APIRouter()
@@ -45,18 +40,29 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> User:
 @router.post("/send", response_model=NotificationResponse)
 async def send_notification(
     request: NotificationSendRequest,
+    current_user=Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
     notification_svc: NotificationService = Depends(get_notification_service),
 ) -> dict[str, Any]:
     """
     Отправка уведомления конкретному пользователю.
+    Доступно только администраторам.
     """
+    from logging import getLogger
+
+    logger = getLogger(__name__)
+
+    logger.info(f"Admin {current_user.telegram_id} sending notification to user {request.user_id}")
     user = await get_user_by_id(db, request.user_id)
 
     success = await notification_svc.send_notification(
         user=user,
         message=request.message,
-        parse_mode="HTML",  # Можно делать динамическим
+        parse_mode="HTML",
+    )
+
+    logger.info(
+        f"Notification sent: admin={current_user.telegram_id}, target_user={request.user_id}, success={success}"
     )
 
     return {
@@ -71,11 +77,13 @@ async def send_notification(
 @router.post("/send-order-update")
 async def send_order_update_notification(
     request: NotificationOrderUpdateRequest,
+    current_user=Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
     notification_svc: NotificationService = Depends(get_notification_service),
 ) -> dict[str, Any]:
     """
     Отправка уведомления об изменении статуса заказа.
+    Доступно только администраторам (автоматизируется через заказы).
     """
     user = await get_user_by_id(db, request.user_id)
 
@@ -96,11 +104,13 @@ async def send_order_update_notification(
 @router.post("/send-bulk", response_model=NotificationBulkResponse)
 async def send_bulk_notifications(
     request: NotificationBulkRequest,
+    current_user=Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
     notification_svc: NotificationService = Depends(get_notification_service),
 ) -> dict[str, Any]:
     """
     Массовая отправка уведомлений нескольким пользователям.
+    Доступно только администраторам.
     """
     # Получаем всех пользователей
     result = await db.execute(select(User).where(User.id.in_(request.user_ids)))
@@ -141,11 +151,13 @@ async def send_bulk_notifications(
 
 @router.post("/test-notification")
 async def send_test_notification(
+    current_user=Depends(require_role("admin")),
     db: AsyncSession = Depends(get_db),
     notification_svc: NotificationService = Depends(get_notification_service),
 ) -> dict[str, Any]:
     """
     Тестовая отправка уведомления (для отладки).
+    Доступно только администраторам в debug режиме.
     """
     # Получаем первого пользователя
     user_result = await db.execute(select(User).limit(1))

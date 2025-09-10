@@ -1,27 +1,25 @@
-from sqlalchemy import Boolean, Column, DateTime, Enum, Integer, String, func
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, func
 from sqlalchemy.orm import relationship
-from src.common.enums import UserRole
-from src.core.database import Base
+
+from backend.src.common.enums import UserRole
+from backend.src.core.database import Base
 
 
 class RegistrationCode(Base):
     """
-    Представляет код для регистрации в таблице `registration_codes`.
-
-    Одноразовый код, который админы отправляют для регистрации магазинов и курьеров.
+    Представляет одноразовый код для регистрации.
     """
 
     __tablename__ = "registration_codes"
     __repr_attrs__ = ("code", "role.name", "is_used")
 
     id = Column(Integer, primary_key=True)
-    code = Column(String(20), unique=True, nullable=False)
+    code = Column(String(20), unique=True, nullable=False, index=True)
     role = Column(Enum(UserRole), nullable=False)  # shop или courier
     is_used = Column(Boolean, default=False, nullable=False)
-    user_id = Column(Integer, nullable=True)  # Устанавливается после использования
-    created_at = Column(DateTime, server_default=func.now())
-    expires_at = Column(DateTime, nullable=True)  # Можно установить срок действия
 
-    user = relationship(
-        "User", back_populates="registration_code", uselist=False, cascade="all, delete-orphan"
-    )
+    # ID пользователя, который активировал код
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user = relationship("User", back_populates="registration_code", foreign_keys=[user_id])
+
+    created_at = Column(DateTime, server_default=func.now())

@@ -1,4 +1,5 @@
-from pydantic import BaseModel, ConfigDict
+from backend.src.common.utils import Phone
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CourierBase(BaseModel):
@@ -23,5 +24,19 @@ class CourierResponse(CourierBase):
     id: int
     user_id: int
     current_orders: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CourierRegistration(BaseModel):
+    """
+    Комплексная схема для регистрации курьера,
+    включающая данные пользователя.
+    """
+
+    telegram_id: int
+    code: str = Field(..., max_length=20)
+    name: str = Field(..., max_length=100)
+    phone: Phone
 
     model_config = ConfigDict(from_attributes=True)

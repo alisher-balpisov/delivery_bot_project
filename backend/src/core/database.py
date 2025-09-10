@@ -1,8 +1,8 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from src.core.config import settings
-from src.core.logging import get_logger
+from backend.src.core.config import settings
+from backend.src.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -141,6 +141,21 @@ async def check_database_connection() -> bool:
         return False
 
 
+def _import_models() -> None:
+    """
+    Импортирует все модели для регистрации в метаданных Base.
+    Вызывается один раз для избежания дублирования кода.
+    """
+    from backend.src.models.shop import Shop  # noqa
+    from backend.src.models.courier import Courier  # noqa
+    from backend.src.models.user import User  # noqa
+    from backend.src.models.order import Order  # noqa
+    from backend.src.models.dispute import Dispute  # noqa
+    from backend.src.models.photo_report import PhotoReport  # noqa
+    from backend.src.models.registration_code import RegistrationCode  # noqa
+    from backend.src.models.zone import Zone  # noqa
+
+
 async def init_db() -> None:
     """
     Инициализация базы данных при запуске приложения.
@@ -152,19 +167,10 @@ async def init_db() -> None:
         if not await check_database_connection():
             raise ConnectionError("Не удается подключиться к базе данных")
 
-        logger.info("✅ Соединение с базой данных установлено")
-
         # Импорт всех моделей для регистрации в метаданных
-        from src.models.shop import Shop  # noqa
-        from src.models.courier import Courier  # noqa
-        from src.models.user import User  # noqa
-        from src.models.order import Order  # noqa
-        from src.models.dispute import Dispute  # noqa
-        from src.models.photo_report import PhotoReport  # noqa
+        _import_models()
 
-        # Добавлены отсутствующие импорты для правильной регистрации моделей
-        from src.models.registration_code import RegistrationCode  # noqa
-        from src.models.zone import Zone  # noqa
+        logger.info("✅ Соединение с базой данных установлено")
 
         # Лог количества зарегистрированных таблиц для диагностики
         tables = list(Base.metadata.tables.keys())
@@ -207,16 +213,7 @@ async def reset_database() -> None:
     logger.warning("🔄 Полный сброс базы данных...")
 
     # Импорт всех моделей для регистрации в метаданных
-    from src.models.shop import Shop  # noqa
-    from src.models.courier import Courier  # noqa
-    from src.models.user import User  # noqa
-    from src.models.order import Order  # noqa
-    from src.models.dispute import Dispute  # noqa
-    from src.models.photo_report import PhotoReport  # noqa
-
-    # Добавлены отсутствующие импорты для правильной регистрации моделей
-    from src.models.registration_code import RegistrationCode  # noqa
-    from src.models.zone import Zone  # noqa
+    _import_models()
 
     await drop_tables()
     await create_tables()
@@ -241,6 +238,7 @@ async def get_db_session() -> AsyncSession:
 __all__ = [
     "AsyncSessionLocal",
     "Base",
+    "_import_models",
     "check_database_connection",
     "close_db",
     "create_tables",

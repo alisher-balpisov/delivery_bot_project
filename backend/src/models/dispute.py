@@ -1,7 +1,8 @@
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Text, func
 from sqlalchemy.orm import relationship
-from src.common.enums import DisputeStatus, UserRole
-from src.core.database import Base
+
+from backend.src.common.enums import DisputeStatus, UserRole
+from backend.src.core.database import Base
 
 
 class Dispute(Base):

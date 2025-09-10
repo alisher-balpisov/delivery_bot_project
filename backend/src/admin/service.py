@@ -1,10 +1,12 @@
 import secrets
 import string
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.common.enums import UserRole
-from src.models.registration_code import RegistrationCode
-from src.schemas.registration_code import RegistrationCodeResponse
+
+from backend.src.common.enums import UserRole
+from backend.src.models.registration_code import RegistrationCode
+from backend.src.schemas.admin import RegistrationCodeResponse
 
 
 async def generate_registration_code(
@@ -26,8 +28,8 @@ async def generate_registration_code(
         code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
 
         # Проверяем уникальность
-        existing = await db.execute(db.query(RegistrationCode).where(RegistrationCode.code == code))
-        if not existing.scalars().first():
+        result = await db.execute(select(RegistrationCode).where(RegistrationCode.code == code))
+        if not result.scalars().first():
             break
 
     # Создаем запись кода
@@ -44,9 +46,7 @@ async def get_all_registration_codes(db: AsyncSession) -> list[RegistrationCodeR
     """
     Получить все коды регистрации (для администраторов).
     """
-    result = await db.execute(
-        db.query(RegistrationCode).order_by(RegistrationCode.created_at.desc())
-    )
+    result = await db.execute(select(RegistrationCode).order_by(RegistrationCode.created_at.desc()))
     codes = result.scalars().all()
     return [RegistrationCodeResponse.model_validate(code) for code in codes]
 
@@ -58,7 +58,7 @@ async def deactivate_registration_code(db: AsyncSession, code_id: int) -> bool:
     Returns:
         bool: True если код был найден и деактивирован
     """
-    result = await db.execute(db.query(RegistrationCode).where(RegistrationCode.id == code_id))
+    result = await db.execute(select(RegistrationCode).where(RegistrationCode.id == code_id))
     code = result.scalars().first()
 
     if not code:
@@ -78,7 +78,7 @@ async def get_registration_codes_by_role(
     Получить все коды регистрации для определенной роли.
     """
     result = await db.execute(
-        db.query(RegistrationCode)
+        select(RegistrationCode)
         .where(RegistrationCode.role == role)
         .order_by(RegistrationCode.created_at.desc())
     )
@@ -92,14 +92,14 @@ async def get_unused_registration_codes_count(db: AsyncSession) -> dict:
     """
     # Получаем количество неиспользованных кодов для каждой роли
     shop_count = await db.execute(
-        db.query(RegistrationCode).where(
-            RegistrationCode.role == UserRole.shop, RegistrationCode.is_used is False
+        select(RegistrationCode).where(
+            RegistrationCode.role == UserRole.shop, RegistrationCode.is_used.is_(False)
         )
     )
 
     courier_count = await db.execute(
-        db.query(RegistrationCode).where(
-            RegistrationCode.role == UserRole.courier, RegistrationCode.is_used is False
+        select(RegistrationCode).where(
+            RegistrationCode.role == UserRole.courier, RegistrationCode.is_used.is_(False)
         )
     )
 

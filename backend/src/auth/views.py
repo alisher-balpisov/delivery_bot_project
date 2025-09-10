@@ -1,47 +1,90 @@
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+
+from backend.src.auth.user_auth import create_access_token
+from backend.src.core.database import get_db
+from backend.src.users.service import get_user_by_telegram_id
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.api.deps import get_db
-from src.auth.bot_auth import authenticate_bot
-from src.common.enums import TokenType
-from src.users.service import get_user_by_telegram_id
 
 router = APIRouter()
 
-
-class BotAuthRequest(BaseModel):
-    api_key: str
-
-    class Config:
-        from_attributes = True
+logger = logging.getLogger(__name__)
 
 
-class BotAuthResponse(BaseModel):
+class Token(BaseModel):
     access_token: str
-    token_type: str = TokenType.BEARER
+    token_type: str
 
 
-@router.post("/bot/token", response_model=BotAuthResponse)
-async def get_bot_token(auth_data: BotAuthRequest):
+class LoginRequest(BaseModel):
+    telegram_id: int
+
+
+@router.post("/login", response_model=Token)
+async def login_for_access_token(form_data: LoginRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        user = await get_user_by_telegram_id(db, telegram_id=form_data.telegram_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect telegram_id",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Проверка валидности роли пользователя (не pending)
+        from backend.src.common.enums import UserRole
+        if user.role == UserRole.pending or user.role is None:
+            logger.warning(f"User {user.telegram_id} has invalid role {user.role}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect telegram_id",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        logger.info(f"User found: {user.telegram_id}, {user.role}, active: {user.is_active}")
+        access_token = create_access_token(data={"sub": str(user.telegram_id)})
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        logger.error(f"Error in login_for_access_token: {e}", exc_info=True)
+        raise
+
+
+@router.post("/bot-login")
+async def bot_login_for_access_token(form_data: LoginRequest, db: AsyncSession = Depends(get_db)):
     """
-    Получить JWT токен для бота по API ключу.
-    Этот endpoint используется ботом при запуске для получения долгоживущего токена.
+    Специальный эндпоинт для авторизации через бота
+    Возвращает дополнительные данные пользователя для упрощения логики в боте
     """
     try:
-        access_token = authenticate_bot(auth_data.api_key)
-        return BotAuthResponse(access_token=access_token)
-    except HTTPException:
-        raise
+        user = await get_user_by_telegram_id(db, telegram_id=form_data.telegram_id)
+        if not user:
+            logger.warning(f"User not found: {form_data.telegram_id}")
+            return None
+
+        # Проверка валидности роли пользователя (не pending)
+        from backend.src.common.enums import UserRole
+        if user.role == UserRole.pending or user.role is None:
+            logger.warning(f"User {user.telegram_id} has invalid role {user.role}")
+            return None
+
+        logger.info(f"User found: {user.telegram_id}, {user.role}, active: {user.is_active}")
+        access_token = create_access_token(data={"sub": str(user.telegram_id)})
+
+        # Возвращаем дополнительные данные для бота
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "telegram_id": user.telegram_id,
+                "name": user.name,
+                "role": user.role.value if user.role else None,
+                "is_active": user.is_active,
+                "is_blocked": user.is_blocked if hasattr(user, 'is_blocked') else False,
+            },
+            "role": user.role.value if user.role else None,
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {e!s}")
-
-
-async def get_current_user_telegram_id(telegram_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Dependency для получения текущего пользователя по telegram_id.
-    Используется в защищенных endpoint'ах вместо JWT токенов пользователей.
-    """
-    user = await get_user_by_telegram_id(db, telegram_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-    return user
+        logger.error(f"Error in bot_login_for_access_token: {e}", exc_info=True)
+        return None

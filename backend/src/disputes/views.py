@@ -1,9 +1,11 @@
+from backend.src.core.database import get_db
+from backend.src.core.logging import get_logger
+from backend.src.disputes import service
+from backend.src.schemas.dispute import DisputeCreate, DisputeRead, DisputeUpdate
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.core.database import get_db
-from src.disputes import service
-from src.schemas.dispute import DisputeCreate, DisputeRead, DisputeUpdate
 
+logger = get_logger(__name__)
 router = APIRouter()
 
 

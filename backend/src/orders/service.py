@@ -7,18 +7,18 @@
 
 from datetime import datetime, timedelta
 
+from backend.src.common.enums import OrderStatus, OrderType
+from backend.src.core.logging import get_logger
+from backend.src.models.courier import Courier
+from backend.src.models.order import Order
+from backend.src.models.shop import Shop
+from backend.src.models.user import User
+from backend.src.models.zone import Zone
+from backend.src.notifications.service import notification_service
+from backend.src.schemas.order import OrderCreate, OrderResponse
 from sqlalchemy import and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from src.common.enums import OrderStatus, OrderType
-from src.core.logging import get_logger
-from src.models.courier import Courier
-from src.models.order import Order
-from src.models.shop import Shop
-from src.models.user import User
-from src.models.zone import Zone
-from src.notifications.service import notification_service
-from src.schemas.order import OrderCreate, OrderResponse
 
 logger = get_logger(__name__)
 
@@ -59,7 +59,9 @@ async def create_order(db: AsyncSession, order_data: OrderCreate) -> OrderRespon
     """
     Создание нового заказа с расчетом цены.
     """
-    logger.debug(f"Создание заказа с данными: {order_data.shop_id}, зона {order_data.zone_id}, тип {order_data.order_type}")
+    logger.debug(
+        f"Создание заказа с данными: {order_data.shop_id}, зона {order_data.zone_id}, тип {order_data.order_type}"
+    )
     # Получить зону для расчета цены
     zone = await db.get(Zone, order_data.zone_id)
     if not zone:
@@ -105,7 +107,9 @@ async def create_order(db: AsyncSession, order_data: OrderCreate) -> OrderRespon
         rush_hour_addon=order_data.rush_hour_addon,
     )
 
-    logger.info(f"Заказ создан: ID {order.id}, цена {total_price} для магазина {order_data.shop_id}")
+    logger.info(
+        f"Заказ создан: ID {order.id}, цена {total_price} для магазина {order_data.shop_id}"
+    )
     db.add(order)
     await db.commit()
     await db.refresh(order)
@@ -139,7 +143,7 @@ async def get_available_couriers(db: AsyncSession) -> list[Courier]:
     """
     result = await db.execute(
         select(Courier).where(
-            and_(Courier.is_active is True, Courier.current_orders < Courier.max_orders)
+            and_(Courier.is_active.is_(True), Courier.current_orders < Courier.max_orders)
         )
     )
     return result.scalars().all()

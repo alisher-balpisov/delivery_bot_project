@@ -4,7 +4,7 @@ import html
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from src.common.enums import DisputeStatus, UserRole
+from backend.src.common.enums import DisputeStatus, UserRole
 
 from .order import OrderRead
 
