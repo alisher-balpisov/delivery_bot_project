@@ -20,7 +20,7 @@ class Dispute(Base):
     courier_id = Column(Integer, ForeignKey("couriers.id"), nullable=False)
     shop_id = Column(Integer, ForeignKey("shops.id"), nullable=False)
     description = Column(Text, nullable=False)  # Описание проблемы от создателя спора
-    status = Column(Enum(DisputeStatus), default=DisputeStatus.open, nullable=False, index=True)
+    status = Column(Enum(DisputeStatus), default=DisputeStatus.OPEN, nullable=False, index=True)
     # Роль пользователя, который открыл спор (магазин или курьер).
     created_by_role = Column(Enum(UserRole), nullable=False)
     admin_notes = Column(Text, nullable=True)  # Внутренние заметки администратора

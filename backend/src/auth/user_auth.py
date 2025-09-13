@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from logging import getLogger
 from typing import Any
 
+from backend.src.common.enums import UserRole
 from backend.src.core.config import settings
 from backend.src.core.database import get_db
 from backend.src.users.service import get_user_by_telegram_id
@@ -119,13 +120,6 @@ def decode_access_token(token: str):
             detail="Невалидный токен",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.JWTError:
-        logger.warning("Подпись токена неверна")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Подпись токена неверна",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
     except Exception as e:
         logger.error(f"Неожиданная ошибка при декодировании токена: {e}")
         raise HTTPException(
@@ -196,7 +190,7 @@ def require_role(required_role: str):
     """
 
     async def role_dependency(user=Depends(get_current_user)):
-        if user.role.value != required_role and user.role.value != UserRole.ADMIN:
+        if user.role.value != required_role:
             logger.warning(
                 f"Access denied: user {user.telegram_id} has role {user.role.value}, "
                 f"required {required_role}"

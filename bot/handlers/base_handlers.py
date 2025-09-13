@@ -225,7 +225,7 @@ async def broadcast_handler(message: Message, user_data: dict):
 async def dispute_handler(message: Message, user_data: dict):
     """Открыть новый спор (для магазинов и курьеров)."""
     role = user_data.get("role", "unknown")
-    if role not in [UserRole.SHOP, UserRole.COURIER]:
+    if role not in [UserRole.SHOP.value, UserRole.COURIER.value]:
         await message.answer(ErrorMessages.Access.ACCESS_DENIED_SHOPS_COURIERS)
         return
 
@@ -273,7 +273,7 @@ async def disputes_handler(message: Message, user_data: dict):
 async def admin_handler(message: Message, user_data: dict):
     """Показать панель администратора (требует авторизации и роли admin)."""
     role = user_data.get("role", UserRole.GUEST)
-    if role != UserRole.ADMIN:
+    if role != UserRole.ADMIN.value:
         await message.answer(ErrorMessages.Access.ACCESS_DENIED_ADMINS)
         return
 
@@ -337,7 +337,7 @@ async def admin_create_code_for_role_handler(callback: CallbackQuery, user_data:
     role = callback.data.split("_")[-1]
     token = user_data.get("access_token")
 
-    if role not in [UserRole.SHOP, UserRole.COURIER]:
+    if role not in [UserRole.SHOP.value, UserRole.COURIER.value]:
         await callback.message.answer(ErrorMessages.UserData.INVALID_ROLE)
         await callback.answer()
         return
@@ -362,13 +362,13 @@ async def admin_view_codes_handler(callback: CallbackQuery, user_data: dict):
     codes = await client_manager.admin.get_all_registration_codes(token)
     text = ErrorMessages.Codes.CODES_RETRIEVAL_ERROR
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back_to_menu")]
+        inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back_to_menu")]]
     )
 
     if codes and isinstance(codes, list):
         text = "📋 Регистрационные коды:\n\n"
         for code_info in codes[:10]:
-            text += f"Код: `{code_info.get('code', '?')}` Роль: {code_info.get('role', '?')} Статус: {'использован' if code_info.get('is_used') else 'активен'}\n"
+            text += f"Код: `{code_info.get('code', '?')}` Роль: {code_info.get('role', '?')} Статус: {'использован' if code_info.get('is_used') else 'не использован'}\n"
         if len(codes) > 10:
             text += f"\n... и ещё {len(codes) - 10} кодов"
 
@@ -383,7 +383,7 @@ async def admin_system_stats_handler(callback: CallbackQuery, user_data: dict):
     stats = await client_manager.admin.get_system_stats(token)
     text = ErrorMessages.Stats.STATS_RETRIEVAL_ERROR
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back_to_menu")]
+        inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_back_to_menu")]]
     )
 
     if stats and isinstance(stats, dict):

@@ -28,11 +28,19 @@ async def _check_user_activation_status(
     db: AsyncSession, telegram_id: int
 ) -> CodeActivationResponse | None:
     """Проверяет статус активации пользователя."""
+    logger.debug(f"Calling _get_existing_user with telegram_id={telegram_id}")
     existing_user = await _get_existing_user(db, telegram_id)
-    if _is_user_already_activated(existing_user):
-        return CodeActivationResponse(
+    logger.debug(f"_get_existing_user returned: {existing_user}")
+    logger.debug(f"Calling _is_user_already_activated with user={existing_user}")
+    is_activated = _is_user_already_activated(existing_user)
+    logger.debug(f"_is_user_already_activated returned: {is_activated}")
+    if is_activated:
+        response = CodeActivationResponse(
             success=True, user_id=existing_user.id, role=existing_user.role.value
         )
+        logger.debug(f"Returning activation response for already activated user: {response}")
+        return response
+    logger.debug("_check_user_activation_status returning None")
     return None
 
 
@@ -44,12 +52,24 @@ async def _process_activation(
     requested_role: UserRole | None = None,
 ) -> CodeActivationResponse:
     """Обрабатывает логику активации кода."""
+    logger.debug(f"Calling _find_valid_registration_code with code='{code}'")
     reg_code_obj = await _find_valid_registration_code(db, code)
+    logger.debug(f"_find_valid_registration_code returned: {reg_code_obj}")
     if not reg_code_obj:
         logger.info(f"Processing invalid code '{code}' for telegram_id {telegram_id}")
-        return await _handle_invalid_code(db, existing_user, telegram_id)
+        logger.debug(
+            f"Calling _handle_invalid_code with db, existing_user={existing_user}, telegram_id={telegram_id}"
+        )
+        result = await _handle_invalid_code(db, existing_user, telegram_id)
+        logger.debug(f"_handle_invalid_code returned: {result}")
+        return result
 
-    return await _handle_valid_code(db, existing_user, reg_code_obj, telegram_id, requested_role)
+    logger.debug(
+        f"Calling _handle_valid_code with reg_code_obj={reg_code_obj}, requested_role={requested_role}"
+    )
+    result = await _handle_valid_code(db, existing_user, reg_code_obj, telegram_id, requested_role)
+    logger.debug(f"_handle_valid_code returned: {result}")
+    return result
 
 
 async def activate_code(
@@ -59,33 +79,70 @@ async def activate_code(
     Проверяет код активации, регистрирует или блокирует пользователя.
     Улучшения: транзакции, разбиение на методы, обработка ошибок.
     """
-    code = _validate_activation_request(code)
+    logger.debug(
+        f"Starting activate_code with telegram_id={telegram_id}, code='{code}', requested_role={requested_role}"
+    )
 
     try:
+        logger.debug(f"Calling _validate_activation_request with code='{code}'")
+        code = _validate_activation_request(code)
+        logger.debug(f"_validate_activation_request returned code='{code}'")
+
         logger.info(f"Starting activation for telegram_id {telegram_id} with code '{code}'")
         async with db.begin():  # Транзакция для атомарности
-            existing_user_or_response = await _check_user_activation_status(db, telegram_id)
-            if existing_user_or_response:
-                logger.info(f"User {telegram_id} is already activated")
-                return existing_user_or_response
+            logger.debug(f"Calling _get_existing_user with telegram_id={telegram_id}")
+            existing_user = await _get_existing_user(db, telegram_id)
+            logger.debug(f"_get_existing_user returned: {existing_user}")
+            is_activated = _is_user_already_activated(existing_user)
+            logger.debug(f"_is_user_already_activated returned: {is_activated}")
 
-            result = await _process_activation(
-                db, existing_user_or_response, telegram_id, code, requested_role
-            )
+            existing_activation_response = None
+            if is_activated:
+                existing_activation_response = CodeActivationResponse(
+                    success=True, user_id=existing_user.id, role=existing_user.role.value
+                )
+
+            logger.debug(f"Calling _find_valid_registration_code with code='{code}'")
+            reg_code_obj = await _find_valid_registration_code(db, code)
+            logger.debug(f"_find_valid_registration_code returned: {reg_code_obj}")
+
+            if not reg_code_obj:
+                logger.info(f"Processing invalid code '{code}' for telegram_id {telegram_id}")
+                return await _handle_invalid_code(db, existing_user, telegram_id)
+
+            if reg_code_obj.is_used:
+                raise ValueError("Код регистрации уже был активирован")
+
+            if existing_activation_response and reg_code_obj.role != UserRole.ADMIN:
+                logger.info(f"User {telegram_id} is already activated, and code not for admin upgrade")
+                return existing_activation_response
+
+            logger.debug("Calling _handle_valid_code directly")
+            result = await _handle_valid_code(db, existing_user, reg_code_obj, telegram_id, requested_role)
+            logger.debug(f"_process_activation returned: {result}")
             if result.success:
                 logger.info(f"Activation successful for telegram_id {telegram_id}")
             else:
                 logger.warning(f"Activation failed for telegram_id {telegram_id}: {result}")
             return result
+    except HTTPException:
+        # Re-raise HTTP exceptions as they are intended responses
+        raise
     except Exception as e:
+        logger.error(
+            f"Unexpected error during activation for telegram_id {telegram_id}: {e!s}", exc_info=True
+        )
         await db.rollback()  # Откат при ошибке
-        raise HTTPException(status_code=500, detail=f"Ошибка активации кода: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error during activation: {e!s}")
 
 
 async def _get_existing_user(db: AsyncSession, telegram_id: int) -> User | None:
     """Получить существующего пользователя по telegram_id."""
+    logger.debug(f"Executing select User where telegram_id={telegram_id}")
     result = await db.execute(select(User).where(User.telegram_id == telegram_id))
-    return result.scalars().first()
+    user = result.scalars().first()
+    logger.debug(f"_get_existing_user query result: {user}")
+    return user
 
 
 def _is_user_already_activated(user: User | None) -> bool:
@@ -93,7 +150,7 @@ def _is_user_already_activated(user: User | None) -> bool:
     return (
         user is not None
         and user.role is not None
-        and user.role != UserRole.pending
+        and user.role != UserRole.PENDING
         and user.is_active
         and not user.is_blocked
     )
@@ -111,13 +168,14 @@ async def _find_valid_registration_code(
     Выполняет валидацию входного кода, нормализацию и поиск с блокировкой
     для предотвращения race conditions. Обрабатывает DB-эксепшены грациозно.
     """
+    logger.debug(f"_find_valid_registration_code called with code='{code}'")
     if code is None or not isinstance(code, str):
         logger.warning("Input code is None or not a string")
         return None
 
     try:
         # Валидация и нормализация через pydantic
-        normalized_code = code
+        normalized_code = code.strip()
 
         logger.debug(f"Searching for valid registration code: '{normalized_code}'")
 
@@ -149,11 +207,13 @@ async def _find_valid_registration_code(
         # Конфликт при одновременном использовании кода
         logger.error(f"Integrity error while searching for registration code '{code}': {e}")
         await db.rollback()  # Откат транзакции
+        logger.debug("IntegrityError handled gracefully")
         return None
     except OperationalError as e:
         # Сбои подключения к БД
         logger.error(f"DB operational error while searching for registration code '{code}': {e}")
         await db.rollback()
+        logger.debug("OperationalError handled gracefully")
         return None
     except SQLAlchemyError as e:
         # Другие ошибки SQLAlchemy
@@ -161,6 +221,7 @@ async def _find_valid_registration_code(
             f"SQLAlchemy error while searching for registration code '{code}': {e}", exc_info=True
         )
         await db.rollback()
+        logger.debug("SQLAlchemyError re-raising for higher level handling")
         raise  # Повторно поднимаем для обработки на уровне выше (например, в транзакции)
     except Exception as e:
         # Непреявиденные ошибки
@@ -168,6 +229,7 @@ async def _find_valid_registration_code(
             f"Unexpected error while searching for registration code '{code}': {e}", exc_info=True
         )
         await db.rollback()
+        logger.debug("Unexpected error re-raising")
         raise
 
 
@@ -175,9 +237,13 @@ async def _handle_invalid_code(
     db: AsyncSession, existing_user: User | None, telegram_id: int
 ) -> CodeActivationResponse:
     """Обработать случай неверного кода: увеличить счетчик попыток, заблокировать при необходимости."""
-    user_to_track = existing_user or User(
-        telegram_id=telegram_id, role=UserRole.pending, registration_attempts=0
+    logger.debug(
+        f"_handle_invalid_code called with existing_user={existing_user}, telegram_id={telegram_id}"
     )
+    user_to_track = existing_user or User(
+        telegram_id=telegram_id, role=UserRole.PENDING, registration_attempts=0
+    )
+    logger.debug(f"user_to_track: {user_to_track}")
 
     if user_to_track.is_blocked:
         return CodeActivationResponse(success=False, blocked=True)
@@ -217,12 +283,20 @@ async def _handle_valid_code(
     requested_role: UserRole | None = None,
 ) -> CodeActivationResponse:
     """Обработать случай верного кода: активировать пользователя и отметить код как использованный."""
+    logger.debug(
+        f"_handle_valid_code called with existing_user={existing_user}, reg_code_obj={reg_code_obj}, telegram_id={telegram_id}, requested_role={requested_role}"
+    )
 
     # Предотвращение использования кода другим пользователем
     if reg_code_obj.user_id is not None:
+        logger.debug(f"reg_code_obj.user_id is not None: {reg_code_obj.user_id}")
         if existing_user and reg_code_obj.user_id != existing_user.id:
+            logger.warning(
+                f"Code used by different user: reg_code.user_id={reg_code_obj.user_id}, existing_user.id={existing_user.id}"
+            )
             raise HTTPException(status_code=409, detail="Код уже использован другим пользователем")
         elif not existing_user:
+            logger.warning("Code used but no existing user")
             raise HTTPException(status_code=409, detail="Код уже использован другим пользователем")
 
     # Проверка совпадения запрошенной роли с ролью кода (если роль указана)
@@ -248,11 +322,14 @@ async def _handle_valid_code(
     reg_code_obj.user_id = user.id
 
     # Убедимся, что изменения сохранены (хотя begin должен сделать это)
+    logger.debug("Committing changes to DB")
     await db.commit()
     await db.refresh(user)
     await db.refresh(reg_code_obj)
-
-    return CodeActivationResponse(success=True, user_id=user.id, role=user.role.value)
+    logger.debug("DB commit completed, returning successful response")
+    response = CodeActivationResponse(success=True, user_id=user.id, role=user.role.value)
+    logger.debug(f"Returning response: {response}")
+    return response
 
 
 async def get_user_by_telegram_id(db: AsyncSession, telegram_id: int) -> User | None:
@@ -339,10 +416,10 @@ async def complete_user_registration(
         setattr(user, field, value)
 
     # Создать связанную сущность (магазин или курьера)
-    if user.role == UserRole.shop:
+    if user.role == UserRole.SHOP:
         shop = Shop(user_id=user.id, name="", address="")
         db.add(shop)
-    elif user.role == UserRole.courier:
+    elif user.role == UserRole.COURIER:
         courier = Courier(user_id=user.id)
         db.add(courier)
 

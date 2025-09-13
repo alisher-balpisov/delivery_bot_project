@@ -3,13 +3,13 @@
 Централизованное управление всеми клиентами
 """
 
-from bot.admin_client import AdminClient
-from bot.auth_client import AuthClient
-from bot.disputes_client import DisputesClient
-from bot.notifications_client import NotificationsClient
-from bot.orders_client import OrdersClient
-from bot.system_client import SystemClient
-from bot.users_client import UsersClient
+from .admin_client import AdminClient
+from .auth_client import AuthClient
+from .disputes_client import DisputesClient
+from .notifications_client import NotificationsClient
+from .orders_client import OrdersClient
+from .system_client import SystemClient
+from .users_client import UsersClient
 
 
 class ClientManager:

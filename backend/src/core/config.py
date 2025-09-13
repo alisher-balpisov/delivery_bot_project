@@ -92,6 +92,7 @@ class AuthConfig(BaseModel):
     refresh_token_expire_days: int = 30  # Время жизни refresh токена (30 дней)
     bot_api_key: str | None = None  # API ключ для аутентификации бота
     bcrypt_rounds: int = 12  # Количество раундов хэширования пароля
+    bot_encryption_key: SecretStr  # Ключ для шифрования данных бота
 
     @field_validator("access_token_expire_minutes")
     def validate_access_token_expiry(cls, v):
@@ -131,18 +132,16 @@ class FileStorageConfig(BaseModel):
 class LoggingConfig(BaseModel):
     """Конфигурация логирования."""
 
-    level: str = "INFO"  # Уровень логирования
-    format: str = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"  # Формат строки лога
-    file_format: str = (
-        "%(asctime)s | %(levelname)s | %(name)s:%(lineno)d | %(funcName)s | %(message)s"
-    )
-    telegram_format: str = "%(asctime)s | %(emoji)s %(levelname)s | %(name)s | %(message)s"
+    # Автоматически устанавливаем DEBUG уровень при debug режиме
+    level: str = "DEBUG"
+    format: str = "{asctime} | {levelname} | {name} | {message}"  # Формат строки лога
+    file_format: str = "{asctime} | {levelname} | {name}:{lineno} | {funcName} | {message}"
+    telegram_format: str = "{asctime} | {emoji} {levelname} | {name} | {message}"
     error_format: str = (
-        "%(asctime)s | 🚨 %(levelname)s | %(name)s:%(lineno)d | %(funcName)s\n"
-        "Message: %(message)s\n"
-        "Path: %(pathname)s\n"
-        "%(exc_info)s\n"
-        "-" * 80
+        "{asctime} | 🚨 {levelname} | {name}:{lineno} | {funcName}\n"
+        "Message: {message}\n"
+        "Path: {pathname}\n"
+        "{exc_info}\n" + "-" * 80
     )
     date_format: str = "%Y-%m-%d %H:%M:%S"
     file_path: Path | None = None  # Путь к файлу логов
@@ -220,6 +219,8 @@ class Settings(BaseSettings):
 
     default_encoding: str = "utf-8"
 
+    gemini_api_key: str | None
+
     @property
     def docs_url(self) -> str | None:
         """Возвращает URL для Swagger UI (docs) только в debug."""
@@ -278,6 +279,10 @@ def get_bot_token() -> str:
     return settings.telegram.bot_token.get_secret_value()
 
 
+def get_bot_encryption_key() -> str:
+    return settings.auth.bot_encryption_key.get_secret_value()
+
+
 def get_redis_url() -> str:
     return settings.redis.url
 
@@ -304,6 +309,7 @@ __all__ = [
     "RedisConfig",
     "Settings",
     "TelegramConfig",
+    "get_bot_encryption_key",
     "get_bot_token",
     "get_database_url",
     "get_redis_url",

@@ -3,8 +3,8 @@ from __future__ import annotations
 import html
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from backend.src.common.enums import DisputeStatus, UserRole
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .order import OrderRead
 
@@ -58,7 +58,7 @@ class DisputeUpdate(BaseModel):
     @model_validator(mode="after")
     def validate_resolution(self) -> DisputeUpdate:
         """Проверка логики разрешения спора."""
-        if self.status == DisputeStatus.resolved and not self.resolution_notes:
+        if self.status == DisputeStatus.RESOLVED and not self.resolution_notes:
             raise ValueError("При закрытии спора необходимо указать resolution_notes")
         return self
 

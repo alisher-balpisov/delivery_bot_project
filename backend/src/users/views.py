@@ -1,7 +1,6 @@
-from logging import getLogger
-
 from backend.src.auth.user_auth import get_current_user
 from backend.src.core.database import get_db
+from backend.src.core.logging import get_logger
 from backend.src.schemas.admin import CodeActivationRequest
 from backend.src.schemas.user import UserCreateWithoutPassword, UserRead
 from backend.src.users import service
@@ -9,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ActivationResponse(BaseModel):
@@ -29,6 +28,7 @@ async def register_user(activation_data: CodeActivationRequest, db: AsyncSession
     Совпадает с описанием: привязывает telegram_id к роли через invite_code.
     Этот эндпоинт доступен без аутентификации для первоначальной регистрации.
     """
+    logger.debug(f"Received activation data: {activation_data.model_dump()}")
     logger.info(
         f"User registration attempt: telegram_id={activation_data.telegram_id}, role={activation_data.role}"
     )

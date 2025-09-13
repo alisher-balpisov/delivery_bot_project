@@ -4,10 +4,10 @@
 
 from typing import Any
 
+from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 
 from .base_client import BaseApiClient
-from .constants import UserRole
 
 logger = get_logger(__name__)
 
@@ -26,7 +26,7 @@ class AdminClient(BaseApiClient):
         Returns:
             Созданный код или None при ошибке.
         """
-        valid_roles = [UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER]
+        valid_roles = [UserRole.SHOP.value, UserRole.COURIER.value]
         if role not in valid_roles:
             logger.warning(f"❌ Неверная роль: {role}")
             return {

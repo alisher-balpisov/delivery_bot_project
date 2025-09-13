@@ -7,10 +7,11 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from backend.src.common.enums import OrderStatus, UserRole
 from backend.src.core.logging import get_logger
 
-from bot.client_manager import client_manager
-from bot.constants import UserRole, OrderStatus
+from bot.clients import client_manager
+from bot.constants import ErrorMessages
 
 logger = get_logger(__name__)
 
@@ -35,7 +36,7 @@ async def new_order_handler(message: Message, state: FSMContext, user_data: dict
     role = user_data.get("role")
 
     if role != UserRole.SHOP:
-        await message.answer("❌ Только магазины могут создавать заказы.")
+        await message.answer(ErrorMessages.Orders.SHOPS_ONLY)
         return
 
     await state.set_state(OrderStates.waiting_for_description)
@@ -74,10 +75,10 @@ async def order_price_handler(message: Message, state: FSMContext):
     try:
         price = float(message.text)
         if price <= 0:
-            await message.answer("❌ Цена должна быть больше 0. Попробуйте еще раз:")
+            await message.answer(ErrorMessages.Orders.INVALID_PRICE)
             return
     except ValueError:
-        await message.answer("❌ Введите корректную цену (число):")
+        await message.answer(ErrorMessages.Orders.PRICE_FORMAT_ERROR)
         return
 
     await state.update_data(price=price)
@@ -118,7 +119,7 @@ async def order_confirm_handler(callback: CallbackQuery, state: FSMContext, user
         "pickup_address": data["pickup_address"],
         "delivery_address": data["delivery_address"],
         "price": data["price"],
-        "status": OrderStatus.PENDING,
+        "status": OrderStatus.CREATED,
     }
 
     result = await client_manager.orders.create_order(token, order_data)
@@ -130,7 +131,7 @@ async def order_confirm_handler(callback: CallbackQuery, state: FSMContext, user
         await state.clear()
     else:
         error_msg = result.get("detail", "Неизвестная ошибка") if result else "Ошибка сервера"
-        await callback.message.edit_text(f"❌ Ошибка создания заказа: {error_msg}")
+        await callback.message.edit_text(ErrorMessages.Orders.order_creation_error(error=error_msg))
 
     await callback.answer()
 
@@ -139,11 +140,8 @@ async def order_confirm_handler(callback: CallbackQuery, state: FSMContext, user
 async def order_cancel_handler(callback: CallbackQuery, state: FSMContext):
     """Отмена создания заказа."""
     await state.clear()
-    await callback.message.edit_text("❌ Создание заказа отменено.")
+    await callback.message.edit_text(ErrorMessages.Orders.ORDER_CANCELLED)
     await callback.answer()
-
-
-# Handlers для курьеров
 
 
 @orders_router.message(Command("available_orders"))
@@ -152,7 +150,7 @@ async def available_orders_handler(message: Message, user_data: dict):
     role = user_data.get("role")
 
     if role != UserRole.COURIER:
-        await message.answer("❌ Только курьеры могут просматривать доступные заказы.")
+        await message.answer(ErrorMessages.Orders.COURIERS_ONLY)
         return
 
     token = user_data.get("access_token")
@@ -185,13 +183,18 @@ async def available_orders_handler(message: Message, user_data: dict):
 
 @orders_router.callback_query(F.data.startswith("take_order_"))
 async def take_order_handler(callback: CallbackQuery, user_data: dict):
-    """Принятие заказа курьером."""
-    order_id = callback.data.split("_")[-1]
+    # ИСПРАВЛЕНО: Убрана лишняя переменная и код стал чище
+    try:
+        order_id = int(callback.data.split("_")[-1])
+    except (ValueError, IndexError):
+        await callback.answer("Неверный ID заказа")
+        return
+
     token = user_data.get("access_token")
 
     result = await client_manager.orders.update_order_status(
         token,
-        int(order_id),
+        order_id,
         {"status": OrderStatus.ACCEPTED, "courier_id": user_data.get("user", {}).get("id")},
     )
 
@@ -202,6 +205,6 @@ async def take_order_handler(callback: CallbackQuery, user_data: dict):
         )
     else:
         error_msg = result.get("detail", "Заказ уже принят") if result else "Ошибка"
-        await callback.message.edit_text(f"❌ Не удалось принять заказ: {error_msg}")
+        await callback.message.edit_text(ErrorMessages.Orders.order_accept_error(error=error_msg))
 
     await callback.answer()

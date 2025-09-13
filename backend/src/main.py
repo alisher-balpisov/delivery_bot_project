@@ -1,6 +1,12 @@
+import sys
+from pathlib import Path
+
+# Добавить backend/ в PYTHONPATH
+backend_path = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(backend_path))
+
 import asyncio
 import re
-import sys
 import time
 from contextlib import asynccontextmanager
 

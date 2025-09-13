@@ -13,6 +13,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import relationship
+
 from backend.src.common.enums import OrderStatus, OrderType
 from backend.src.core.database import Base
 
@@ -46,7 +47,7 @@ class Order(Base):
     # Может быть NULL, если заказ еще не назначен курьеру.
     courier_id = Column(Integer, ForeignKey("couriers.id"), nullable=True)
 
-    status = Column(Enum(OrderStatus), default=OrderStatus.created, nullable=False, index=True)
+    status = Column(Enum(OrderStatus), default=OrderStatus.CREATED, nullable=False, index=True)
     order_type = Column(Enum(OrderType), default=OrderType.normal, nullable=False)
     description = Column(Text)
     recipient_name = Column(String(100))

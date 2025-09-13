@@ -1,6 +1,3 @@
-from sqlalchemy import func
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from backend.src.models.order import Order
 from backend.src.models.photo_report import PhotoReport
 from backend.src.schemas.photo_report import (
@@ -9,6 +6,9 @@ from backend.src.schemas.photo_report import (
     PhotoReportResponse,
     PhotoReportUpdate,
 )
+from sqlalchemy import func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 
 async def create_photo_report(

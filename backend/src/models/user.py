@@ -10,6 +10,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import relationship
+
 from backend.src.common.enums import UserRole
 from backend.src.core.database import Base
 
@@ -21,7 +22,7 @@ class User(Base):
     """
 
     __tablename__ = "users"
-    __repr_attrs__ = ("name", "email", "role.name")
+    __repr_attrs__ = ("name", "role")
 
     id = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
@@ -30,7 +31,8 @@ class User(Base):
     name = Column(String(100), nullable=True)
     phone = Column(String(20), unique=True, nullable=True)
 
-    role = Column(Enum(UserRole), default=UserRole.pending, nullable=False)
+    # Используем native_enum=False для совместимости с существующими данными в БД
+    role = Column(Enum(UserRole, native_enum=False), default=UserRole.PENDING, nullable=False)
 
     # Для логики блокировки при неверном вводе кода
     registration_attempts = Column(Integer, default=0, nullable=False)

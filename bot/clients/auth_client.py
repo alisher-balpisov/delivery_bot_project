@@ -4,42 +4,32 @@
 
 from backend.src.core.logging import get_logger
 
+from bot.constants import ErrorMessages
+
 from .base_client import BaseApiClient
 
 logger = get_logger(__name__)
 
 
 class AuthClient(BaseApiClient):
-    """Клиент для авторизации через API backend."""
-
     async def bot_login(self, telegram_id: int) -> dict | None:
-        """
-        Авторизация пользователя через бота.
-
-        Returns:
-            {'access_token': str, 'user': dict, 'role': str} или None при ошибке.
-        """
         response = await self._make_request(
             "POST",
             "/auth/bot-login",
             json_data={"telegram_id": telegram_id},
             expected_status=200,
         )
-        if response and response.get("success") is not False:
+        if response and response.get("success") is True:  # Changed to True
             logger.info(f"✅ Успешная авторизация пользователя {telegram_id}")
             return response
-
         logger.warning(f"❌ Авторизация пользователя {telegram_id} не удалась.")
         return None
 
     async def validate_token(self, token: str) -> dict | None:
-        """Проверить валидность токена."""
         user_data = await self._make_request("GET", "/users/me", token=token)
-
         if user_data and isinstance(user_data, dict) and user_data.get("success") is not False:
             return {"access_token": token, "user": user_data, "role": user_data.get("role")}
-
-        logger.warning("❌ Токен недействителен.")
+        logger.warning(ErrorMessages.Auth.INVALID_TOKEN)
         return None
 
     async def register_user(

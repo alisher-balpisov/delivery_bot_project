@@ -1,25 +1,27 @@
 from enum import Enum
 
 
-class UserRole(Enum):
-    admin = "admin"  # Администратор системы
-    shop = "shop"  # Магазин
-    courier = "courier"  # Курьер
-    pending = "pending"  # Временная роль для незарегистрированных пользователей
+class UserRole(str, Enum):
+    ADMIN = "admin"  # Администратор системы
+    SHOP = "shop"  # Магазин
+    COURIER = "courier"  # Курьер
+
+    GUEST = "guest"
+    PENDING = "pending"  # Временная роль для незарегистрированных пользователей
 
 
-class OrderStatus(Enum):
-    created = "created"  # В ожидании (не назначен курьеру)
-    accepted = "accepted"  # Курьер принял заказ
-    picking_up = "picking_up"  # В пути за заказом (курьер заберает заказ)
-    in_progress = "in_progress"  # В пути к получателю (забрал, едет к получателю)
-    delivered = "delivered"  # Завершен (курьер завершил доставку)
-    completed = "completed"  # Подтвержден магазином или автоматически через 12 часов
-    cancelled = "cancelled"  # Отменен
-    disputed = "disputed"  # Спор
+class OrderStatus(str, Enum):
+    CREATED = "created"  # В ожидании (не назначен курьеру)
+    ACCEPTED = "accepted"  # Курьер принял заказ
+    PICKING_UP = "picking_up"  # В пути за заказом (курьер заберает заказ)
+    IN_PROGRESS = "in_progress"  # В пути к получателю (забрал, едет к получателю)
+    DELIVERED = "delivered"  # Завершен (курьер завершил доставку)
+    COMPLETED = "completed"  # Подтвержден магазином или автоматически через 12 часов
+    CANCELLED = "cancelled"  # Отменен
+    DISPUTED = "disputed"  # Спор
 
 
-class OrderType(Enum):
+class OrderType(str, Enum):
     normal = "normal"  # обычный: курьер не видит цену, фиксированная 3000, зависит от зоны
     special = "special"  # особенный: курьер видит цену заказа
     rush_hour = "rush_hour"  # заказ ко времени доставки вне периода 9:00-21:00 (+1000-1500)
@@ -27,11 +29,11 @@ class OrderType(Enum):
     important = "important"  # особый заказ (большой, дорогой, особому клиенту)
 
 
-class DisputeStatus(Enum):
-    open = "open"  # Открыт
-    in_review = "in_review"  # На рассмотрении
-    resolved = "resolved"  # Решено
-    closed = "closed"  # Закрыто
+class DisputeStatus(str, Enum):
+    OPEN = "open"  # Открыт
+    IN_REVIEW = "in_review"  # На рассмотрении
+    RESOLVED = "resolved"  # Решено
+    CLOSED = "closed"  # Закрыто
 
 
 class TokenType(str, Enum):

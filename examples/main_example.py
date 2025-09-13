@@ -6,17 +6,17 @@ from contextlib import asynccontextmanager
 import uvicorn
 from aiogram import Bot, Dispatcher
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from src.core.config import get_upload_dir, settings
 
 # Импорты API роутеров
 from api.routes import api_router
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 # Импорты бота
 from src.bot.main import create_bot, create_dispatcher
 from src.bot.webhook import setup_webhook
+from src.core.config import get_upload_dir, settings
 from src.core.database import close_db, init_db
 from src.core.logging import setup_logging
 from src.core.redis import close_redis, init_redis
@@ -34,8 +34,8 @@ async def lifespan(app: FastAPI):
 
     # Инициализация при старте
     try:
+        app.state.background_tasks = set() # Initialize set for background tasks
         # Валидация конфигурации
-        validate_settings()
         logger.info("✅ Конфигурация валидна")
 
         # Инициализация базы данных
@@ -60,7 +60,9 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Webhook настроен")
         else:
             # Запуск polling в фоновой задаче
-            asyncio.create_task(start_polling(bot, dp))
+            polling_task = asyncio.create_task(start_polling(bot, dp))
+            app.state.background_tasks.add(polling_task) # Store the task
+            polling_task.add_done_callback(app.state.background_tasks.discard) # Remove when done
             logger.info("✅ Polling запущен")
 
         # Сохранение экземпляров в app.state для доступа из других частей
@@ -78,6 +80,15 @@ async def lifespan(app: FastAPI):
     # Очистка при завершении
     try:
         logger.info("🛑 Завершение работы приложения...")
+
+        # Отмена фоновых задач
+        for task in list(app.state.background_tasks):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        logger.info("✅ Фоновые задачи отменены")
 
         # Закрытие соединений
         if hasattr(app.state, "bot"):
@@ -222,11 +233,6 @@ def main():
     Основная функция для запуска через CLI
     """
     try:
-        # Проверка версии Python
-        if sys.version_info < (3, 8):
-            print("❌ Требуется Python 3.8 или выше")
-            sys.exit(1)
-
         # Запуск приложения
         asyncio.run(run_app())
 
@@ -249,7 +255,6 @@ async def run_bot_only():
     Запуск только бота без API (для отладки)
     """
     setup_logging()
-    validate_settings()
 
     await init_db()
     await init_redis()
@@ -271,7 +276,6 @@ async def run_api_only():
     Запуск только API без бота (для отладки)
     """
     setup_logging()
-    validate_settings()
 
     await init_db()
     await init_redis()

@@ -11,11 +11,14 @@ class RegistrationCode(Base):
     """
 
     __tablename__ = "registration_codes"
-    __repr_attrs__ = ("code", "role.name", "is_used")
+    __repr_attrs__ = ("code", "role", "is_used")
 
     id = Column(Integer, primary_key=True)
     code = Column(String(20), unique=True, nullable=False, index=True)
-    role = Column(Enum(UserRole), nullable=False)  # shop или courier
+
+    # Используем native_enum=False для совместимости с существующими данными в БД
+    role = Column(Enum(UserRole, native_enum=False), nullable=False)
+
     is_used = Column(Boolean, default=False, nullable=False)
 
     # ID пользователя, который активировал код

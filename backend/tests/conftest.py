@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from backend.src.common.enums import UserRole
 from backend.src.core.database import Base
 from backend.src.models.user import User
 

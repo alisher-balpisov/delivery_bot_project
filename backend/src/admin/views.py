@@ -32,7 +32,7 @@ async def create_registration_code(
             status_code=400, detail="Недопустимая роль. Используйте 'courier' или 'shop'"
         )
 
-    user_role = UserRole.courier if role == "courier" else UserRole.shop
+    user_role = UserRole.COURIER if role == "courier" else UserRole.SHOP
 
     logger.info(f"Admin {current_user.telegram_id} generating {role} registration code")
     try:
@@ -43,6 +43,36 @@ async def create_registration_code(
         logger.error(f"Failed to generate {role} code: {e}")
         raise HTTPException(
             status_code=500, detail=f"Не удалось сгенерировать код для {role}: {e!s}"
+        )
+
+
+# Temporary endpoint for initial setup - remove after first admin is registered
+@router.post("/setup-code/{role}", response_model=RegistrationCodeResponse, status_code=201)
+async def create_initial_registration_code(
+    role: str, db: AsyncSession = Depends(get_db)
+):
+    """
+    Temporary endpoint for creating registration codes during initial setup.
+    Allows creating codes without authentication. Remove after first admin registration.
+    """
+    # Check that role is valid
+    if role not in ["courier", "shop", "admin"]:
+        raise HTTPException(
+            status_code=400, detail="Invalid role. Use 'courier', 'shop', or 'admin'"
+        )
+
+    user_role = UserRole.COURIER if role == "courier" else UserRole.SHOP if role == "shop" else UserRole.ADMIN
+
+    logger.info(f"Creating initial {role} registration code (temporary endpoint)")
+
+    try:
+        new_code = await admin_service.generate_registration_code(db=db, role=user_role)
+        logger.info(f"Initial {role} registration code created successfully")
+        return new_code
+    except Exception as e:
+        logger.error(f"Failed to create initial {role} code: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate code for {role}: {e!s}"
         )
 
 

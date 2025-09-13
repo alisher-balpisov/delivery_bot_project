@@ -1,6 +1,7 @@
 import logging
 
 from backend.src.auth.user_auth import create_access_token
+from backend.src.common.enums import UserRole
 from backend.src.core.database import get_db
 from backend.src.users.service import get_user_by_telegram_id
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,9 +33,7 @@ async def login_for_access_token(form_data: LoginRequest, db: AsyncSession = Dep
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Проверка валидности роли пользователя (не pending)
-        from backend.src.common.enums import UserRole
-        if user.role == UserRole.pending or user.role is None:
+        if user.role == UserRole.PENDING or user.role is None:
             logger.warning(f"User {user.telegram_id} has invalid role {user.role}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -60,19 +59,21 @@ async def bot_login_for_access_token(form_data: LoginRequest, db: AsyncSession =
         user = await get_user_by_telegram_id(db, telegram_id=form_data.telegram_id)
         if not user:
             logger.warning(f"User not found: {form_data.telegram_id}")
-            return None
+            return {"success": False, "detail": "User not found"}
 
         # Проверка валидности роли пользователя (не pending)
         from backend.src.common.enums import UserRole
-        if user.role == UserRole.pending or user.role is None:
+
+        if user.role == UserRole.PENDING or user.role is None:
             logger.warning(f"User {user.telegram_id} has invalid role {user.role}")
-            return None
+            return {"success": False, "detail": "User has invalid role"}
 
         logger.info(f"User found: {user.telegram_id}, {user.role}, active: {user.is_active}")
         access_token = create_access_token(data={"sub": str(user.telegram_id)})
 
         # Возвращаем дополнительные данные для бота
         return {
+            "success": True,
             "access_token": access_token,
             "token_type": "bearer",
             "user": {
@@ -81,7 +82,7 @@ async def bot_login_for_access_token(form_data: LoginRequest, db: AsyncSession =
                 "name": user.name,
                 "role": user.role.value if user.role else None,
                 "is_active": user.is_active,
-                "is_blocked": user.is_blocked if hasattr(user, 'is_blocked') else False,
+                "is_blocked": user.is_blocked if hasattr(user, "is_blocked") else False,
             },
             "role": user.role.value if user.role else None,
         }

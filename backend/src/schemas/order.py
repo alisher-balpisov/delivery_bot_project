@@ -1,8 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
 from backend.src.common.enums import OrderStatus, OrderType
 from backend.src.common.utils import Phone
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from .shop import ShopRead
 

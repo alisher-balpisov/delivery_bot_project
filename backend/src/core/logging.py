@@ -6,8 +6,6 @@ from typing import ClassVar
 
 from backend.src.core.config import settings
 
-# from backend.src.core.config import settings  # Will be imported lazily to avoid circular import
-
 
 class ColoredFormatter(logging.Formatter):
     """
@@ -58,12 +56,12 @@ def setup_console_handler() -> logging.Handler:
     if settings.debug and sys.stdout.isatty():
         # Цветной вывод для терминала в режиме разработки
         formatter = ColoredFormatter(
-            fmt=settings.logging.format, datefmt=settings.logging.date_format
+            fmt=settings.logging.format, datefmt=settings.logging.date_format, style='{'
         )
     else:
         # Обычный вывод для продакшена или файлов
         formatter = logging.Formatter(
-            fmt=settings.logging.format, datefmt=settings.logging.date_format
+            fmt=settings.logging.format, datefmt=settings.logging.date_format, style='{'
         )
 
     console_handler.setFormatter(formatter)
@@ -90,7 +88,7 @@ def setup_file_handler() -> logging.Handler | None:
 
     # Подробный формат для файловых логов
     formatter = logging.Formatter(
-        fmt=settings.logging.file_format, datefmt=settings.logging.date_format
+        fmt=settings.logging.file_format, datefmt=settings.logging.date_format, style='{'
     )
 
     file_handler.setFormatter(formatter)
@@ -112,7 +110,7 @@ def setup_telegram_handler() -> logging.Handler:
         )
 
         formatter = TelegramFormatter(
-            fmt=settings.logging.telegram_format, datefmt=settings.logging.date_format
+            fmt=settings.logging.telegram_format, datefmt=settings.logging.date_format, style='{'
         )
 
         bot_handler.setFormatter(formatter)
@@ -142,6 +140,7 @@ def setup_error_handler() -> logging.Handler | None:
     formatter = logging.Formatter(
         fmt=settings.logging.error_format,
         datefmt=settings.logging.date_format,
+        style='{'
     )
 
     error_handler.setFormatter(formatter)

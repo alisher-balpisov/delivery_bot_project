@@ -1,5 +1,3 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from backend.src.core.database import get_db
 from backend.src.photo_reports.service import (
     create_photo_report,
@@ -15,6 +13,8 @@ from backend.src.schemas.photo_report import (
     PhotoReportResponse,
     PhotoReportUpdate,
 )
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/photo-reports", tags=["photo-reports"])
 

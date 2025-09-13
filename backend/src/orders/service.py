@@ -7,7 +7,7 @@
 
 from datetime import datetime, timedelta
 
-from backend.src.common.enums import OrderStatus, OrderType
+from backend.src.common.enums import OrderStatus, OrderType, UserRole
 from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
 from backend.src.models.order import Order
@@ -159,7 +159,7 @@ async def assign_courier_manually(
     if not order:
         raise ValueError(f"Заказ {order_id} не найден")
 
-    if order.status != OrderStatus.created:
+    if order.status != OrderStatus.CREATED:
         raise ValueError("Нельзя назначить курьера на заказ не в статусе 'created'")
 
     courier = await db.get(Courier, courier_id)
@@ -170,7 +170,7 @@ async def assign_courier_manually(
         raise ValueError("У курьера нет свободных слотов")
 
     order.courier_id = courier_id
-    order.status = OrderStatus.accepted
+    order.status = OrderStatus.ACCEPTED
     order.accepted_at = func.now()
 
     courier.current_orders += 1
@@ -212,7 +212,7 @@ async def assign_courier_automatically(db: AsyncSession, order_id: int) -> Order
     if order.order_type != OrderType.special:
         raise ValueError("Автоматическое назначение доступно только для заказов типа 'special'")
 
-    if order.status != OrderStatus.created:
+    if order.status != OrderStatus.CREATED:
         raise ValueError("Заказ уже назначен")
 
     available_couriers = await get_available_couriers(db)
@@ -223,7 +223,7 @@ async def assign_courier_automatically(db: AsyncSession, order_id: int) -> Order
     courier = min(available_couriers, key=lambda c: c.current_orders)
 
     order.courier_id = courier.id
-    order.status = OrderStatus.accepted
+    order.status = OrderStatus.ACCEPTED
     order.accepted_at = func.now()
 
     courier.current_orders += 1
@@ -268,19 +268,19 @@ async def update_order_status(
 
     now = datetime.now()
 
-    if new_status == OrderStatus.picking_up and old_status == OrderStatus.accepted:
+    if new_status == OrderStatus.PICKING_UP and old_status == OrderStatus.ACCEPTED:
         order.accepted_at = now  # уже установлено ранее
 
-    elif new_status == OrderStatus.in_progress and old_status == OrderStatus.picking_up:
+    elif new_status == OrderStatus.IN_PROGRESS and old_status == OrderStatus.PICKING_UP:
         pass  # в пути к получателю
 
-    elif new_status == OrderStatus.delivered and old_status == OrderStatus.in_progress:
+    elif new_status == OrderStatus.DELIVERED and old_status == OrderStatus.IN_PROGRESS:
         order.delivered_at = now
 
-    elif new_status == OrderStatus.completed and old_status == OrderStatus.delivered:
+    elif new_status == OrderStatus.COMPLETED and old_status == OrderStatus.DELIVERED:
         order.confirmed_at = now
 
-    elif new_status == OrderStatus.disputed:
+    elif new_status == OrderStatus.DISPUTED:
         pass  # статус спор
 
     if courier_notes:
@@ -293,7 +293,7 @@ async def update_order_status(
     # Отправка уведомления о изменении статуса
     try:
         shop_user, courier_user = await _get_order_participants(db, order)
-        if shop_user and new_status in [OrderStatus.delivered, OrderStatus.accepted]:
+        if shop_user and new_status in [OrderStatus.DELIVERED, OrderStatus.ACCEPTED]:
             await notification_service.notify_order_status_changed(
                 user=shop_user,
                 order_id=order_id,
@@ -301,7 +301,7 @@ async def update_order_status(
                 if "." in str(new_status)
                 else str(new_status),
             )
-        if courier_user and new_status in [OrderStatus.picking_up]:
+        if courier_user and new_status in [OrderStatus.PICKING_UP]:
             await notification_service.notify_order_status_changed(
                 user=courier_user,
                 order_id=order_id,
@@ -325,10 +325,10 @@ async def confirm_order(db: AsyncSession, order_id: int) -> OrderResponse:
     if not order:
         raise ValueError(f"Заказ {order_id} не найден")
 
-    if order.status != OrderStatus.delivered:
+    if order.status != OrderStatus.DELIVERED:
         raise ValueError("Можно подтвердить только доставленный заказ")
 
-    order.status = OrderStatus.completed
+    order.status = OrderStatus.COMPLETED
     order.confirmed_at = datetime.now()
 
     await db.commit()
@@ -362,7 +362,7 @@ async def auto_confirm_orders(db: AsyncSession) -> int:
     result = await db.execute(
         select(Order).where(
             and_(
-                Order.status == OrderStatus.delivered,
+                Order.status == OrderStatus.DELIVERED,
                 Order.delivered_at < cutoff_time,
                 Order.confirmed_at.is_(None),
                 Order.autoconfirmed_at.is_(None),
@@ -373,7 +373,7 @@ async def auto_confirm_orders(db: AsyncSession) -> int:
 
     count = 0
     for order in orders_to_confirm:
-        order.status = OrderStatus.completed
+        order.status = OrderStatus.COMPLETED
         order.autoconfirmed_at = func.now()
         count += 1
 
@@ -394,7 +394,7 @@ async def rate_courier(
     if not order:
         raise ValueError(f"Заказ {order_id} не найден")
 
-    if order.status not in [OrderStatus.completed, OrderStatus.disputed]:
+    if order.status not in [OrderStatus.COMPLETED, OrderStatus.DISPUTED]:
         raise ValueError("Можно оценить только выполненный заказ")
 
     if order.courier_rating is not None:

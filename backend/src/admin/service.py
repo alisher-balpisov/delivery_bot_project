@@ -93,13 +93,13 @@ async def get_unused_registration_codes_count(db: AsyncSession) -> dict:
     # Получаем количество неиспользованных кодов для каждой роли
     shop_count = await db.execute(
         select(RegistrationCode).where(
-            RegistrationCode.role == UserRole.shop, RegistrationCode.is_used.is_(False)
+            RegistrationCode.role == UserRole.SHOP, RegistrationCode.is_used.is_(False)
         )
     )
 
     courier_count = await db.execute(
         select(RegistrationCode).where(
-            RegistrationCode.role == UserRole.courier, RegistrationCode.is_used.is_(False)
+            RegistrationCode.role == UserRole.COURIER, RegistrationCode.is_used.is_(False)
         )
     )
 

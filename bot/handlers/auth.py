@@ -1,6 +1,4 @@
 import base64
-import hashlib
-import os
 
 import httpx
 from aiogram import F, Router
@@ -10,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 from aiogram.utils.markdown import hbold, hcode
-from backend.src.core.config import settings
+from backend.src.core.config import get_bot_encryption_key
 from backend.src.core.logging import get_logger
 
 from bot.clients import client_manager
@@ -24,7 +22,7 @@ def generate_fernet_key() -> str:
     Генерирует или валидирует ключ для Fernet шифрования.
     Требует наличия переменной окружения BOT_ENCRYPTION_KEY.
     """
-    env_key = os.getenv("BOT_ENCRYPTION_KEY")
+    env_key = get_bot_encryption_key()
     if not env_key:
         logger.critical("💥 Переменная окружения BOT_ENCRYPTION_KEY не установлена!")
         raise ValueError("BOT_ENCRYPTION_KEY должна быть установлена.")

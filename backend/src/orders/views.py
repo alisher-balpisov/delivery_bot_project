@@ -19,7 +19,7 @@ async def check_user_role(db: AsyncSession, telegram_id: int, required_role: Use
     if not user:
         logger.warning(f"User {telegram_id} not found")
         return False
-    if user.role != required_role and user.role != UserRole.admin:
+    if user.role != required_role and user.role != UserRole.ADMIN:
         logger.warning(f"User {telegram_id} has role {user.role}, required {required_role}")
         return False
     return True
