@@ -8,46 +8,47 @@ from aiogram.types.error_event import ErrorEvent
 from backend.src.core.config import get_bot_token, settings
 from backend.src.core.logging import get_logger, setup_logging
 
+from bot.clients import ClientManager
+from bot.clients.base_client import ConnectionPool
+
+# --- ИЗМЕНЕНИЕ ---
+from bot.filters.user_data_filter import UserDataFilter
 from bot.handlers import *
-from bot.middlewares.user_data_middleware import UserDataMiddleware
 
 logger = get_logger(__name__)
 
 
 def create_bot(**kwargs) -> Bot:
-    """Создает экземпляр бота с токеном из конфигурации."""
-    bot_token = get_bot_token()
-    return Bot(token=bot_token, **kwargs)
+    return Bot(token=get_bot_token(), **kwargs)
 
 
-def create_dispatcher(storage) -> Dispatcher:
-    """
-    Создает диспетчер с настроенными middleware и роутерами.
-    """
-    dp = Dispatcher(storage=storage)
+def create_dispatcher(storage, **kwargs) -> Dispatcher:
+    dp = Dispatcher(storage=storage, **kwargs)
 
-    # 1. Глобальный middleware для подготовки данных
-    dp.update.middleware(UserDataMiddleware())
+    # Создаем экземпляр нашего фильтра-провайдера данных
+    user_data_provider = UserDataFilter()
 
-    # Порядок регистрации роутеров важен!
-    # Сначала идут роутеры с более конкретными фильтрами (команды, состояния).
+    # --- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ ---
+    # Применяем фильтр-провайдер ко всем роутерам, где нужны данные о пользователе.
+    # Он будет выполняться ПЕРЕД любыми другими фильтрами (например, RoleFilter).
+    for router in [auth_router, protected_router, orders_router, public_router]:
+        router.message.filter(user_data_provider)
+        router.callback_query.filter(user_data_provider)
+    # --------------------------
+
     dp.include_router(auth_router)
     dp.include_router(orders_router)
     dp.include_router(protected_router)
-
-    # Роутер с "catch-all" обработчиком (F.text) должен быть последним.
     dp.include_router(public_router)
 
     async def on_unknown_error(event: ErrorEvent):
         logger.critical(f"Критическая ошибка: {event.exception}", exc_info=True)
-        # Можно попытаться уведомить пользователя, если это возможно
         if event.update and event.update.message:
             await event.update.message.answer(
                 "Произошла непредвиденная ошибка. Мы уже работаем над этим."
             )
 
     dp.errors.register(on_unknown_error)
-
     return dp
 
 
@@ -56,15 +57,27 @@ async def lifespan():
     # ... (код этой функции не меняется)
     logger.info("🚀 Инициализация Telegram бота...")
     bot = None
+    pool = ConnectionPool()
     try:
         storage = MemoryStorage()
         logger.info("✅ Хранилище состояний: Memory.")
+        client_manager = ClientManager(pool=pool)
         bot = create_bot()
-        dp = create_dispatcher(storage=storage)
+        dp = create_dispatcher(
+            storage=storage,
+            admin_client=client_manager.admin,
+            auth_client=client_manager.auth,
+            disputes_client=client_manager.disputes,
+            notifications_client=client_manager.notifications,
+            orders_client=client_manager.orders,
+            system_client=client_manager.system,
+            users_client=client_manager.users,
+        )
         logger.info("🎉 Telegram бот успешно инициализирован!")
         yield bot, dp
     finally:
         logger.info("🔌 Завершение работы...")
+        await pool.close()
         if bot and bot.session:
             await bot.session.close()
             logger.info("✅ Сессия бота закрыта.")
@@ -74,8 +87,6 @@ async def run_polling(skip_updates: bool = True):
     # ... (код этой функции не меняется)
     async with lifespan() as (bot, dp):
         logger.info("🔄 Запуск бота в режиме polling...")
-
-        # Попытка удалить webhook с обработкой ошибок сети
         try:
             await bot.delete_webhook(drop_pending_updates=True, request_timeout=60)
             logger.info("✅ Webhook успешно удален")

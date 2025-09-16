@@ -1,22 +1,30 @@
 import httpx
 from backend.src.common.enums import DisputeStatus, UserRole
 from backend.src.core.logging import get_logger
-from bot.clients import client_manager
-from bot.constants import ROLE_EMOJI_MAP, ErrorMessages
+from bot.clients.disputes_client import DisputesClient
+from bot.clients.system_client import SystemClient
+from bot.constants import ROLE_EMOJI_MAP
+from bot.errors import ErrorMessages
 from bot.messages import CommonMessages, CommonServiceMessages, DisputeMessages
 
 logger = get_logger(__name__)
 
 
-async def get_api_status_text() -> str:
+async def get_api_status_text(system_client: SystemClient) -> str:
     """Проверяет состояние API и возвращает отформатированный текст."""
     try:
-        data = await client_manager.system.health_check()
-        if data and data.get("status") == "ok":
-            return CommonMessages.API_STATUS_TEMPLATE.format(status=data.get("status"))
-        return ErrorMessages.API.API_ERROR(
-            detail=data.get("detail", CommonServiceMessages.API_STATUS_ERROR)
-        )
+        result = await system_client.health_check()
+        if result.success and isinstance(result.data, dict) and result.data.get("status") == "ok":
+            health_data = result.data
+            return CommonMessages.API_STATUS_TEMPLATE.format(
+                status=health_data.get("status", "N/A"),
+                app=health_data.get("app", "N/A"),
+                version=health_data.get("version", "N/A"),
+                timestamp=health_data.get("timestamp", "N/A"),
+            )
+        else:
+            detail = result.detail or CommonServiceMessages.API_STATUS_ERROR
+            return ErrorMessages.API.API_ERROR(detail=detail)
     except httpx.RequestError as e:
         return ErrorMessages.API.CONNECTION_ERROR(error=e)
     except Exception as e:
@@ -26,13 +34,16 @@ async def get_api_status_text() -> str:
 
 def get_orders_text_by_role(role: UserRole) -> str:
     """Возвращает текст о заказах в зависимости от роли пользователя."""
-    if role == UserRole.SHOP:
-        return CommonServiceMessages.SHOP_ORDERS.format(ROLE_EMOJI_MAP[UserRole.SHOP])
-    elif role == UserRole.COURIER:
-        return CommonServiceMessages.COURIER_ORDERS.format(ROLE_EMOJI_MAP[UserRole.COURIER])
-    elif role == UserRole.ADMIN:
-        return CommonServiceMessages.ADMIN_ORDERS.format(ROLE_EMOJI_MAP[UserRole.ADMIN])
-    return ErrorMessages.Orders.NO_ORDERS_FOUND
+    role_map = {
+        UserRole.SHOP: CommonServiceMessages.SHOP_ORDERS.format(ROLE_EMOJI_MAP.get(UserRole.SHOP)),
+        UserRole.COURIER: CommonServiceMessages.COURIER_ORDERS.format(
+            ROLE_EMOJI_MAP.get(UserRole.COURIER)
+        ),
+        UserRole.ADMIN: CommonServiceMessages.ADMIN_ORDERS.format(
+            ROLE_EMOJI_MAP.get(UserRole.ADMIN)
+        ),
+    }
+    return role_map.get(role, ErrorMessages.Orders.NO_ORDERS_FOUND)
 
 
 def get_new_dispute_text() -> str:
@@ -40,22 +51,30 @@ def get_new_dispute_text() -> str:
     return DisputeMessages.NEW_DISPUTE_PROMPT.format(status=DisputeStatus.OPEN.value)
 
 
-async def get_user_disputes_text(telegram_id: int) -> str:
+async def get_user_disputes_text(telegram_id: int, disputes_client: DisputesClient) -> str:
     """Получает споры пользователя и возвращает отформатированный текст."""
     try:
-        disputes = await client_manager.disputes.get_my_disputes(telegram_id)
+        result = await disputes_client.get_my_disputes(telegram_id)
+        if not result.success or not isinstance(result.data, list):
+            return ErrorMessages.Disputes.DISPUTES_LOAD_ERROR
+
+        disputes = result.data
         if not disputes:
             return DisputeMessages.NO_DISPUTES
 
+        status_emoji_map = {
+            DisputeStatus.OPEN: CommonServiceMessages.DISPUTE_STATUS_OPEN,
+            DisputeStatus.IN_REVIEW: CommonServiceMessages.DISPUTE_STATUS_IN_REVIEW,
+            DisputeStatus.RESOLVED: CommonServiceMessages.DISPUTE_STATUS_RESOLVED,
+            DisputeStatus.CLOSED: CommonServiceMessages.DISPUTE_STATUS_CLOSED,
+        }
+
         text_lines = [DisputeMessages.DISPUTES_HEADER]
-        for dispute in disputes[:5]:
+        for dispute in disputes[:10]:
             status = DisputeStatus(dispute.get("status", "closed"))
-            status_emoji = {
-                DisputeStatus.OPEN: CommonServiceMessages.DISPUTE_STATUS_OPEN,
-                DisputeStatus.IN_REVIEW: CommonServiceMessages.DISPUTE_STATUS_IN_REVIEW,
-                DisputeStatus.RESOLVED: CommonServiceMessages.DISPUTE_STATUS_RESOLVED,
-                DisputeStatus.CLOSED: CommonServiceMessages.DISPUTE_STATUS_CLOSED,
-            }.get(status, CommonServiceMessages.DISPUTE_STATUS_DEFAULT)
+            status_emoji = status_emoji_map.get(
+                status, CommonServiceMessages.DISPUTE_STATUS_DEFAULT
+            )
             line = CommonServiceMessages.DISPUTE_LINE.format(
                 dispute.get("id", 0), status_emoji, status.value
             )

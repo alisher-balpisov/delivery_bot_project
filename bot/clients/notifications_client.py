@@ -1,25 +1,17 @@
-"""
-Клиент для работы с уведомлениями через backend API
-"""
-
-from typing import Any
-
-from .base_client import BaseApiClient
+from .base_client import BaseApiClient, RequestResult
 
 
 class NotificationsClient(BaseApiClient):
     """Клиент для работы с уведомлениями через backend API."""
 
-    async def send_notification(
-        self, telegram_id: int, notification_data: dict
-    ) -> dict[str, Any] | None:
+    async def send_notification(self, telegram_id: int, notification_data: dict) -> RequestResult:
         """Отправить уведомление пользователю."""
         notification_data["telegram_id"] = telegram_id
         return await self._make_request("POST", "/notifications/send", json_data=notification_data)
 
     async def send_bulk_notifications(
         self, telegram_id: int, notifications_data: dict
-    ) -> dict[str, Any] | None:
+    ) -> RequestResult:
         """Отправить массовые уведомления."""
         notifications_data["telegram_id"] = telegram_id
         return await self._make_request(
@@ -28,7 +20,7 @@ class NotificationsClient(BaseApiClient):
 
     async def send_order_update_notification(
         self, telegram_id: int, order_update_data: dict
-    ) -> dict[str, Any] | None:
+    ) -> RequestResult:
         """Отправить уведомление об обновлении заказа."""
         order_update_data["telegram_id"] = telegram_id
         return await self._make_request(
@@ -38,9 +30,7 @@ class NotificationsClient(BaseApiClient):
             json_data=order_update_data,
         )
 
-    async def send_test_notification(
-        self, telegram_id: int, test_data: dict
-    ) -> dict[str, Any] | None:
+    async def send_test_notification(self, telegram_id: int, test_data: dict) -> RequestResult:
         """Отправить тестовое уведомление."""
         test_data["telegram_id"] = telegram_id
         return await self._make_request(

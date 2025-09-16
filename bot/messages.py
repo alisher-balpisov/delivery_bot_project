@@ -24,7 +24,6 @@ class AdminMessages:
     CODE_CREATED = "✅ Код для роли {} создан: `{}`"
     LOADING_CODES = "📋 Загружаю список кодов..."
     NO_CODES_FOUND = "ℹ️ Активных кодов регистрации не найдено."
-    SYSTEM_STATS_LOADING = "📊 Загружаю системную статистику..."
     BROADCAST_IN_DEV = "📢 Эта функция находится в разработке."
     INVALID_ROLE = "❌ Неверная роль."
 
@@ -99,9 +98,7 @@ class CourierMessages:
     AVAILABLE_ORDERS_ERROR = "Ошибка при получении доступных заказов для {}: {} "
     MISSING_USER_ID = "Отсутствует user_id в user_data для telegram_id: {} "
     ORDER_ALREADY_TAKEN = "Заказ уже принят"
-    SERVER_ERROR = "Ошибка сервера"
     TAKE_ORDER_CRITICAL_ERROR = "Критическая ошибка при принятии заказа {} для {}: {} "
-    INTERNAL_ERROR = "внутренняя ошибка"
     NO_AVAILABLE_ORDERS = "📭 Нет доступных заказов."
     INVALID_ORDER_ID_ERROR = "Ошибка: Неверный ID заказа."
 
@@ -111,11 +108,13 @@ class AuthMessages:
 
     WELCOME_NEW_USER = "Добро пожаловать! Для регистрации в системе используйте команду /register"
     WELCOME_ADMIN = "Добро пожаловать, администратор!\nЧтобы посмотреть команды /help"
-    WELCOME_AUTHENTICATED = "Добро пожаловать! Вы успешно авторизованы ✅"
+    WELCOME_AUTHENTICATED = (
+        "Добро пожаловать! Вы успешно авторизованы ✅\nЧтобы посмотреть команды /help"
+    )
     ENTER_CODE = "📝 Введите ваш код приглашения:"
     CHECKING_CODE = "🔄 Проверяю код..."
-    ALREADY_REGISTERED = "ℹ️ Вы уже зарегистрированы {} "
-    SUCCESS = "✅ Регистрация успешна {}\\Ваша роль: {} "
+    ALREADY_REGISTERED = "ℹ️ Вы уже зарегистрированы"
+    SUCCESS = "✅ Регистрация успешна {}\nНажмите /start чтобы начать"
     BLOCKED = "Вы заблокированы. Доступ запрещён."
     INVALID_CODE_ATTEMPTS = "Неверный код. Осталось попыток: {} "
     INVALID_CODE = "Неверный код. Попробуйте еще раз."
@@ -246,6 +245,4 @@ class ShopMessages:
 
     # Сообщения об ошибках
     UNKNOWN_ERROR = "неизвестная ошибка"
-    SERVER_ERROR = "ошибка сервера"
-    INTERNAL_ERROR = "внутренняя ошибка"
     CREATE_ORDER_CRITICAL_ERROR = "Критическая ошибка при создании заказа telegram_id={}: {}"

@@ -3,7 +3,8 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
-from bot.filters import RoleFilter
+from bot.clients.orders_client import OrdersClient
+from bot.filters.filters import RoleFilter
 from bot.handlers.states import OrderStates
 from bot.messages import OrderMessages
 
@@ -12,7 +13,7 @@ from . import service
 shop_router = Router(name="shop_handlers")
 
 
-@shop_router.message(Command("new_order"), RoleFilter([UserRole.SHOP]))
+@shop_router.message(Command("new_order"), RoleFilter(UserRole.SHOP))
 async def new_order_handler(message: Message, state: FSMContext):
     """Начать создание нового заказа."""
     await state.set_state(OrderStates.waiting_for_description)
@@ -60,15 +61,17 @@ async def order_price_handler(message: Message, state: FSMContext):
 
 
 @shop_router.callback_query(F.data == "order_confirm", OrderStates.confirmation)
-async def order_confirm_handler(callback: CallbackQuery, state: FSMContext):
+async def order_confirm_handler(
+    callback: CallbackQuery, state: FSMContext, orders_client: OrdersClient
+):
     """Подтверждение и создание заказа."""
     data = await state.get_data()
     telegram_id = callback.from_user.id
 
     await callback.message.edit_text(OrderMessages.CREATING_ORDER)
 
-    result_text = await service.create_order(telegram_id, data)
-    await callback.message.edit_text(result_text)
+    response_text = await service.create_order(telegram_id, data, orders_client)
+    await callback.message.edit_text(response_text)
 
     await state.clear()
     await callback.answer()
