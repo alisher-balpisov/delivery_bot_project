@@ -56,12 +56,12 @@ def setup_console_handler() -> logging.Handler:
     if settings.debug and sys.stdout.isatty():
         # Цветной вывод для терминала в режиме разработки
         formatter = ColoredFormatter(
-            fmt=settings.logging.format, datefmt=settings.logging.date_format, style='{'
+            fmt=settings.logging.format, datefmt=settings.logging.date_format, style="{"
         )
     else:
         # Обычный вывод для продакшена или файлов
         formatter = logging.Formatter(
-            fmt=settings.logging.format, datefmt=settings.logging.date_format, style='{'
+            fmt=settings.logging.format, datefmt=settings.logging.date_format, style="{"
         )
 
     console_handler.setFormatter(formatter)
@@ -88,7 +88,7 @@ def setup_file_handler() -> logging.Handler | None:
 
     # Подробный формат для файловых логов
     formatter = logging.Formatter(
-        fmt=settings.logging.file_format, datefmt=settings.logging.date_format, style='{'
+        fmt=settings.logging.file_format, datefmt=settings.logging.date_format, style="{"
     )
 
     file_handler.setFormatter(formatter)
@@ -110,7 +110,7 @@ def setup_telegram_handler() -> logging.Handler:
         )
 
         formatter = TelegramFormatter(
-            fmt=settings.logging.telegram_format, datefmt=settings.logging.date_format, style='{'
+            fmt=settings.logging.telegram_format, datefmt=settings.logging.date_format, style="{"
         )
 
         bot_handler.setFormatter(formatter)
@@ -138,9 +138,7 @@ def setup_error_handler() -> logging.Handler | None:
     error_handler.setLevel(logging.ERROR)
 
     formatter = logging.Formatter(
-        fmt=settings.logging.error_format,
-        datefmt=settings.logging.date_format,
-        style='{'
+        fmt=settings.logging.error_format, datefmt=settings.logging.date_format, style="{"
     )
 
     error_handler.setFormatter(formatter)

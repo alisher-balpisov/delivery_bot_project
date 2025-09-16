@@ -114,11 +114,15 @@ async def activate_code(
                 raise ValueError("Код регистрации уже был активирован")
 
             if existing_activation_response and reg_code_obj.role != UserRole.ADMIN:
-                logger.info(f"User {telegram_id} is already activated, and code not for admin upgrade")
+                logger.info(
+                    f"User {telegram_id} is already activated, and code not for admin upgrade"
+                )
                 return existing_activation_response
 
             logger.debug("Calling _handle_valid_code directly")
-            result = await _handle_valid_code(db, existing_user, reg_code_obj, telegram_id, requested_role)
+            result = await _handle_valid_code(
+                db, existing_user, reg_code_obj, telegram_id, requested_role
+            )
             logger.debug(f"_process_activation returned: {result}")
             if result.success:
                 logger.info(f"Activation successful for telegram_id {telegram_id}")
@@ -130,7 +134,8 @@ async def activate_code(
         raise
     except Exception as e:
         logger.error(
-            f"Unexpected error during activation for telegram_id {telegram_id}: {e!s}", exc_info=True
+            f"Unexpected error during activation for telegram_id {telegram_id}: {e!s}",
+            exc_info=True,
         )
         await db.rollback()  # Откат при ошибке
         raise HTTPException(status_code=500, detail=f"Unexpected error during activation: {e!s}")

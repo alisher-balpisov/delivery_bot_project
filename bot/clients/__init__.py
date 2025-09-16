@@ -1,7 +1,3 @@
-"""
-Пакет клиентов для взаимодействия с backend API
-"""
-
 from .admin_client import AdminClient
 from .auth_client import AuthClient
 from .client_manager import ClientManager, client_manager

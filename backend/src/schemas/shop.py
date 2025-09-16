@@ -35,7 +35,7 @@ class ShopRead(ShopBase):
     user: UserRead
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ShopResponse(ShopBase):

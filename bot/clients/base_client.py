@@ -1,14 +1,12 @@
-"""
-Базовый клиент для API взаимодействия с backend
-Унифицированная логика для всех клиентских классов
-"""
-
 import asyncio
 from typing import Any, ClassVar, Optional
 
 import httpx
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
+
+from bot.constants import error_map
+from bot.messages import BaseClientMessages
 
 logger = get_logger(__name__)
 
@@ -69,7 +67,7 @@ class BaseApiClient:
         self,
         method: str,
         endpoint: str,
-        token: str | None = None,
+        telegram_id: int | None = None,
         json_data: dict[str, Any] | None = None,
         custom_headers: dict[str, str] | None = None,
         expected_status: int = 200,
@@ -80,8 +78,8 @@ class BaseApiClient:
         """
         url = self._build_url(endpoint)
         headers = custom_headers or {}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        if telegram_id:
+            headers["X-Telegram-ID"] = str(telegram_id)
 
         client = await connection_pool.get_client()
 
@@ -91,13 +89,12 @@ class BaseApiClient:
                     method, url, headers=headers, json=json_data, timeout=self.timeout
                 )
 
-                # Успешный ответ
                 if response.status_code == expected_status:
                     try:
                         return response.json()
                     except ValueError:
                         logger.warning(f"Не удалось распарсить JSON из ответа: {response.text}")
-                        return {"success": False, "detail": "Некорректный JSON ответ от сервера."}
+                        return {"success": False, "detail": BaseClientMessages.INVALID_JSON}
 
                 # Обработка ошибок клиента (не повторяем)
                 if 400 <= response.status_code < 500:
@@ -106,57 +103,65 @@ class BaseApiClient:
                     except ValueError:
                         error_details = response.text
 
-                    error_map = {
-                        400: "Неверные данные",
-                        401: "Ошибка авторизации",
-                        403: "Недостаточно прав",
-                        404: "Ресурс не найден",
-                    }
+                    # Приоритет отдаем сообщению от API
+                    error_message = error_details or error_map.get(
+                        response.status_code,
+                        BaseClientMessages.CLIENT_ERROR.format(response.status_code),
+                    )
 
                     logger.warning(
-                        f"❌ HTTP {response.status_code} для {endpoint}: {error_details}"
+                        BaseClientMessages.HTTP_ERROR.format(
+                            response.status_code, endpoint, error_message
+                        )
                     )
-                    return {
-                        "success": False,
-                        "detail": error_map.get(
-                            response.status_code, f"Ошибка клиента: {response.status_code}"
-                        ),
-                    }
+                    return {"success": False, "detail": error_message}
 
                 # Серверные ошибки (повторяем)
                 if response.status_code >= 500:
                     if attempt < retry_count - 1:
                         logger.warning(
-                            f"Серверная ошибка {response.status_code}, попытка {attempt + 1}/{retry_count}"
+                            BaseClientMessages.SERVER_ERROR_RETRY.format(
+                                response.status_code, attempt + 1, retry_count
+                            )
                         )
                         await asyncio.sleep(2**attempt)  # Exponential backoff
                         continue
 
-                logger.error(f"💥 Неожиданный статус код: {response.status_code} для {endpoint}")
-                return {"success": False, "detail": f"Ошибка сервера: {response.status_code}"}
+                logger.error(
+                    BaseClientMessages.UNEXPECTED_STATUS.format(response.status_code, endpoint)
+                )
+                return {
+                    "success": False,
+                    "detail": BaseClientMessages.SERVER_ERROR.format(response.status_code),
+                }
 
             except httpx.TimeoutException:
                 if attempt < retry_count - 1:
-                    logger.warning(f"Таймаут для {endpoint}, попытка {attempt + 1}/{retry_count}")
+                    logger.warning(
+                        BaseClientMessages.TIMEOUT_RETRY.format(endpoint, attempt + 1, retry_count)
+                    )
                     await asyncio.sleep(1)
                     continue
-                logger.error(f"❌ Таймаут при запросе {method} {url}")
-                return {"success": False, "detail": "Превышено время ожидания"}
+                logger.error(BaseClientMessages.TIMEOUT_ERROR.format(method, url))
+                return {"success": False, "detail": BaseClientMessages.TIMEOUT_EXCEEDED}
 
             except httpx.RequestError as e:
                 if attempt < retry_count - 1:
                     logger.warning(
-                        f"Ошибка сети для {endpoint}, попытка {attempt + 1}/{retry_count}"
+                        BaseClientMessages.NETWORK_ERROR_RETRY.format(
+                            endpoint, attempt + 1, retry_count
+                        )
                     )
                     await asyncio.sleep(1)
                     continue
-                logger.error(f"❌ Ошибка сети при запросе {method} {url}: {e}")
-                return {"success": False, "detail": "Ошибка сети"}
+                logger.error(BaseClientMessages.NETWORK_ERROR.format(method, url, e))
+                return {"success": False, "detail": BaseClientMessages.NETWORK_ERROR_SIMPLE}
 
             except Exception as e:
                 logger.error(
-                    f"💥 Неожиданная ошибка при запросе {method} {url}: {e}", exc_info=True
+                    BaseClientMessages.UNEXPECTED_REQUEST_ERROR.format(method, url, e),
+                    exc_info=True,
                 )
-                return {"success": False, "detail": "Неожиданная ошибка на стороне клиента"}
+                return {"success": False, "detail": BaseClientMessages.UNEXPECTED_CLIENT_ERROR}
 
-        return {"success": False, "detail": "Превышено количество попыток"}
+        return {"success": False, "detail": BaseClientMessages.RETRIES_EXCEEDED}

@@ -31,7 +31,7 @@ router = APIRouter()
 @router.post("/", response_model=OrderRead, status_code=201)
 async def create_new_order(
     order_in: OrderCreateRequest,
-    current_user: User = Depends(require_role("shop")),
+    current_user: User = Depends(require_role(UserRole.SHOP)),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -71,13 +71,13 @@ async def get_order_details(
     logger.info(
         f"Access check for order {order_id} by user {current_user.telegram_id}, role {current_user.role}"
     )
-    if current_user.role == "shop":
+    if current_user.role == UserRole.SHOP:
         if not current_user.shop:
             logger.error(f"Shop user {current_user.telegram_id} has no shop relation")
             raise HTTPException(status_code=403, detail="Нет доступа к заказам")
         if order.shop_id != current_user.shop.id:
             raise HTTPException(status_code=403, detail="Нет доступа к этому заказу")
-    elif current_user.role == "courier":
+    elif current_user.role == UserRole.COURIER:
         if not current_user.courier:
             logger.error(f"Courier user {current_user.telegram_id} has no courier relation")
             raise HTTPException(status_code=403, detail="Нет доступа к заказам")
@@ -107,7 +107,7 @@ async def update_existing_order(
         raise HTTPException(status_code=404, detail="Заказ не найден")
 
     # Проверка доступа
-    if current_user.role == "shop":
+    if current_user.role == UserRole.SHOP:
         # Магазины могут только отменять свои заказы в состоянии "новый"
         if order.shop_id != current_user.shop.id:
             raise HTTPException(status_code=403, detail="Нет доступа к этому заказу")
@@ -116,14 +116,14 @@ async def update_existing_order(
         if order.status != "new":
             raise HTTPException(status_code=400, detail="Можно отменить только новый заказ")
 
-    elif current_user.role == "courier":
+    elif current_user.role == UserRole.COURIER:
         # Курьеры могут обновлять только назначенные им заказы
         if order.courier_id != current_user.courier.id:
             raise HTTPException(status_code=403, detail="Заказ не назначен вам")
 
     # Изменение статуса для курьера требует заметки
     if (
-        current_user.role == "courier"
+        current_user.role == UserRole.COURIER
         and order_in.status == "in_pickup"
         and not order_in.courier_notes
     ):

@@ -1,61 +1,14 @@
 from backend.src.auth.user_auth import get_current_user
 from backend.src.core.database import get_db
 from backend.src.core.logging import get_logger
-from backend.src.schemas.admin import CodeActivationRequest
 from backend.src.schemas.user import UserCreateWithoutPassword, UserRead
 from backend.src.users import service
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
-
-class ActivationResponse(BaseModel):
-    user_id: int
-    telegram_id: int
-    role: str
-    is_registered: bool
-
-
 router = APIRouter()
-
-
-@router.post("/register", response_model=ActivationResponse)
-async def register_user(activation_data: CodeActivationRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Регистрация нового пользователя через одноразовый код приглашения.
-    Совпадает с описанием: привязывает telegram_id к роли через invite_code.
-    Этот эндпоинт доступен без аутентификации для первоначальной регистрации.
-    """
-    logger.debug(f"Received activation data: {activation_data.model_dump()}")
-    logger.info(
-        f"User registration attempt: telegram_id={activation_data.telegram_id}, role={activation_data.role}"
-    )
-
-    try:
-        response = await service.activate_code(
-            db=db,
-            telegram_id=activation_data.telegram_id,
-            code=activation_data.code,
-            requested_role=activation_data.role,
-        )
-        if response.success:
-            logger.info(f"User registration successful: telegram_id={activation_data.telegram_id}")
-            return ActivationResponse(
-                user_id=response.user_id,
-                telegram_id=activation_data.telegram_id,
-                role=response.role,
-                is_registered=True,
-            )
-        else:
-            logger.warning(
-                f"User registration failed: telegram_id={activation_data.telegram_id}, detail={response.detail}"
-            )
-            raise ValueError(response.detail or "Ошибка регистрации")
-    except ValueError as e:
-        logger.warning(f"User registration failed: {e!s}")
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/me", response_model=UserRead)

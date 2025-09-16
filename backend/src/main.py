@@ -1,15 +1,10 @@
-import sys
-from pathlib import Path
-
-# Добавить backend/ в PYTHONPATH
-backend_path = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(backend_path))
-
 import asyncio
 import re
+import sys
 import time
 from contextlib import asynccontextmanager
 
+import psutil
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -175,12 +170,9 @@ def create_app() -> FastAPI:
         )
 
     # Health check endpoint
-    @app.get("/health")
+    @app.get(f"{settings.api_prefix}/health")
     async def health_check():
         """Проверка здоровья приложения с метриками"""
-        import time
-
-        import psutil
 
         # Базовые метрики
         process = psutil.Process()
@@ -198,6 +190,15 @@ def create_app() -> FastAPI:
                 "cpu_percent": cpu_percent,
                 "uptime_seconds": time.time() - process.create_time(),
             },
+        }
+
+    @app.get("/info")
+    async def info():
+        """Возвращает информацию о приложении"""
+        return {
+            "app": settings.app_name,
+            "version": settings.app_version,
+            "environment": settings.environment,
         }
 
     return app

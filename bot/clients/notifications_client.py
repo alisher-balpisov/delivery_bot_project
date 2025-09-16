@@ -10,33 +10,39 @@ from .base_client import BaseApiClient
 class NotificationsClient(BaseApiClient):
     """Клиент для работы с уведомлениями через backend API."""
 
-    async def send_notification(self, token: str, notification_data: dict) -> dict[str, Any] | None:
+    async def send_notification(
+        self, telegram_id: int, notification_data: dict
+    ) -> dict[str, Any] | None:
         """Отправить уведомление пользователю."""
-        return await self._make_request(
-            "POST", "/notifications/send", token=token, json_data=notification_data
-        )
+        notification_data["telegram_id"] = telegram_id
+        return await self._make_request("POST", "/notifications/send", json_data=notification_data)
 
     async def send_bulk_notifications(
-        self, token: str, notifications_data: dict
+        self, telegram_id: int, notifications_data: dict
     ) -> dict[str, Any] | None:
         """Отправить массовые уведомления."""
+        notifications_data["telegram_id"] = telegram_id
         return await self._make_request(
-            "POST", "/notifications/send-bulk", token=token, json_data=notifications_data
+            "POST", "/notifications/send-bulk", json_data=notifications_data
         )
 
     async def send_order_update_notification(
-        self, token: str, order_update_data: dict
+        self, telegram_id: int, order_update_data: dict
     ) -> dict[str, Any] | None:
         """Отправить уведомление об обновлении заказа."""
+        order_update_data["telegram_id"] = telegram_id
         return await self._make_request(
             "POST",
             "/notifications/send-order-update",
-            token=token,
+            telegram_id=telegram_id,
             json_data=order_update_data,
         )
 
-    async def send_test_notification(self, token: str, test_data: dict) -> dict[str, Any] | None:
+    async def send_test_notification(
+        self, telegram_id: int, test_data: dict
+    ) -> dict[str, Any] | None:
         """Отправить тестовое уведомление."""
+        test_data["telegram_id"] = telegram_id
         return await self._make_request(
-            "POST", "/notifications/test-notification", token=token, json_data=test_data
+            "POST", "/notifications/test-notification", json_data=test_data
         )

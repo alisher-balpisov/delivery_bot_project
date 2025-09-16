@@ -1,17 +1,19 @@
-"""
-Пакет обработчиков команд и сообщений Telegram бота
-"""
+from aiogram import Router
 
-from .auth import auth_router
-from .auth import protected_router as protected_auth_router
-from .base_handlers import protected_router as protected_base_handlers_router
-from .base_handlers import public_router
-from .orders_handlers import orders_router
+from .admin.views import admin_router
+from .auth.views import auth_router
+from .common.views import common_router
+from .courier.views import courier_router
+from .public.views import public_router
+from .shop.views import shop_router
 
-__all__ = [
-    "auth_router",
-    "orders_router",
-    "protected_auth_router",
-    "protected_base_handlers_router",
-    "public_router",
-]
+orders_router = Router(name="orders")
+orders_router.include_router(shop_router)
+orders_router.include_router(courier_router)
+
+protected_router = Router(name="protected")
+protected_router.include_router(common_router)
+protected_router.include_router(admin_router)
+
+
+__all__ = ["auth_router", "orders_router", "protected_router", "public_router"]

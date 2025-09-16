@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
     # Инициализация при старте
     try:
-        app.state.background_tasks = set() # Initialize set for background tasks
+        app.state.background_tasks = set()  # Initialize set for background tasks
         # Валидация конфигурации
         logger.info("✅ Конфигурация валидна")
 
@@ -61,8 +61,8 @@ async def lifespan(app: FastAPI):
         else:
             # Запуск polling в фоновой задаче
             polling_task = asyncio.create_task(start_polling(bot, dp))
-            app.state.background_tasks.add(polling_task) # Store the task
-            polling_task.add_done_callback(app.state.background_tasks.discard) # Remove when done
+            app.state.background_tasks.add(polling_task)  # Store the task
+            polling_task.add_done_callback(app.state.background_tasks.discard)  # Remove when done
             logger.info("✅ Polling запущен")
 
         # Сохранение экземпляров в app.state для доступа из других частей

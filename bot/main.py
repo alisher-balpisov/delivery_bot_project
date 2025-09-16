@@ -1,21 +1,14 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-import redis.asyncio as aioredis
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramNetworkError
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types.error_event import ErrorEvent
 from backend.src.core.config import get_bot_token, settings
 from backend.src.core.logging import get_logger, setup_logging
 
-from bot.clients.client_manager import client_manager
-from bot.handlers.auth import auth_router, generate_fernet_key
-from bot.handlers.auth import protected_router as protected_auth_router
-from bot.handlers.base_handlers import protected_router as protected_base_handlers_router
-from bot.handlers.base_handlers import public_router
-from bot.handlers.orders_handlers import orders_router
-from bot.middlewares.auth_middleware import AuthMiddleware
+from bot.handlers import *
 from bot.middlewares.user_data_middleware import UserDataMiddleware
 
 logger = get_logger(__name__)
@@ -33,32 +26,27 @@ def create_dispatcher(storage) -> Dispatcher:
     """
     dp = Dispatcher(storage=storage)
 
-    redis_client = storage.redis if isinstance(storage, RedisStorage) else None
-    if redis_client:
-        logger.info("✅ Redis client из хранилища будет использован для middleware.")
-
-    encryption_key = generate_fernet_key()
-
     # 1. Глобальный middleware для подготовки данных
-    dp.update.middleware(UserDataMiddleware(encryption_key=encryption_key))
+    dp.update.middleware(UserDataMiddleware())
 
-    # 2. Middleware для защиты, который применяется ЛОКАЛЬНО
-    auth_middleware = AuthMiddleware(
-        auth_client=client_manager.auth, redis=redis_client, encryption_key=encryption_key
-    )
-
-    # Применяем защитный middleware только к защищенным роутерам
-    protected_auth_router.message.middleware(auth_middleware)
-    protected_auth_router.callback_query.middleware(auth_middleware)
-    protected_base_handlers_router.message.middleware(auth_middleware)
-    protected_base_handlers_router.callback_query.middleware(auth_middleware)
-
-    # Сначала роутеры с конкретными командами, в конце - с общим обработчиком текста.
+    # Порядок регистрации роутеров важен!
+    # Сначала идут роутеры с более конкретными фильтрами (команды, состояния).
     dp.include_router(auth_router)
-    dp.include_router(protected_auth_router)
-    dp.include_router(protected_base_handlers_router)
-    dp.include_router(public_router)
     dp.include_router(orders_router)
+    dp.include_router(protected_router)
+
+    # Роутер с "catch-all" обработчиком (F.text) должен быть последним.
+    dp.include_router(public_router)
+
+    async def on_unknown_error(event: ErrorEvent):
+        logger.critical(f"Критическая ошибка: {event.exception}", exc_info=True)
+        # Можно попытаться уведомить пользователя, если это возможно
+        if event.update and event.update.message:
+            await event.update.message.answer(
+                "Произошла непредвиденная ошибка. Мы уже работаем над этим."
+            )
+
+    dp.errors.register(on_unknown_error)
 
     return dp
 
@@ -68,25 +56,15 @@ async def lifespan():
     # ... (код этой функции не меняется)
     logger.info("🚀 Инициализация Telegram бота...")
     bot = None
-    storage = None
-    redis_connection = None
     try:
-        if settings.redis.use_redis:
-            redis_connection = aioredis.from_url(settings.redis.redis_url, health_check_interval=30)
-            storage = RedisStorage(redis_connection)
-            logger.info("✅ Хранилище состояний: Redis.")
-        else:
-            storage = MemoryStorage()
-            logger.info("✅ Хранилище состояний: Memory.")
+        storage = MemoryStorage()
+        logger.info("✅ Хранилище состояний: Memory.")
         bot = create_bot()
         dp = create_dispatcher(storage=storage)
         logger.info("🎉 Telegram бот успешно инициализирован!")
         yield bot, dp
     finally:
         logger.info("🔌 Завершение работы...")
-        if redis_connection:
-            await redis_connection.close()
-            logger.info("✅ Redis соединение закрыто.")
         if bot and bot.session:
             await bot.session.close()
             logger.info("✅ Сессия бота закрыта.")
@@ -105,7 +83,6 @@ async def run_polling(skip_updates: bool = True):
             logger.warning(f"⚠️ Не удалось удалить webhook: {e}. Продолжаем без удаления.")
         except Exception as e:
             logger.warning(f"⚠️ Ошибка при удалении webhook: {e}. Продолжаем без удаления.")
-
         await dp.start_polling(
             bot,
             skip_updates=skip_updates,

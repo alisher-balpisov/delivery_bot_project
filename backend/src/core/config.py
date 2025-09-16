@@ -83,35 +83,6 @@ class TelegramConfig(BaseModel):
     rate_limit_window: int = 60  # Окно ограничения в секундах
 
 
-class AuthConfig(BaseModel):
-    """Конфигурация аутентификации и авторизации."""
-
-    jwt_secret: SecretStr  # Ключ для подписи JWT
-    jwt_algorithm: str = "HS256"  # Алгоритм JWT
-    access_token_expire_minutes: int = 30  # Время жизни токена (30 минут - безопасно)
-    refresh_token_expire_days: int = 30  # Время жизни refresh токена (30 дней)
-    bot_api_key: str | None = None  # API ключ для аутентификации бота
-    bcrypt_rounds: int = 12  # Количество раундов хэширования пароля
-    bot_encryption_key: SecretStr  # Ключ для шифрования данных бота
-
-    @field_validator("access_token_expire_minutes")
-    def validate_access_token_expiry(cls, v):
-        """Валидация времени жизни access токена (не более 1 часа для безопасности)"""
-        if v > 60:
-            raise ValueError("Access token expiry should not exceed 60 minutes for security")
-        return v
-
-
-class RedisConfig(BaseModel):
-    """Конфигурация Redis."""
-
-    use_redis: bool = False  # Включить использование Redis для хранения состояний
-    url: str = "redis://localhost:6379/0"  # URL подключения к Redis
-    max_connections: int = 20  # Максимальное количество соединений
-    user_cache_ttl: int = 300  # TTL кэша пользователя
-    order_cache_ttl: int = 60  # TTL кэша заказа
-
-
 class FileStorageConfig(BaseModel):
     """Конфигурация файлового хранилища."""
 
@@ -206,8 +177,6 @@ class Settings(BaseSettings):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     middleware: MiddlewareConfig = Field(default_factory=MiddlewareConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
-    auth: AuthConfig = Field(default_factory=AuthConfig)
-    redis: RedisConfig = Field(default_factory=RedisConfig)
     file_storage: FileStorageConfig = Field(default_factory=FileStorageConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     business: BusinessConfig = Field(default_factory=BusinessConfig)
@@ -216,10 +185,6 @@ class Settings(BaseSettings):
     api_host: str = "localhost"
     api_port: int = 8000
     api_prefix: str = "/api/v1"
-
-    default_encoding: str = "utf-8"
-
-    gemini_api_key: str | None
 
     @property
     def docs_url(self) -> str | None:
@@ -263,6 +228,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
         case_sensitive=False,
+        extra="ignore",
     )
 
 
@@ -279,14 +245,6 @@ def get_bot_token() -> str:
     return settings.telegram.bot_token.get_secret_value()
 
 
-def get_bot_encryption_key() -> str:
-    return settings.auth.bot_encryption_key.get_secret_value()
-
-
-def get_redis_url() -> str:
-    return settings.redis.url
-
-
 def is_admin(telegram_id: int) -> bool:
     return telegram_id in settings.admin.super_admin_telegram_ids
 
@@ -301,18 +259,14 @@ def get_upload_dir() -> Path:
 # Экспорт основных классов/функций для удобства импорта
 __all__ = [
     "AdminConfig",
-    "AuthConfig",
     "BusinessConfig",
     "DatabaseConfig",
     "FileStorageConfig",
     "LoggingConfig",
-    "RedisConfig",
     "Settings",
     "TelegramConfig",
-    "get_bot_encryption_key",
     "get_bot_token",
     "get_database_url",
-    "get_redis_url",
     "get_upload_dir",
     "is_admin",
     "settings",

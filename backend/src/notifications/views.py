@@ -1,6 +1,7 @@
 from typing import Any
 
 from backend.src.auth.user_auth import require_role
+from backend.src.common.enums import UserRole
 from backend.src.core.database import get_db
 from backend.src.models.user import User
 from backend.src.notifications.service import NotificationService, notification_service
@@ -40,7 +41,7 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> User:
 @router.post("/send", response_model=NotificationResponse)
 async def send_notification(
     request: NotificationSendRequest,
-    current_user=Depends(require_role("admin")),
+    current_user=Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db),
     notification_svc: NotificationService = Depends(get_notification_service),
 ) -> dict[str, Any]:
@@ -77,7 +78,7 @@ async def send_notification(
 @router.post("/send-order-update")
 async def send_order_update_notification(
     request: NotificationOrderUpdateRequest,
-    current_user=Depends(require_role("admin")),
+    current_user=Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db),
     notification_svc: NotificationService = Depends(get_notification_service),
 ) -> dict[str, Any]:
@@ -104,7 +105,7 @@ async def send_order_update_notification(
 @router.post("/send-bulk", response_model=NotificationBulkResponse)
 async def send_bulk_notifications(
     request: NotificationBulkRequest,
-    current_user=Depends(require_role("admin")),
+    current_user=Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db),
     notification_svc: NotificationService = Depends(get_notification_service),
 ) -> dict[str, Any]:
@@ -151,7 +152,7 @@ async def send_bulk_notifications(
 
 @router.post("/test-notification")
 async def send_test_notification(
-    current_user=Depends(require_role("admin")),
+    current_user=Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db),
     notification_svc: NotificationService = Depends(get_notification_service),
 ) -> dict[str, Any]:

@@ -3,30 +3,49 @@ from dataclasses import dataclass
 from backend.src.common.enums import UserRole
 
 MAX_REGISTRATION_ATTEMPTS = 5
+STATS_TIMEOUT = 10  # секунды
+MAX_MESSAGE_LENGTH = 4000  # максимум Telegram
+MAX_CODES_DISPLAY = 10
 
 ROLE_EMOJI_MAP = {
-    "admin": "👑",
-    "shop": "🏪",
-    "courier": "🏍️",
-    "guest": "👤",
-    "pending": "👤",
+    UserRole.ADMIN: "👑",
+    UserRole.SHOP: "🏪",
+    UserRole.COURIER: "🏍️",
+    UserRole.GUEST: "👤",
+    UserRole.PENDING: "👤",
 }
 
+STATS_EMOJIS = {
+    "users": "👥",
+    "orders": "📦",
+    "active_orders": "🚀",
+    "completed_orders": "✅",
+    "cancelled_orders": "❌",
+    "disputes": "⚠️",
+    "unresolved_disputes": "🟡",
+}
+
+error_map = {
+    400: "Неверные данные",
+    401: "Ошибка авторизации",
+    403: "Недостаточно прав",
+    404: "Ресурс не найден",
+}
 
 # Команды по ролям
 ROLE_COMMANDS: dict[str, dict[str, any]] = {
     UserRole.ADMIN.value: {
-        "icon": "👑",
-        "title": "Администратор:",
+        "icon": ROLE_EMOJI_MAP[UserRole.ADMIN],
+        "title": "Команды администратора:",
         "commands": [
-            "/admin - управление системой\n",
-            "/stats - полная статистика\n",
-            "/disputes - управление спорами\n",
-            "/broadcast - массовая рассылка",
+            "/admin - Панель администратора\n",
+            "/system_stats - Системная статистика\n",
+            "/broadcast - Массовая рассылка\n",
+            "/test_api - Тест соединения с API\n",
         ],
     },
     UserRole.SHOP.value: {
-        "icon": "🏪",
+        "icon": ROLE_EMOJI_MAP[UserRole.SHOP],
         "title": "Магазин:",
         "commands": [
             "/new_order - создать заказ\n",
@@ -36,7 +55,7 @@ ROLE_COMMANDS: dict[str, dict[str, any]] = {
         ],
     },
     UserRole.COURIER.value: {
-        "icon": "🏍️",
+        "icon": ROLE_EMOJI_MAP[UserRole.COURIER],
         "title": "Курьер:",
         "commands": [
             "/available_orders - доступные заказы\n",
@@ -124,9 +143,10 @@ class ErrorMessages:
         EMPTY_CODE = ERROR_PREFIX + " Код не может быть пустым. Попробуйте еще раз."
         CODE_LENGTH_INVALID = ERROR_PREFIX + " Код должен быть от 4 до 20 символов."
         CODE_CONTAINS_INVALID_CHARS = ERROR_PREFIX + " Код должен содержать только буквы и цифры."
-        TOO_MANY_ATTEMPTS = ERROR_PREFIX + " Превышено количество попыток регистрации. Попробуйте позже."
+        TOO_MANY_ATTEMPTS = (
+            ERROR_PREFIX + " Превышено количество попыток регистрации. Попробуйте позже."
+        )
         REGISTRATION_ERROR = ERROR_PREFIX + " Произошла критическая ошибка при регистрации."
-        INVALID_TOKEN = ERROR_PREFIX + " Токен недействителен. Авторизуйтесь заново: /start"
 
     class Network(ErrorCategory):
         """Сетевые ошибки."""
@@ -168,6 +188,8 @@ class ErrorMessages:
         ACCESS_DENIED_ADMINS = (
             ERROR_PREFIX + " Доступ запрещен. Только администраторы могут использовать эту команду."
         )
+        ROLE_NOT_DEFINED = ERROR_PREFIX + " Роль пользователя не определена."
+        INSUFFICIENT_ROLE = ERROR_PREFIX + " У вас недостаточно прав для выполнения этого действия."
 
     class Disputes(ErrorCategory):
         """Ошибки споров."""

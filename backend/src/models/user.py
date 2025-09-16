@@ -35,7 +35,7 @@ class User(Base):
     role = Column(Enum(UserRole, native_enum=False), default=UserRole.PENDING, nullable=False)
 
     # Для логики блокировки при неверном вводе кода
-    registration_attempts = Column(Integer, default=0, nullable=False)
+    login_attempts = Column(Integer, default=0, nullable=False)
     is_blocked = Column(Boolean, default=False, nullable=False)
 
     is_active = Column(Boolean, default=True, nullable=False)
