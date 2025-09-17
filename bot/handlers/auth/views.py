@@ -79,29 +79,29 @@ async def register_code_handler(
     telegram_id = message.from_user.id
     code = (message.text or "").strip()
     loading_msg = await message.answer(AuthMessages.CHECKING_CODE)
-    deleted = False
 
     try:
         result = await auth_client.auth_by_code(telegram_id, code)
-        await loading_msg.delete()
-        deleted = True
 
         if result.success and isinstance(result.data, dict):
+            # Успешная регистрация
             await service.handle_registration_success(
                 message, state, result.data.get("user", {}), telegram_id
             )
         else:
-            # result.data может содержать детали ошибки, такие как attempts_left
-            await service.handle_registration_failure(message, state, result.data)
+            # Неуспешная регистрация (неверный код, блокировка и т.д.)
+            # Детали ошибки теперь в result.detail
+            await service.handle_registration_failure(message, state, result.detail)
     except Exception as e:
-        if not deleted:
-            await loading_msg.delete()
         logger.error(
             AuthServiceMessages.REGISTRATION_CRITICAL_ERROR.format(telegram_id, e),
             exc_info=True,
         )
         await state.clear()
         await message.answer(AuthServiceMessages.CRITICAL_REGISTRATION_ERROR)
+    finally:
+        # Удаляем сообщение "Проверяю код..." в любом случае
+        await loading_msg.delete()
 
 
 @auth_router.message(Command("me"))

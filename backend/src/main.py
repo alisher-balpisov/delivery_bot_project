@@ -19,6 +19,7 @@ from backend.src.api.routes import api_router
 from backend.src.core.config import get_upload_dir, settings
 from backend.src.core.database import close_db, init_db
 from backend.src.core.logging import get_logger, setup_logging
+from backend.src.core.redis import redis_manager
 from backend.src.notifications.service import initialize_notification_service
 
 logger = get_logger(__name__)
@@ -34,14 +35,17 @@ async def lifespan(app: FastAPI):
 
     # Инициализация при старте
     try:
+        # Инициализация Redis
+        await redis_manager.init_redis()
+        logger.info("✅ Redis инициализирован")
+
         # Инициализация базы данных
+        await init_db()
+        logger.info("✅ База данных инициалирована")
+
         # Инициализация сервиса уведомлений
         await initialize_notification_service(app)
-        logger.info("✅ Сервис уведомлений инициализирована")
-
-        logger.info("🎉 Приложение успешно запущено!")
-        await init_db()
-        logger.info("✅ База данных инициализирована")
+        logger.info("✅ Сервис уведомлений инициализирован")
 
         # Создание директорий для файлов
         get_upload_dir()
@@ -50,7 +54,7 @@ async def lifespan(app: FastAPI):
         logger.info("🎉 Приложение успешно запущено!")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при запуске приложения: {e}")
+        logger.critical(f"❌ Ошибка при запуске приложения: {e}", exc_info=True)
         raise
 
     yield
@@ -62,6 +66,10 @@ async def lifespan(app: FastAPI):
         # Закрытие соединений
         await close_db()
         logger.info("✅ База данных отключена")
+
+        # Закрытие соединений Redis
+        await redis_manager.close_redis()
+        logger.info("✅ Redis отключен")
 
         logger.info("👋 Приложение завершено")
 

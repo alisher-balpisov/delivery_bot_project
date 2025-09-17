@@ -47,6 +47,16 @@ class DatabaseConfig(BaseModel):
         }
 
 
+class RedisConfig(BaseModel):
+    """Конфигурация Redis."""
+
+    host: str = "localhost"
+    port: int = 6379
+    db: int = 0
+    password: SecretStr | None = None
+    default_ttl_seconds: int = 900  # 15 минут
+
+
 class MiddlewareConfig(BaseModel):
     allow_credentials: bool = True
     allow_methods: list[str] = ["*"]
@@ -132,6 +142,7 @@ class LoggingConfig(BaseModel):
 class BusinessConfig(BaseModel):
     """Бизнес-правила и ограничения."""
 
+    registration_max_attempts: int = 3  # Максимальное кол-во попыток ввода кода
     max_orders_per_courier: int = 5  # Максимум заказов на курьера
     courier_inactive_timeout: int = 3600  # Время бездействия курьера (сек)
     order_auto_cancel_timeout: int = 1800  # Таймаут автоотмены заказа
@@ -175,6 +186,7 @@ class Settings(BaseSettings):
 
     # Вложенные конфиги
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    redis: RedisConfig = Field(default_factory=RedisConfig)
     middleware: MiddlewareConfig = Field(default_factory=MiddlewareConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     file_storage: FileStorageConfig = Field(default_factory=FileStorageConfig)
@@ -263,6 +275,7 @@ __all__ = [
     "DatabaseConfig",
     "FileStorageConfig",
     "LoggingConfig",
+    "RedisConfig",
     "Settings",
     "TelegramConfig",
     "get_bot_token",

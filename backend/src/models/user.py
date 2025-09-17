@@ -34,8 +34,8 @@ class User(Base):
     # Используем native_enum=False для совместимости с существующими данными в БД
     role = Column(Enum(UserRole, native_enum=False), default=UserRole.PENDING, nullable=False)
 
-    # Для логики блокировки при неверном вводе кода
-    login_attempts = Column(Integer, default=0, nullable=False)
+    # Поле is_blocked используется для ручной блокировки администратором.
+    # Временная блокировка при неверном вводе кода управляется через Redis.
     is_blocked = Column(Boolean, default=False, nullable=False)
 
     is_active = Column(Boolean, default=True, nullable=False)

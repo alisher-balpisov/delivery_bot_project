@@ -42,17 +42,27 @@ async def handle_registration_success(
 
 
 async def handle_registration_failure(
-    message: Message, state: FSMContext, result_data: dict | None
+    message: Message, state: FSMContext, result_detail: dict | str | None
 ) -> None:
-    """Обрабатывает неудачную регистрацию на основе данных ответа."""
-    if result_data and result_data.get("blocked"):
-        await message.answer(AuthMessages.BLOCKED)
-        await state.clear()
-    elif result_data and "attempts_left" in result_data:
-        attempts = result_data.get("attempts_left", 0)
-        await message.answer(AuthMessages.INVALID_CODE_ATTEMPTS.format(attempts))
-    else:
-        await message.answer(AuthMessages.INVALID_CODE)
+    """
+    Обрабатывает неудачную регистрацию на основе данных из поля 'detail' ответа API.
+    """
+    # Если detail - это словарь, ищем в нем информацию о блокировке или попытках
+    if isinstance(result_detail, dict):
+        if result_detail.get("blocked"):
+            await message.answer(AuthMessages.BLOCKED)
+            # При блокировке состояние не очищаем, чтобы пользователь не мог сразу попробовать снова
+            return
+        elif "attempts_left" in result_detail:
+            attempts = result_detail.get("attempts_left", 0)
+            await message.answer(AuthMessages.INVALID_CODE_ATTEMPTS.format(attempts))
+            return
+
+    # Если detail - строка или словарь без нужных ключей, показываем общую ошибку
+    logger.warning(
+        f"Регистрация не удалась. Detail от API: {result_detail} для {message.from_user.id}"
+    )
+    await message.answer(AuthMessages.INVALID_CODE)
 
 
 async def handle_authenticated_user(
