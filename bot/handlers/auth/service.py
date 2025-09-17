@@ -16,13 +16,13 @@ from bot.utils import parse_user_role
 logger = get_logger(__name__)
 
 
-async def _update_user_state(state: FSMContext, user_info: dict) -> UserDTO:
+async def _update_user_state(state: FSMContext, user_info: dict, telegram_id: int) -> UserDTO:
     """Обновляет состояние FSM данными пользователя из словаря и возвращает DTO."""
     role = parse_user_role(user_info.get("role", UserRole.GUEST.value))
     user_dto = UserDTO(
         user_id=user_info.get("id"),
         name=user_info.get("name", ""),
-        telegram_id=user_info.get("telegram_id"),
+        telegram_id=telegram_id,
         role=role,
     )
     await state.update_data(user=user_dto.model_dump())
@@ -30,9 +30,11 @@ async def _update_user_state(state: FSMContext, user_info: dict) -> UserDTO:
     return user_dto
 
 
-async def handle_registration_success(message: Message, state: FSMContext, user_info: dict) -> None:
+async def handle_registration_success(
+    message: Message, state: FSMContext, user_info: dict, telegram_id: int
+) -> None:
     """Обрабатывает успешную регистрацию."""
-    user_dto = await _update_user_state(state, user_info)
+    user_dto = await _update_user_state(state, user_info, telegram_id)
     role_emoji = ROLE_EMOJI_MAP.get(user_dto.role, "")
     text = AuthMessages.SUCCESS.format(role_emoji)
     await message.answer(text, parse_mode=ParseMode.HTML)
@@ -66,7 +68,8 @@ async def handle_authenticated_user(
     else:
         await message.answer(AuthMessages.WELCOME_AUTHENTICATED)
 
-    await _update_user_state(state, user_profile)
+    telegram_id = user_profile.get("telegram_id") or message.from_user.id
+    await _update_user_state(state, user_profile, telegram_id)
 
 
 async def get_user_stats_text(telegram_id: int, users_client: UsersClient) -> str:

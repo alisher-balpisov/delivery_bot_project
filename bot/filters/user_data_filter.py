@@ -25,10 +25,9 @@ class UserDataFilter(BaseFilter):
         users_client: UsersClient,
     ) -> dict[str, Any]:  # Фильтр должен возвращать словарь
         from_user: User | None = None
-        if isinstance(event, (Message, CallbackQuery)) and event.from_user:
+        if isinstance(event, Message | CallbackQuery) and event.from_user:
             from_user = event.from_user
 
-        # Если событие не от пользователя, возвращаем DTO по умолчанию
         if not from_user:
             return {"user": UserDTO(telegram_id=0, role=UserRole.GUEST)}
 
@@ -45,7 +44,6 @@ class UserDataFilter(BaseFilter):
         if not user_dto:
             user_dto = await self._restore_user_data(state, telegram_id, users_client)
 
-        # --- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ ---
         # Возвращаем словарь. Aiogram смерджит его с основным data.
         return {"user": user_dto}
 
@@ -55,7 +53,6 @@ class UserDataFilter(BaseFilter):
         telegram_id: int,
         users_client: UsersClient,
     ) -> UserDTO:
-        # Этот метод остается без изменений
         try:
             user_profile_result: RequestResult = await users_client.get_user_profile(telegram_id)
             if user_profile_result.success and isinstance(user_profile_result.data, dict):

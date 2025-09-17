@@ -12,7 +12,6 @@ public_router = Router(name="public_handlers")
 @public_router.message(Command("help"))
 async def help_handler(message: Message, user: UserDTO):
     """Показать доступные команды."""
-    print(user)
     help_text = service.generate_help_text(user.role)
     await message.answer(help_text)
 

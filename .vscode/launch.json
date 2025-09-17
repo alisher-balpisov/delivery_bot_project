@@ -1,19 +1,27 @@
 {
+    // Версия схемы конфигурации отладки VS Code
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Отладчик Python: FastAPI",
+            // Конфигурация для отладки FastAPI в режиме разработки с автоперезагрузкой
+            "name": "Отладчик Python: FastAPI (Разработка)",
             "type": "debugpy",
             "request": "launch",
             "module": "uvicorn",
             "args": [
-                "src.main:app",
-                "--reload"
+                "backend.src.main:app",
+                "--reload",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000"
             ],
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/backend"
-            },
-            "jinja": true
-        }
+            "cwd": "${workspaceFolder}", // Установка рабочей директории в корень проекта
+            "jinja": true,
+            // Оптимизация: отлаживать только пользовательский код для повышения производительности
+            "justMyCode": true,
+            // Показывать возвращаемые значения функций для лучшей отладки
+            "showReturnValue": true,
+        },
     ]
 }

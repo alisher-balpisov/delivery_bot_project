@@ -88,47 +88,25 @@ async def admin_view_codes_handler(
 async def system_stats_handler(
     event: Message | CallbackQuery, admin_client: AdminClient, user: UserDTO
 ) -> None:
-    """Отображает системную статистику..."""
+    """
+    Отображает системную статистику для администратора.
+
+    Обрабатывает как команды сообщений, так и callback запросы.
+    Для callback проверяет наличие связанного сообщения.
+    """
+    telegram_id = user.telegram_id
+    logger.info(f"Обработка запроса системной статистики от пользователя {telegram_id}")
+
     try:
-        logger.info(f"Обработка запроса системной статистики от пользователя {user.telegram_id}")
-
-        is_callback = isinstance(event, CallbackQuery)
-
-        if is_callback:
-            if event.message is None:
-                logger.warning(
-                    f"Получена CallbackQuery без связанного сообщения для пользователя {user.telegram_id}. "
-                    "Возможно, сообщение было удалено или callback относится к inline сообщению."
-                )
-                await event.answer()
-                return
-            await service._send_system_stats(
-                event.message, user.telegram_id, admin_client, edit=True
-            )
-            await event.answer()
+        if isinstance(event, CallbackQuery):
+            await service._handle_callback_stats(event, telegram_id, admin_client)
         else:
-            await service._send_system_stats(event, user.telegram_id, admin_client, edit=False)
+            await service._handle_message_stats(event, telegram_id, admin_client)
 
-        logger.info(f"Успешно отправлена системная статистика пользователю {user.telegram_id}")
+        logger.info(f"Успешно отправлена системная статистика пользователю {telegram_id}")
 
     except Exception as e:
-        logger.error(
-            f"Ошибка в system_stats_handler для пользователя {user.telegram_id}: {e}", exc_info=True
-        )
-        # Отправка сообщения об ошибке
-        error_message = "Произошла ошибка при получении статистики. Попробуйте позже."
-        try:
-            if isinstance(event, CallbackQuery) and event.message:
-                await event.message.answer(error_message)
-            elif isinstance(event, Message):
-                await event.answer(error_message)
-        except Exception as inner_e:
-            logger.error(
-                f"Не удалось отправить сообщение об ошибке пользователю {user.telegram_id}: {inner_e}"
-            )
-
-        if isinstance(event, CallbackQuery):
-            await event.answer()
+        await service._handle_stats_error(event, telegram_id, e)
 
 
 @admin_router.message(Command("broadcast"))

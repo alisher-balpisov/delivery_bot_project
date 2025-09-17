@@ -1,17 +1,264 @@
+aiofiles==24.1.0
 aiogram==3.22.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.12.15
+aiosignal==1.4.0
 aiosqlite==0.21.0
+annotated-types==0.7.0
+anyio==4.10.0
 asyncpg==0.30.0
-fastapi==0.116.1
+attrs==25.3.0
+certifi==2025.8.3
+click==8.2.1
+deprecated==1.2.18
+dotenv==0.9.9
+fastapi==0.116.2
+frozenlist==1.7.0
+h11==0.16.0
+httpcore==1.0.9
 httpx==0.28.1
-jose==1.0.0
-jwt==1.4.0
-passlib==1.7.4
+idna==3.10
+limits==5.5.0
+magic-filter==1.0.12
+multidict==6.6.4
+packaging==25.0
+propcache==0.3.2
 psutil==7.0.0
-pydantic==2.11.7
+psycopg2-binary==2.9.10
+pydantic==2.11.9
+pydantic-core==2.33.2
 pydantic-settings==2.10.1
-python-jose==3.5.0
+python-dotenv==1.1.1
 slowapi==0.1.9
+sniffio==1.3.1
 sqlalchemy==2.0.43
+starlette==0.48.0
+typing-extensions==4.15.0
+typing-inspection==0.4.1
 uvicorn==0.35.0
-zxcvbn==4.5.0
-ruff==0.12.12
+watchfiles==1.1.0
+wrapt==1.17.3
+yarl==1.20.1architecture-beta
+    %% Top level groups
+    group bot_layer(logos:aws-ec2)[Bot Layer]
+    group clients_layer(mdi:api)[Clients Layer]
+    group backend_layer(logos:aws-ec2)[Backend Layer]
+    group external_layer(mdi:cloud)[External Services]
+
+    %% Services in Bot Layer
+    service bot_process(logos:aws-ec2)[Telegram Bot Process] in bot_layer
+    service dispatcher_service(logos:aws-ec2)[Dispatcher] in bot_layer
+    service memory_storage(mdi:disk)[Memory Storage] in bot_layer
+    service auth_router(mdi:api)[Auth Router] in bot_layer
+    service orders_router(mdi:api)[Orders Router] in bot_layer
+    service protected_router(mdi:api)[Protected Router] in bot_layer
+    service public_router(mdi:api)[Public Router] in bot_layer
+
+    %% Services in Clients Layer
+    service connection_pool(logos:aws-ec2)[Connection Pool] in clients_layer
+    service client_manager(logos:aws-ec2)[Client Manager] in clients_layer
+    service admin_client(mdi:api)[Admin Client] in clients_layer
+    service auth_client(mdi:api)[Auth Client] in clients_layer
+    service disputes_client(mdi:api)[Disputes Client] in clients_layer
+    service notifications_client(mdi:api)[Notifications Client] in clients_layer
+    service orders_client(mdi:api)[Orders Client] in clients_layer
+    service system_client(mdi:api)[System Client] in clients_layer
+    service users_client(mdi:api)[Users Client] in clients_layer
+
+    %% Services in Backend Layer
+    service backend_api(logos:aws-ec2)[Backend API] in backend_layer
+    service config_service(mdi:server)[Config Service] in backend_layer
+    service logging_service(logos:aws-cloudwatch)[Logging Service] in backend_layer
+    service enums_service(mdi:server)[Common Enums] in backend_layer
+
+    %% Services in External Layer
+    service telegram_api(mdi:cloud)[Telegram API] in external_layer
+
+    %% Connections (horizontal preference)
+    telegram_api:R --> L:bot_process
+
+    bot_process:R --> L:dispatcher_service
+    memory_storage:R --> L:dispatcher_service
+
+    dispatcher_service:R --> L:auth_router
+    dispatcher_service:R --> L:orders_router
+    dispatcher_service:R --> L:protected_router
+    dispatcher_service:R --> L:public_router
+
+    %% Routers use clients (essential connections only)
+    auth_router:R --> L:auth_client
+    orders_router:R --> L:orders_client
+    protected_router:R --> L:users_client
+    public_router:R --> L:notifications_client
+
+    %% Client Manager and pool
+    connection_pool:R --> L:client_manager
+    client_manager:R --> L:admin_client
+    client_manager:R --> L:auth_client
+    client_manager:R --> L:disputes_client
+    client_manager:R --> L:notifications_client
+    client_manager:R --> L:orders_client
+    client_manager:R --> L:system_client
+    client_manager:R --> L:users_client
+
+    %% Clients call backend API
+    admin_client:R --> L:backend_api
+    auth_client:R --> L:backend_api
+    disputes_client:R --> L:backend_api
+    notifications_client:R --> L:backend_api
+    orders_client:R --> L:backend_api
+    system_client:R --> L:backend_api
+    users_client:R --> L:backend_api
+
+    %% Backend internal dependencies
+    logging_service:R --> L:backend_api
+    config_service:R --> L:backend_api
+    enums_service:R --> L:backend_api    architecture-beta
+        %% Top level groups
+        group bot_layer(logos:aws-ec2)[Bot Layer]
+        group clients_layer(mdi:api)[Clients Layer]
+        group backend_layer(logos:aws-ec2)[Backend Layer]
+        group external_layer(mdi:cloud)[External Services]
+    
+        %% Services in Bot Layer
+        service bot_process(logos:aws-ec2)[Telegram Bot Process] in bot_layer
+        service dispatcher_service(logos:aws-ec2)[Dispatcher] in bot_layer
+        service memory_storage(mdi:disk)[Memory Storage] in bot_layer
+        service auth_router(mdi:api)[Auth Router] in bot_layer
+        service orders_router(mdi:api)[Orders Router] in bot_layer
+        service protected_router(mdi:api)[Protected Router] in bot_layer
+        service public_router(mdi:api)[Public Router] in bot_layer
+    
+        %% Services in Clients Layer
+        service connection_pool(logos:aws-ec2)[Connection Pool] in clients_layer
+        service client_manager(logos:aws-ec2)[Client Manager] in clients_layer
+        service admin_client(mdi:api)[Admin Client] in clients_layer
+        service auth_client(mdi:api)[Auth Client] in clients_layer
+        service disputes_client(mdi:api)[Disputes Client] in clients_layer
+        service notifications_client(mdi:api)[Notifications Client] in clients_layer
+        service orders_client(mdi:api)[Orders Client] in clients_layer
+        service system_client(mdi:api)[System Client] in clients_layer
+        service users_client(mdi:api)[Users Client] in clients_layer
+    
+        %% Services in Backend Layer
+        service backend_api(logos:aws-ec2)[Backend API] in backend_layer
+        service config_service(mdi:server)[Config Service] in backend_layer
+        service logging_service(logos:aws-cloudwatch)[Logging Service] in backend_layer
+        service enums_service(mdi:server)[Common Enums] in backend_layer
+    
+        %% Services in External Layer
+        service telegram_api(mdi:cloud)[Telegram API] in external_layer
+    
+        %% Connections (horizontal preference)
+        telegram_api:R --> L:bot_process
+    
+        bot_process:R --> L:dispatcher_service
+        memory_storage:R --> L:dispatcher_service
+    
+        dispatcher_service:R --> L:auth_router
+        dispatcher_service:R --> L:orders_router
+        dispatcher_service:R --> L:protected_router
+        dispatcher_service:R --> L:public_router
+    
+        %% Routers use clients (essential connections only)
+        auth_router:R --> L:auth_client
+        orders_router:R --> L:orders_client
+        protected_router:R --> L:users_client
+        public_router:R --> L:notifications_client
+    
+        %% Client Manager and pool
+        connection_pool:R --> L:client_manager
+        client_manager:R --> L:admin_client
+        client_manager:R --> L:auth_client
+        client_manager:R --> L:disputes_client
+        client_manager:R --> L:notifications_client
+        client_manager:R --> L:orders_client
+        client_manager:R --> L:system_client
+        client_manager:R --> L:users_client
+    
+        %% Clients call backend API
+        admin_client:R --> L:backend_api
+        auth_client:R --> L:backend_api
+        disputes_client:R --> L:backend_api
+        notifications_client:R --> L:backend_api
+        orders_client:R --> L:backend_api
+        system_client:R --> L:backend_api
+        users_client:R --> L:backend_api
+    
+        %% Backend internal dependencies
+        logging_service:R --> L:backend_api
+        config_service:R --> L:backend_api
+        enums_service:R --> L:backend_api
+
+"""
+delivery-bot v0.1.0
+├── aiogram v3.22.0
+│   ├── aiofiles v24.1.0
+│   ├── aiohttp v3.12.15
+│   │   ├── aiohappyeyeballs v2.6.1
+│   │   ├── aiosignal v1.4.0
+│   │   │   └── frozenlist v1.7.0
+│   │   ├── attrs v25.3.0
+│   │   ├── frozenlist v1.7.0
+│   │   ├── multidict v6.6.4
+│   │   ├── propcache v0.3.2
+│   │   └── yarl v1.20.1
+│   │       ├── idna v3.10
+│   │       ├── multidict v6.6.4
+│   │       └── propcache v0.3.2
+│   ├── certifi v2025.8.3
+│   ├── magic-filter v1.0.12
+│   ├── pydantic v2.11.9
+│   │   ├── annotated-types v0.7.0
+│   │   ├── pydantic-core v2.33.2
+│   │   │   └── typing-extensions v4.15.0
+│   │   ├── typing-extensions v4.15.0
+│   │   └── typing-inspection v0.4.1
+│   │       └── typing-extensions v4.15.0
+│   └── typing-extensions v4.15.0
+├── aiosqlite v0.21.0
+│   └── typing-extensions v4.15.0
+├── asyncpg v0.30.0
+├── dotenv v0.9.9
+│   └── python-dotenv v1.1.1
+├── fastapi v0.116.2
+│   ├── pydantic v2.11.9 (*)
+│   ├── starlette v0.48.0
+│   │   └── anyio v4.10.0
+│   │       ├── idna v3.10
+│   │       └── sniffio v1.3.1
+│   └── typing-extensions v4.15.0
+├── httpx v0.28.1
+│   ├── anyio v4.10.0 (*)
+│   ├── certifi v2025.8.3
+│   ├── httpcore v1.0.9
+│   │   ├── certifi v2025.8.3
+│   │   └── h11 v0.16.0
+│   └── idna v3.10
+├── psutil v7.0.0
+├── psycopg2-binary v2.9.10
+├── pydantic v2.11.9 (*)
+├── pydantic-settings v2.10.1
+│   ├── pydantic v2.11.9 (*)
+│   ├── python-dotenv v1.1.1
+│   └── typing-inspection v0.4.1 (*)
+├── slowapi v0.1.9
+│   └── limits v5.5.0
+│       ├── deprecated v1.2.18
+│       │   └── wrapt v1.17.3
+│       ├── packaging v25.0
+│       └── typing-extensions v4.15.0
+├── sqlalchemy v2.0.43
+│   └── typing-extensions v4.15.0
+├── uvicorn v0.35.0
+│   ├── click v8.2.1
+│   └── h11 v0.16.0
+├── watchfiles v1.1.0
+│   └── anyio v4.10.0 (*)
+├── pytest v8.4.2 (extra: dev)
+│   ├── iniconfig v2.1.0
+│   ├── packaging v25.0
+│   ├── pluggy v1.6.0
+│   └── pygments v2.19.2
+└── ruff v0.13.0 (extra: dev)
+"""

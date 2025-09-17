@@ -35,7 +35,6 @@ async def auth_by_code(db: AsyncSession, telegram_id: int, code: str):
         registration_code.user_id = user.id
 
         await db.commit()
-        # TODO: Возвращать JWT токен
         return {"success": True, "user": {"id": user.id, "role": user.role}}
     else:
         if not user:

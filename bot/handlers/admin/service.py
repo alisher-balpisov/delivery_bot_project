@@ -2,7 +2,7 @@ import asyncio
 from typing import Any
 
 import httpx
-from aiogram.types import InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
@@ -116,3 +116,75 @@ async def _send_system_stats(
         await message.edit_text(response_text)
     else:
         await message.answer(response_text)
+
+
+async def _handle_callback_stats(
+    callback: CallbackQuery, telegram_id: int, admin_client: AdminClient
+) -> None:
+    """
+    Обрабатывает запрос статистики через callback.
+
+    Args:
+        callback: Объект callback запроса
+        telegram_id: ID пользователя в Telegram
+        admin_client: Клиент для API администратора
+    """
+    # Guard clause: проверка на отсутствие сообщения
+    if callback.message is None:
+        logger.warning(
+            f"CallbackQuery без связанного сообщения для пользователя {telegram_id}. "
+            "Возможно, сообщение было удалено или callback относится к inline сообщению."
+        )
+        await callback.answer()
+        return
+
+    await _send_system_stats(callback.message, telegram_id, admin_client, edit=True)
+    await callback.answer()
+
+
+async def _handle_message_stats(
+    message: Message, telegram_id: int, admin_client: AdminClient
+) -> None:
+    """
+    Обрабатывает запрос статистики через сообщение.
+
+    Args:
+        message: Объект сообщения
+        telegram_id: ID пользователя в Telegram
+        admin_client: Клиент для API администратора
+    """
+    await _send_system_stats(message, telegram_id, admin_client, edit=False)
+
+
+async def _handle_stats_error(
+    event: Message | CallbackQuery, telegram_id: int, error: Exception
+) -> None:
+    """
+    Обрабатывает ошибки при получении статистики.
+
+    Args:
+        event: Объект события (Message или CallbackQuery)
+        telegram_id: ID пользователя в Telegram
+        error: Исключение, которое произошло
+    """
+    from bot.errors import ErrorMessages
+
+    logger.error(
+        f"Ошибка в system_stats_handler для пользователя {telegram_id}: {error}", exc_info=True
+    )
+
+    error_message = ErrorMessages.Stats.STATS_RETRIEVAL_ERROR
+
+    try:
+        if isinstance(event, CallbackQuery) and event.message:
+            await event.message.answer(error_message)
+        elif isinstance(event, Message):
+            await event.answer(error_message)
+    except Exception as inner_error:
+        logger.error(
+            f"Не удалось отправить сообщение об ошибке пользователю {telegram_id}: {inner_error}"
+        )
+    finally:
+        # Гарантированное выполнение для callback
+        if isinstance(event, CallbackQuery):
+            await event.answer()

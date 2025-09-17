@@ -23,8 +23,26 @@ async def start_handler(
     message: Message,
     state: FSMContext,
     user: UserDTO,
+    users_client: UsersClient,
 ) -> None:
     """Обработчик команды /start."""
+    user_profile_result = await users_client.get_user_profile(message.from_user.id)
+
+    if user_profile_result.success and isinstance(user_profile_result.data, dict):
+        user_profile = user_profile_result.data
+        user = UserDTO(
+            user_id=user_profile.get("id"),
+            telegram_id=user_profile.get("telegram_id", message.from_user.id),
+            name=user_profile.get("name"),
+            role=UserRole(user_profile.get("role", UserRole.GUEST.value)),
+        )
+        await state.update_data(user=user.model_dump())
+    else:
+        # Если профиль не найден, создаем гостя и чистим состояние
+        user = UserDTO(telegram_id=message.from_user.id, role=UserRole.GUEST)
+        await state.clear()
+        await state.update_data(user=user.model_dump())
+
     if user.role != UserRole.GUEST:
         user_profile_data = {
             "id": user.user_id,
@@ -61,18 +79,23 @@ async def register_code_handler(
     telegram_id = message.from_user.id
     code = (message.text or "").strip()
     loading_msg = await message.answer(AuthMessages.CHECKING_CODE)
+    deleted = False
 
     try:
         result = await auth_client.auth_by_code(telegram_id, code)
         await loading_msg.delete()
+        deleted = True
 
-        if result.success and isinstance(result.data, dict) and result.data.get("success"):
-            await service.handle_registration_success(message, state, result.data.get("user", {}))
+        if result.success and isinstance(result.data, dict):
+            await service.handle_registration_success(
+                message, state, result.data.get("user", {}), telegram_id
+            )
         else:
             # result.data может содержать детали ошибки, такие как attempts_left
             await service.handle_registration_failure(message, state, result.data)
     except Exception as e:
-        await loading_msg.delete()
+        if not deleted:
+            await loading_msg.delete()
         logger.error(
             AuthServiceMessages.REGISTRATION_CRITICAL_ERROR.format(telegram_id, e),
             exc_info=True,

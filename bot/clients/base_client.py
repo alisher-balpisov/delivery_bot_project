@@ -185,7 +185,7 @@ class BaseApiClient:
 
     def _should_retry_on_exception(self, exc: Exception) -> bool:
         """Определяет, нужно ли повторять запрос при исключении."""
-        return isinstance(exc, (httpx.TimeoutException, httpx.RequestError))
+        return isinstance(exc, httpx.TimeoutException | httpx.RequestError)
 
     async def _handle_retry_exception(
         self, exc: Exception, endpoint: str, attempt: int, retry_count: int
