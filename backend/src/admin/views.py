@@ -46,30 +46,6 @@ async def create_registration_code(
         )
 
 
-# Temporary endpoint for initial setup - remove after first admin is registered
-@router.post("/setup-code/{role}", response_model=RegistrationCodeResponse, status_code=201)
-async def create_initial_registration_code(role: UserRole, db: AsyncSession = Depends(get_db)):
-    """
-    Temporary endpoint for creating registration codes during initial setup.
-    Allows creating codes without authentication. Remove after first admin registration.
-    """
-    # Check that role is valid
-    if role not in [UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER]:
-        raise HTTPException(
-            status_code=400, detail="Invalid role. Use 'courier', 'shop', or 'admin'"
-        )
-
-    logger.info(f"Creating initial {role.value} registration code (temporary endpoint)")
-
-    try:
-        new_code = await admin_service.generate_registration_code(db=db, role=role)
-        logger.info(f"Initial {role} registration code created successfully")
-        return new_code
-    except Exception as e:
-        logger.error(f"Failed to create initial {role} code: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate code for {role}: {e!s}")
-
-
 @router.get("/registration-codes", response_model=list[RegistrationCodeResponse])
 async def get_all_registration_codes(
     current_user=Depends(require_role(UserRole.ADMIN)), db: AsyncSession = Depends(get_db)

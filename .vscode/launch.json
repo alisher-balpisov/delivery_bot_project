@@ -23,5 +23,24 @@
             // Показывать возвращаемые значения функций для лучшей отладки
             "showReturnValue": true,
         },
+        {
+            "name": "Telegram Bot",
+            "type": "python",
+            "request": "launch",
+            "module": "run_bot",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+        }
+    ],
+    "compounds": [
+        {
+            "name": "FastAPI + Telegram Bot",
+            "configurations": [
+                "Отладчик Python: FastAPI (Разработка)",
+                "Telegram Bot"
+            ],
+            "stopAll": true
+        }
     ]
 }

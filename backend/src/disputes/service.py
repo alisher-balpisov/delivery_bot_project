@@ -52,7 +52,7 @@ async def create_dispute(db: AsyncSession, dispute_data: DisputeCreate) -> Dispu
         await db.commit()
         await db.refresh(new_dispute)
         logger.info(f"Спор успешно создан с ID {new_dispute.id}")
-        return DisputeRead.from_orm(new_dispute)
+        return DisputeRead.model_validate(new_dispute)
     except Exception as e:
         logger.error(f"Ошибка при создании спора: {e}")
         raise
@@ -77,7 +77,7 @@ async def get_dispute_by_id(db: AsyncSession, dispute_id: int) -> DisputeRead | 
     dispute = await db.get(Dispute, dispute_id)
     if dispute:
         logger.info(f"Спор найден: order_id={dispute.order_id}, status={dispute.status}")
-        return DisputeRead.from_orm(dispute)
+        return DisputeRead.model_validate(dispute)
     else:
         logger.warning(f"Спор ID {dispute_id} не найден.")
     return None
@@ -101,7 +101,7 @@ async def update_dispute(
     logger = get_logger(__name__)
 
     logger.info(
-        f"Обновление спора ID {dispute_id} с данными: {update_data.dict(exclude_unset=True)}"
+        f"Обновление спора ID {dispute_id} с данными: {update_data.model_dump(exclude_unset=True)}"
     )
 
     dispute = await db.get(Dispute, dispute_id)
@@ -111,7 +111,7 @@ async def update_dispute(
 
     logger.info(f"Найден спор: status={dispute.status}, created_by={dispute.created_by_role}")
 
-    update_data_dict = update_data.dict(exclude_unset=True)
+    update_data_dict = update_data.model_dump(exclude_unset=True)
     logger.info(f"Поля для обновления: {update_data_dict}")
 
     for key, value in update_data_dict.items():
@@ -123,7 +123,7 @@ async def update_dispute(
         await db.commit()
         await db.refresh(dispute)
         logger.info(f"Спор ID {dispute_id} успешно обновлен.")
-        return DisputeRead.from_orm(dispute)
+        return DisputeRead.model_validate(dispute)
     except Exception as e:
         logger.error(f"Ошибка при обновлении спора ID {dispute_id}: {e}")
         raise

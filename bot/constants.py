@@ -30,19 +30,27 @@ error_map = {
     404: "Ресурс не найден",
 }
 
-# Команды по ролям
+
 ROLE_COMMANDS: dict[str, dict[str, any]] = {
-    UserRole.ADMIN.value: {
+    UserRole.GUEST: {
+        "icon": ROLE_EMOJI_MAP[UserRole.GUEST],
+        "title": "Гость:",
+        "commands": [
+            "/start - авторизация\n",
+            "/register - регистрация",
+        ],
+    },
+    UserRole.ADMIN: {
         "icon": ROLE_EMOJI_MAP[UserRole.ADMIN],
-        "title": "Команды администратора:",
+        "title": "Администратор:",
         "commands": [
             "/admin - Панель администратора\n",
             "/system_stats - Системная статистика\n",
             "/broadcast - Массовая рассылка\n",
-            "/test_api - Тест соединения с API\n",
+            "/test_api - Тест соединения с API",
         ],
     },
-    UserRole.SHOP.value: {
+    UserRole.SHOP: {
         "icon": ROLE_EMOJI_MAP[UserRole.SHOP],
         "title": "Магазин:",
         "commands": [
@@ -52,7 +60,7 @@ ROLE_COMMANDS: dict[str, dict[str, any]] = {
             "/dispute - открыть спор",
         ],
     },
-    UserRole.COURIER.value: {
+    UserRole.COURIER: {
         "icon": ROLE_EMOJI_MAP[UserRole.COURIER],
         "title": "Курьер:",
         "commands": [

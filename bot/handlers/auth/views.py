@@ -7,7 +7,7 @@ from backend.src.core.logging import get_logger
 from bot.clients.auth_client import AuthClient
 from bot.clients.users_client import UsersClient
 from bot.dto import UserDTO
-from bot.errors import ErrorMessages
+from bot.filters.filters import IsAuthenticatedFilter
 from bot.handlers.states import RegistrationStates
 from bot.messages import AuthMessages, AuthServiceMessages
 
@@ -104,27 +104,17 @@ async def register_code_handler(
         await loading_msg.delete()
 
 
-@auth_router.message(Command("me"))
+@auth_router.message(Command("me"), IsAuthenticatedFilter())
 async def user_stats_handler(message: Message, user: UserDTO, users_client: UsersClient):
     """Получить статистику пользователя (требует авторизации)."""
-    if user.role == UserRole.GUEST:
-        await message.answer(ErrorMessages.Auth.FORBIDDEN)
-        return
-
-    await message.answer(AuthMessages.ME_LOADING)
     response_text = await service.get_user_stats_text(user.telegram_id, users_client)
     await message.answer(response_text)
 
 
-@auth_router.message(Command("logout"))
+@auth_router.message(Command("logout"), IsAuthenticatedFilter())
 async def logout_handler(message: Message, state: FSMContext, user: UserDTO):
     """Обработчик команды /logout."""
-    if user.role == UserRole.GUEST:
-        await message.answer(AuthMessages.NOT_LOGGED_IN)
-        return
-
     await state.clear()
-    # Установим дефолтного пользователя-гостя после выхода
     guest_dto = UserDTO(telegram_id=user.telegram_id, role=UserRole.GUEST)
     await state.update_data(user=guest_dto.model_dump())
     await message.answer(AuthMessages.LOGOUT_SUCCESS)

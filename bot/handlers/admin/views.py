@@ -4,10 +4,11 @@ from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
+from bot.clients.system_client import SystemClient
 from bot.dto import UserDTO
 from bot.filters.filters import RoleFilter
 from bot.handlers.keyboards import get_back_to_menu_keyboard, get_role_selection_keyboard
-from bot.messages import AdminMessages
+from bot.messages import AdminMessages, CommonMessages
 
 from . import service
 
@@ -18,7 +19,7 @@ admin_router.callback_query.filter(RoleFilter(UserRole.ADMIN))
 logger = get_logger(__name__)
 
 
-@admin_router.message(Command(UserRole.ADMIN.value))
+@admin_router.message(Command("admin"))
 async def admin_handler(message: Message, user: UserDTO):
     """Отображает главное меню администратора."""
     text, keyboard = service.get_admin_menu()
@@ -113,3 +114,11 @@ async def system_stats_handler(
 async def broadcast_handler(message: Message):
     """Массовая рассылка (только для админов)."""
     await message.answer(AdminMessages.BROADCAST_IN_DEV)
+
+
+@admin_router.message(Command("test_api"))
+async def test_api_connection(message: Message, user: UserDTO, system_client: SystemClient):
+    """Тестирование соединения с API (требует авторизации)."""
+    await message.answer(CommonMessages.API_TESTING)
+    response_text = await service.get_api_status_text(system_client)
+    await message.answer(response_text)

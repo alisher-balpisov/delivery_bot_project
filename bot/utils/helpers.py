@@ -2,7 +2,6 @@ from typing import Any
 
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
-
 from bot.constants import MAX_MESSAGE_LENGTH, ROLE_EMOJI_MAP, STATS_EMOJIS
 from bot.errors import ErrorMessages
 from bot.messages import AdminServiceMessages
@@ -10,11 +9,16 @@ from bot.messages import AdminServiceMessages
 logger = get_logger(__name__)
 
 
-def parse_user_role(role_str: str) -> UserRole:
-    """Парсит строку роли в UserRole enum"""
+def parse_user_role(role: Any) -> UserRole:
+    """Безопасно парсит строку роли в UserRole enum, с fallback в GUEST."""
+    if not isinstance(role, str):
+        return UserRole.GUEST
     try:
-        return UserRole(role_str)
+        return UserRole(role)
     except ValueError:
+        logger.warning(
+            f"Получена неизвестная роль '{role!s}' от API.Устанавливается роль GUEST по умолчанию."
+        )
         return UserRole.GUEST
 
 

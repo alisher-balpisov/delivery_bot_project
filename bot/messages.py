@@ -122,7 +122,6 @@ class AuthMessages:
     INVALID_CODE = "Неверный код. Попробуйте еще раз."
     LOGOUT_SUCCESS = "✅ Вы успешно вышли из системы."
     NOT_LOGGED_IN = "Вы и так не авторизованы."
-    ME_LOADING = "📊 Получаю вашу статистику..."
     ME_STATS_TEMPLATE = (
         "📈 Ваша статистика:\n\n"
         "🆔 ID: {id}\n"

@@ -10,8 +10,6 @@ from backend.src.core.logging import get_logger, setup_logging
 
 from bot.clients import ClientManager
 from bot.clients.base_client import ConnectionPool
-
-# --- ИЗМЕНЕНИЕ ---
 from bot.filters.user_data_filter import UserDataFilter
 from bot.handlers import *
 
@@ -25,20 +23,15 @@ def create_bot(**kwargs) -> Bot:
 def create_dispatcher(storage, **kwargs) -> Dispatcher:
     dp = Dispatcher(storage=storage, **kwargs)
 
-    # Создаем экземпляр нашего фильтра-провайдера данных
     user_data_provider = UserDataFilter()
 
-    # --- КЛЮЧЕВОЕ ИЗМЕНЕНИЕ ---
-    # Применяем фильтр-провайдер ко всем роутерам, где нужны данные о пользователе.
-    # Он будет выполняться ПЕРЕД любыми другими фильтрами (например, RoleFilter).
     for router in [auth_router, protected_router, orders_router, public_router]:
         router.message.filter(user_data_provider)
         router.callback_query.filter(user_data_provider)
-    # --------------------------
 
     dp.include_router(auth_router)
-    dp.include_router(orders_router)
     dp.include_router(protected_router)
+    dp.include_router(orders_router)
     dp.include_router(public_router)
 
     async def on_unknown_error(event: ErrorEvent):
@@ -54,7 +47,6 @@ def create_dispatcher(storage, **kwargs) -> Dispatcher:
 
 @asynccontextmanager
 async def lifespan():
-    # ... (код этой функции не меняется)
     logger.info("🚀 Инициализация Telegram бота...")
     bot = None
     pool = ConnectionPool()
@@ -84,7 +76,6 @@ async def lifespan():
 
 
 async def run_polling(skip_updates: bool = True):
-    # ... (код этой функции не меняется)
     async with lifespan() as (bot, dp):
         logger.info("🔄 Запуск бота в режиме polling...")
         try:
@@ -102,7 +93,6 @@ async def run_polling(skip_updates: bool = True):
 
 
 def main():
-    # ... (код этой функции не меняется)
     setup_logging()
     try:
         asyncio.run(run_polling(skip_updates=settings.telegram.skip_updates))

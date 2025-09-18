@@ -13,10 +13,11 @@ def generate_help_text(role: UserRole) -> str:
         PublicMessages.MAIN_COMMANDS,
         PublicMessages.HELP_COMMAND,
     ]
+
     if role != UserRole.GUEST:
         lines.append(PublicMessages.ME_COMMAND)
 
-    role_config = ROLE_COMMANDS.get(role.value)
+    role_config = ROLE_COMMANDS.get(role)
     if role_config:
         lines.append(f"\n{role_config['icon']} {role_config['title']}")
         lines.extend(cmd.strip() for cmd in role_config["commands"])

@@ -12,9 +12,11 @@ from . import service
 
 logger = get_logger(__name__)
 courier_router = Router(name="courier_handlers")
+courier_router.message.filter(RoleFilter(UserRole.COURIER))
+courier_router.callback_query.filter(RoleFilter(UserRole.COURIER))
 
 
-@courier_router.message(Command("available_orders"), RoleFilter(UserRole.COURIER))
+@courier_router.message(Command("available_orders"))
 async def available_orders_handler(message: Message, orders_client: OrdersClient):
     """Показать доступные заказы для курьеров."""
     telegram_id = message.from_user.id
@@ -29,7 +31,7 @@ async def available_orders_handler(message: Message, orders_client: OrdersClient
         await message.answer(text, reply_markup=keyboard)
 
 
-@courier_router.callback_query(F.data.startswith("take_order_"), RoleFilter(UserRole.COURIER))
+@courier_router.callback_query(F.data.startswith("take_order_"))
 async def take_order_handler(callback: CallbackQuery, user: UserDTO, orders_client: OrdersClient):
     """Обработка принятия заказа курьером."""
     try:

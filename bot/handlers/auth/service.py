@@ -11,7 +11,7 @@ from bot.constants import ROLE_EMOJI_MAP
 from bot.dto import UserDTO
 from bot.errors import ErrorMessages
 from bot.messages import AuthMessages, AuthServiceMessages
-from bot.utils import parse_user_role
+from bot.utils.helpers import parse_user_role
 
 logger = get_logger(__name__)
 
