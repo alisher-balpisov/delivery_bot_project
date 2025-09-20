@@ -11,6 +11,6 @@ class UserDTO(BaseModel):
     model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     user_id: int | None = None
-    telegram_id: int
+    telegram_id: int | None
     name: str | None = None
     role: UserRole = UserRole.GUEST

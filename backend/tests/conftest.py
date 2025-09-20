@@ -4,12 +4,15 @@ import uuid
 
 import pytest
 from dotenv import load_dotenv
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from backend.src.auth.service import create_access_token
 from backend.src.common.enums import UserRole
-from backend.src.core.database import Base
+from backend.src.core.database import Base, get_db
+from backend.src.main import app
 from backend.src.models.user import User
 
 # In-memory SQLite database for tests
@@ -34,12 +37,9 @@ async def test_engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
     yield engine
-
     await engine.dispose()
 
 
@@ -59,91 +59,26 @@ async def db_session(test_session_factory):
 
 @pytest.fixture
 async def client(test_session_factory):
-    from backend.src.api.deps import get_db as deps_get_db
+    """Create a non-authenticated test client."""
 
-    """Create test client."""
-    from httpx import ASGITransport, AsyncClient
-
-    from backend.src.core.database import get_db
-
-    from ..src.main import app
-
-    # Override database dependency to use test session
     async def override_get_db():
         async with test_session_factory() as session:
-            try:
-                yield session
-            except Exception:
-                await session.rollback()
-                raise
+            yield session
 
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[deps_get_db] = override_get_db
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
-    # Clean up overrides after test
-    try:
-        if deps_get_db in app.dependency_overrides:
-            del app.dependency_overrides[deps_get_db]
-    except KeyError:
-        pass
-    try:
-        if get_db in app.dependency_overrides:
-            del app.dependency_overrides[get_db]
-    except KeyError:
-        pass
+    del app.dependency_overrides[get_db]
 
 
 @pytest.fixture
-async def test_user(db_session):
-    """Create test user."""
-    from sqlalchemy import select
-
-    # Generate unique email to avoid conflicts
-    unique_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
-
-    # Check if user already exists
-    stmt = select(User).where(User.email == unique_email)
-    result = await db_session.execute(stmt)
-    existing_user = result.scalar_one_or_none()
-
-    if existing_user:
-        return existing_user
-
+async def test_user(db_session: AsyncSession) -> User:
+    """Creates a test user with a random telegram_id and saves it to the DB."""
     user = User(
-        email=unique_email,
-        username=f"testuser_{uuid.uuid4().hex[:4]}",
+        telegram_id=int(uuid.uuid4().int & (1 << 31) - 1),
         name="Test User",
-        password_hash="$2b$12$WmalAiwLS8iZMHhF.iEvV.b2S6pfb7fLz3m0LxYI29PxIlidv/UuS",  # password: testpass
-        role=UserRole.SHOP,
-    )
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-    return user
-
-
-@pytest.fixture
-async def test_telegram_user(db_session):
-    """Create test user with telegram_id."""
-    from sqlalchemy import select
-
-    # Generate unique telegram_id to avoid conflicts
-    telegram_id = int(uuid.uuid4().hex[:8], 16) % 1000000000  # Ensure it fits in integer
-
-    # Check if user already exists
-    stmt = select(User).where(User.telegram_id == telegram_id)
-    result = await db_session.execute(stmt)
-    existing_user = result.scalar_one_or_none()
-
-    if existing_user:
-        return existing_user
-
-    user = User(
-        telegram_id=telegram_id,
-        name="Test Telegram User",
         role=UserRole.SHOP,
         is_active=True,
     )
@@ -151,3 +86,21 @@ async def test_telegram_user(db_session):
     await db_session.commit()
     await db_session.refresh(user)
     return user
+
+
+@pytest.fixture
+async def authenticated_client(client: AsyncClient, test_user: User) -> AsyncClient:
+    """
+    Creates a test client that is pre-authenticated as the test_user.
+    """
+    # Create a JWT token for the test user
+    token = create_access_token(
+        data={
+            "sub": str(test_user.id),
+            "role": test_user.role.value,
+            "tid": str(test_user.telegram_id),
+        }
+    )
+    # Set the Authorization header for all subsequent requests with this client
+    client.headers = {"Authorization": f"Bearer {token}"}
+    return client

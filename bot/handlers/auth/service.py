@@ -16,49 +16,68 @@ from bot.utils.helpers import parse_user_role
 logger = get_logger(__name__)
 
 
-async def _update_user_state(state: FSMContext, user_info: dict, telegram_id: int) -> UserDTO:
-    """Обновляет состояние FSM данными пользователя из словаря и возвращает DTO."""
-    role = parse_user_role(user_info.get("role", UserRole.GUEST.value))
+async def _update_user_state_from_profile(
+    state: FSMContext,
+    user_profile: dict,
+    telegram_id: int,
+) -> UserDTO | None:
+    """Обновляет состояние FSM из данных профиля и возвращает DTO."""
+    if not user_profile:
+        return None
+
+    role = parse_user_role(user_profile.get("role", UserRole.GUEST.value))
     user_dto = UserDTO(
-        user_id=user_info.get("id"),
-        name=user_info.get("name", ""),
+        user_id=user_profile.get("id"),
         telegram_id=telegram_id,
+        name=user_profile.get("name", ""),
         role=role,
     )
+    # Сохраняем только DTO пользователя, токен уже должен быть в state
     await state.update_data(user=user_dto.model_dump())
     logger.info(AuthServiceMessages.STATE_UPDATED.format(user_dto.telegram_id))
     return user_dto
 
 
 async def handle_registration_success(
-    message: Message, state: FSMContext, user_info: dict, telegram_id: int
+    message: Message, state: FSMContext, response_data: dict, telegram_id: int
 ) -> None:
-    """Обрабатывает успешную регистрацию."""
-    user_dto = await _update_user_state(state, user_info, telegram_id)
-    role_emoji = ROLE_EMOJI_MAP.get(user_dto.role, "")
-    text = AuthMessages.SUCCESS.format(role_emoji)
+    """Обрабатывает успешную регистрацию, сохраняет токен и обновляет DTO."""
+    access_token = response_data.get("access_token")
+    user_info = response_data.get("user", {})
+
+    if not access_token:
+        logger.error(f"No access_token in successful registration response for {telegram_id}")
+        await message.answer(AuthServiceMessages.GENERIC_ERROR)
+        await state.clear()
+        return
+
+    # Сохраняем токен в FSM
+    await state.update_data(jwt_token=access_token)
+    logger.info(f"JWT token obtained and cached for user {telegram_id} after registration.")
+
+    # Обновляем DTO пользователя
+    user_dto = await _update_user_state_from_profile(state, user_info, telegram_id)
+    if not user_dto:
+        await message.answer(AuthServiceMessages.GENERIC_ERROR)
+        return
+
+    text = AuthMessages.SUCCESS
     await message.answer(text, parse_mode=ParseMode.HTML)
-    await state.clear()
+    await state.set_data({"user": user_dto.model_dump(), "jwt_token": access_token})
 
 
 async def handle_registration_failure(
     message: Message, state: FSMContext, result_detail: dict | str | None
 ) -> None:
-    """
-    Обрабатывает неудачную регистрацию на основе данных из поля 'detail' ответа API.
-    """
-    # Если detail - это словарь, ищем в нем информацию о блокировке или попытках
+    """Обрабатывает неудачную регистрацию."""
     if isinstance(result_detail, dict):
         if result_detail.get("blocked"):
             await message.answer(AuthMessages.BLOCKED)
-            # При блокировке состояние не очищаем, чтобы пользователь не мог сразу попробовать снова
             return
         elif "attempts_left" in result_detail:
             attempts = result_detail.get("attempts_left", 0)
             await message.answer(AuthMessages.INVALID_CODE_ATTEMPTS.format(attempts))
             return
-
-    # Если detail - строка или словарь без нужных ключей, показываем общую ошибку
     logger.warning(
         f"Регистрация не удалась. Detail от API: {result_detail} для {message.from_user.id}"
     )
@@ -69,24 +88,37 @@ async def handle_authenticated_user(
     message: Message,
     state: FSMContext,
     user_profile: dict[str, Any],
+    telegram_id: int,
 ) -> None:
-    """Обрабатывает авторизованного пользователя: отправляет приветствие и обновляет состояние."""
+    """Обрабатывает авторизованного пользователя."""
     role = parse_user_role(user_profile.get("role", UserRole.GUEST.value))
-
     if role == UserRole.ADMIN:
         await message.answer(AuthMessages.WELCOME_ADMIN)
+    elif role == UserRole.GUEST:
+        await message.answer(AuthMessages.WELCOME_NEW_USER)
     else:
         await message.answer(AuthMessages.WELCOME_AUTHENTICATED)
-
-    telegram_id = user_profile.get("telegram_id") or message.from_user.id
-    await _update_user_state(state, user_profile, telegram_id)
+    await _update_user_state_from_profile(state, user_profile, telegram_id)
 
 
-async def get_user_stats_text(telegram_id: int, users_client: UsersClient) -> str:
-    """Получает и форматирует статистику пользователя."""
+async def get_user_profile_by_token(token: str, users_client: UsersClient) -> dict | None:
+    """Получает профиль пользователя, используя JWT токен."""
+    if not token:
+        return None
+    profile_result = await users_client.get_user_profile(token)
+    if profile_result.success and isinstance(profile_result.data, dict):
+        return profile_result.data
+    logger.warning(f"Failed to get user profile with token: {profile_result.detail}")
+    return None
+
+
+async def get_user_stats_text(token: str | None, users_client: UsersClient) -> str:
+    """Получает и форматирует статистику пользователя по токену."""
+    if not token:
+        return ErrorMessages.Auth.UNAUTHORIZED
+
     try:
-        user_profile_result = await users_client.get_user_profile(telegram_id)
-
+        user_profile_result = await users_client.get_user_profile(token)
         if user_profile_result.success and isinstance(user_profile_result.data, dict):
             user_info = user_profile_result.data
             user_dto = UserDTO(

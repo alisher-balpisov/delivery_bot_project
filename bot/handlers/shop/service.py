@@ -35,21 +35,27 @@ def format_order_confirmation(data: dict[str, Any]) -> tuple[str, InlineKeyboard
 
 
 async def create_order(
-    telegram_id: int,
+    token: str | None,
     order_details: dict[str, Any],
     orders_client: OrdersClient,
 ) -> str:
     """Отправляет запрос на создание заказа в API и возвращает текст с результатом."""
+    if not token:
+        return ErrorMessages.Auth.UNAUTHORIZED
+
     order_data = {
         "description": order_details.get("description"),
         "pickup_address": order_details.get("pickup_address"),
-        "delivery_address": order_details.get("delivery_address"),
+        "recipient_address": order_details.get("delivery_address"),  # Mismatch fixed
         "price": order_details.get("price"),
         "status": OrderStatus.CREATED.value,
+        # TODO: Add other required fields like recipient_phone, zone_id etc.
+        "recipient_phone": "+70000000000",  # Placeholder
+        "zone_id": 1,  # Placeholder
     }
 
     try:
-        result = await orders_client.create_order(telegram_id, order_data)
+        result = await orders_client.create_order(token, order_data)
 
         if result.success and isinstance(result.data, dict) and result.data.get("id"):
             return OrderMessages.SUCCESSFULLY_CREATED.format(result.data["id"])
@@ -57,5 +63,5 @@ async def create_order(
             error_msg = result.detail or ShopMessages.UNKNOWN_ERROR
             return ErrorMessages.Orders.ORDER_CREATION_ERROR(error=error_msg)
     except Exception as e:
-        logger.error(ShopMessages.CREATE_ORDER_CRITICAL_ERROR.format(telegram_id, e), exc_info=True)
+        logger.error(ShopMessages.CREATE_ORDER_CRITICAL_ERROR.format(e), exc_info=True)
         return ErrorMessages.Orders.ORDER_CREATION_ERROR(error=ShopMessages.UNKNOWN_ERROR)

@@ -176,6 +176,14 @@ class AdminConfig(BaseModel):
         return v
 
 
+class JwtConfig(BaseModel):
+    """Конфигурация JWT."""
+
+    secret_key: SecretStr = Field(..., description="Секретный ключ для подписи JWT токенов")
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24  # 1 день
+
+
 class Settings(BaseSettings):
     """Основные настройки приложения."""
 
@@ -193,6 +201,7 @@ class Settings(BaseSettings):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     business: BusinessConfig = Field(default_factory=BusinessConfig)
     admin: AdminConfig = Field(default_factory=AdminConfig)
+    jwt: JwtConfig = Field(default_factory=JwtConfig)
 
     api_host: str = "localhost"
     api_port: int = 8000
@@ -274,6 +283,7 @@ __all__ = [
     "BusinessConfig",
     "DatabaseConfig",
     "FileStorageConfig",
+    "JwtConfig",
     "LoggingConfig",
     "RedisConfig",
     "Settings",

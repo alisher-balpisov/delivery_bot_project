@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
@@ -44,17 +45,17 @@ async def admin_create_code_menu_handler(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_create_code_"))
 async def admin_create_code_for_role_handler(
-    callback: CallbackQuery, admin_client: AdminClient, user: UserDTO
+    callback: CallbackQuery, state: FSMContext, admin_client: AdminClient
 ):
     """Создает код для выбранной роли."""
+    data = await state.get_data()
+    token = data.get("jwt_token")
     role_str = callback.data.split("_")[-1]
 
     try:
         role = UserRole(role_str)
-        telegram_id = user.telegram_id
-
         response_text = await service.create_registration_code(
-            telegram_id=telegram_id,
+            token=token,
             admin_client=admin_client,
             role=role,
         )
@@ -65,20 +66,19 @@ async def admin_create_code_for_role_handler(
 
     except ValueError:
         await callback.message.answer(AdminMessages.INVALID_ROLE)
-
     await callback.answer()
 
 
 @admin_router.callback_query(F.data == "admin_view_codes")
 async def admin_view_codes_handler(
-    callback: CallbackQuery, admin_client: AdminClient, user: UserDTO
+    callback: CallbackQuery, state: FSMContext, admin_client: AdminClient
 ):
     """Отображает список кодов регистрации."""
     await callback.message.edit_text(AdminMessages.LOADING_CODES)
-    telegram_id = user.telegram_id
+    data = await state.get_data()
+    token = data.get("jwt_token")
 
-    response_text = await service.get_formatted_codes(telegram_id, admin_client)
-
+    response_text = await service.get_formatted_codes(token, admin_client)
     keyboard = get_back_to_menu_keyboard()
     await callback.message.edit_text(response_text, parse_mode="HTML", reply_markup=keyboard)
     await callback.answer()
@@ -87,27 +87,20 @@ async def admin_view_codes_handler(
 @admin_router.message(Command("system_stats"))
 @admin_router.callback_query(F.data == "system_stats")
 async def system_stats_handler(
-    event: Message | CallbackQuery, admin_client: AdminClient, user: UserDTO
+    event: Message | CallbackQuery, state: FSMContext, admin_client: AdminClient, user: UserDTO
 ) -> None:
-    """
-    Отображает системную статистику для администратора.
-
-    Обрабатывает как команды сообщений, так и callback запросы.
-    Для callback проверяет наличие связанного сообщения.
-    """
-    telegram_id = user.telegram_id
-    logger.info(f"Обработка запроса системной статистики от пользователя {telegram_id}")
-
+    """Отображает системную статистику для администратора."""
+    data = await state.get_data()
+    token = data.get("jwt_token")
+    logger.info(f"Обработка запроса системной статистики от пользователя {user.telegram_id}")
     try:
         if isinstance(event, CallbackQuery):
-            await service._handle_callback_stats(event, telegram_id, admin_client)
+            await service._handle_callback_stats(event, token, admin_client)
         else:
-            await service._handle_message_stats(event, telegram_id, admin_client)
-
-        logger.info(f"Успешно отправлена системная статистика пользователю {telegram_id}")
-
+            await service._handle_message_stats(event, token, admin_client)
+        logger.info(f"Успешно отправлена системная статистика пользователю {user.telegram_id}")
     except Exception as e:
-        await service._handle_stats_error(event, telegram_id, e)
+        await service._handle_stats_error(event, user.telegram_id, e)
 
 
 @admin_router.message(Command("broadcast"))
@@ -117,8 +110,8 @@ async def broadcast_handler(message: Message):
 
 
 @admin_router.message(Command("test_api"))
-async def test_api_connection(message: Message, user: UserDTO, system_client: SystemClient):
-    """Тестирование соединения с API (требует авторизации)."""
+async def test_api_connection(message: Message, system_client: SystemClient):
+    """Тестирование соединения с API (не требует авторизации)."""
     await message.answer(CommonMessages.API_TESTING)
     response_text = await service.get_api_status_text(system_client)
     await message.answer(response_text)

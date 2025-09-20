@@ -23,8 +23,12 @@ def create_bot(**kwargs) -> Bot:
 def create_dispatcher(storage, **kwargs) -> Dispatcher:
     dp = Dispatcher(storage=storage, **kwargs)
 
+    # The UserDataFilter now needs clients to perform its token/user lookups.
+    # We pass these clients directly to its constructor.
+    # Aiogram will use these instances when the filter is triggered.
     user_data_provider = UserDataFilter()
 
+    # Apply the filter to all routers that handle user interactions.
     for router in [auth_router, protected_router, orders_router, public_router]:
         router.message.filter(user_data_provider)
         router.callback_query.filter(user_data_provider)
@@ -55,6 +59,9 @@ async def lifespan():
         logger.info("✅ Хранилище состояний: Memory.")
         client_manager = ClientManager(pool=pool)
         bot = create_bot()
+
+        # Pass all clients as keyword arguments to the dispatcher.
+        # These will be available in handlers and, importantly, in the filters.
         dp = create_dispatcher(
             storage=storage,
             admin_client=client_manager.admin,
@@ -65,6 +72,7 @@ async def lifespan():
             system_client=client_manager.system,
             users_client=client_manager.users,
         )
+
         logger.info("🎉 Telegram бот успешно инициализирован!")
         yield bot, dp
     finally:

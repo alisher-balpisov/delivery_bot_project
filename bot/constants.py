@@ -1,3 +1,5 @@
+from enum import Enum
+
 from backend.src.common.enums import UserRole
 
 MAX_REGISTRATION_ATTEMPTS = 5
@@ -22,6 +24,15 @@ STATS_EMOJIS = {
     "disputes": "⚠️",
     "unresolved_disputes": "🟡",
 }
+
+
+class HttpMethod(Enum):
+    GET = "GET"
+    POST = "POST"
+    PUT = "PUT"
+    DELETE = "DELETE"
+    PATCH = "PATCH"
+
 
 error_map = {
     400: "Неверные данные",

@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
@@ -17,11 +18,14 @@ courier_router.callback_query.filter(RoleFilter(UserRole.COURIER))
 
 
 @courier_router.message(Command("available_orders"))
-async def available_orders_handler(message: Message, orders_client: OrdersClient):
+async def available_orders_handler(
+    message: Message, state: FSMContext, orders_client: OrdersClient
+):
     """Показать доступные заказы для курьеров."""
-    telegram_id = message.from_user.id
+    data = await state.get_data()
+    token = data.get("jwt_token")
 
-    messages_to_send = await service.get_available_orders_messages(telegram_id, orders_client)
+    messages_to_send = await service.get_available_orders_messages(token, orders_client)
 
     if not messages_to_send:
         await message.answer(CourierMessages.NO_AVAILABLE_ORDERS)
@@ -32,8 +36,13 @@ async def available_orders_handler(message: Message, orders_client: OrdersClient
 
 
 @courier_router.callback_query(F.data.startswith("take_order_"))
-async def take_order_handler(callback: CallbackQuery, user: UserDTO, orders_client: OrdersClient):
+async def take_order_handler(
+    callback: CallbackQuery, state: FSMContext, user: UserDTO, orders_client: OrdersClient
+):
     """Обработка принятия заказа курьером."""
+    data = await state.get_data()
+    token = data.get("jwt_token")
+
     try:
         order_id = int(callback.data.split("_")[-1])
     except (ValueError, IndexError):
@@ -41,7 +50,7 @@ async def take_order_handler(callback: CallbackQuery, user: UserDTO, orders_clie
         await callback.answer(CourierMessages.INVALID_ORDER_ID_ERROR, show_alert=True)
         return
 
-    response_text = await service.take_order(user, order_id, orders_client)
+    response_text = await service.take_order(token, user, order_id, orders_client)
 
     await callback.message.edit_text(response_text)
     await callback.answer()

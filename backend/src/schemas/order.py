@@ -2,34 +2,23 @@ from datetime import datetime
 
 from backend.src.common.enums import OrderStatus, OrderType
 from backend.src.common.utils import Phone
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .shop import ShopRead
-
-
-class CourierRating:
-    """
-    Рейтинг курьера от 1 до 5.
-    """
-
-    ge = 1
-    le = 5
 
 
 class OrderBase(BaseModel):
     """Базовая схема для заказа."""
 
     description: str | None = None
-    recipient_name: str | None = None
+    recipient_name: str | None = Field(None, max_length=100)
     recipient_phone: Phone
-    recipient_address: str
-    price: float
-    pickup_address: str
+    recipient_address: str = Field(..., max_length=255)
+    pickup_address: str = Field(..., max_length=255)
     delivery_time: datetime | None = None
     is_fragile: bool = False
     is_bulky: bool = False
-    special_reason: str | None = None
-    recipient_phone_code: str | None = None
+    special_reason: str | None = Field(None, max_length=500)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,16 +33,14 @@ class OrderBase(BaseModel):
     @classmethod
     def sanitize_strings(cls, v):
         if isinstance(v, str):
-            # Basic XSS removal
             import re
 
-            v = re.sub(r"<.*?>", "", v)  # Remove HTML tags
-            v = re.sub(r"javascript\s*:", "", v, flags=re.IGNORECASE)  # Remove JS URIs
+            v = re.sub(r"<[^>]*>", "", v)  # Remove HTML tags
         return v
 
 
 class OrderCreateRequest(OrderBase):
-    """Схема для создания нового заказа магазином (входные данные)."""
+    """Схема для создания нового заказа магазином (входные данные API)."""
 
     zone_id: int
     order_type: OrderType = OrderType.normal
@@ -62,34 +49,32 @@ class OrderCreateRequest(OrderBase):
 
 
 class OrderCreate(OrderCreateRequest):
-    """Схема для создания нового заказа (внутреннее использование)."""
+    """Схема для создания нового заказа (внутреннее использование в сервисах)."""
 
-    telegram_id: int
+    shop_id: int  # Это поле добавляется сервером из данных токена
 
 
 class OrderUpdate(BaseModel):
-    """Схема для обновления заказа (например, курьером)."""
+    """Схема для обновления заказа."""
 
     status: OrderStatus | None = None
-    courier_id: int | None = None
-    courier_notes: str | None = None
-    completion_notes: str | None = None
+    courier_notes: str | None = Field(None, max_length=1000)
+    completion_notes: str | None = Field(None, max_length=1000)
+    courier_rating: int | None = Field(None, ge=1, le=5)
+    courier_feedback: str | None = Field(None, max_length=1000)
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class OrderRead(OrderBase):
-    """Схема для чтения данных заказа."""
+    """Схема для чтения данных заказа (ответ API)."""
 
     id: int
-    order_type: OrderType
-    zone_addon: float
-    rush_hour_addon: float
     status: OrderStatus
-    shop: ShopRead
+    order_type: OrderType
+    price: float
+    shop: ShopRead  # Используем вложенную схему для данных о магазине
     courier_id: int | None = None
-    accepted_at: datetime | None = None
-    delivered_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -97,7 +82,7 @@ class OrderRead(OrderBase):
 
 
 class OrderResponse(OrderBase):
-    """Схема для ответа с данными заказа."""
+    """Схема для полного представления заказа, включая все поля."""
 
     id: int
     shop_id: int
@@ -105,6 +90,7 @@ class OrderResponse(OrderBase):
     courier_id: int | None = None
     status: OrderStatus
     order_type: OrderType
+    price: float
     zone_addon: float
     rush_hour_addon: float
     confirmed_at: datetime | None = None

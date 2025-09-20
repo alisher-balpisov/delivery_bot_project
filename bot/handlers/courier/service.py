@@ -10,16 +10,20 @@ logger = get_logger(__name__)
 
 
 async def get_available_orders_messages(
-    telegram_id: int,
+    token: str | None,
     orders_client: OrdersClient,
 ) -> list[tuple[str, InlineKeyboardMarkup]]:
     """
     Получает доступные заказы и форматирует их в список кортежей (текст, клавиатура).
     """
+    if not token:
+        # Return an empty list, the handler will inform the user.
+        return []
+
     try:
-        result = await orders_client.get_available_orders(telegram_id)
+        result = await orders_client.get_available_orders(token)
         if not result.success or not isinstance(result.data, list):
-            logger.error(f"Ошибка получения доступных заказов для {telegram_id}: {result.detail}")
+            logger.error(f"Ошибка получения доступных заказов: {result.detail}")
             return []
 
         orders = result.data
@@ -35,7 +39,7 @@ async def get_available_orders_messages(
             text = OrderMessages.AVAILABLE_ORDER_TEMPLATE.format(
                 order_id=order_id,
                 pickup_address=order.get("pickup_address", "N/A"),
-                delivery_address=order.get("delivery_address", "N/A"),
+                recipient_address=order.get("recipient_address", "N/A"),
                 price=order.get("price", "N/A"),
             )
             keyboard = InlineKeyboardMarkup(
@@ -51,11 +55,12 @@ async def get_available_orders_messages(
             messages.append((text, keyboard))
         return messages
     except Exception as e:
-        logger.error(CourierMessages.AVAILABLE_ORDERS_ERROR.format(telegram_id, e), exc_info=True)
+        logger.error(CourierMessages.AVAILABLE_ORDERS_ERROR.format(e), exc_info=True)
         return []
 
 
 async def take_order(
+    token: str | None,
     user: UserDTO,
     order_id: int,
     orders_client: OrdersClient,
@@ -63,14 +68,16 @@ async def take_order(
     """
     Обрабатывает принятие заказа курьером.
     """
+    if not token:
+        return ErrorMessages.Auth.UNAUTHORIZED
     if not user.user_id:
         logger.error(CourierMessages.MISSING_USER_ID.format(user.telegram_id))
         return ErrorMessages.UserData.USER_DATA_ERROR
 
-    payload = {"status": OrderStatus.ACCEPTED.value, "courier_id": user.user_id}
+    payload = {"status": OrderStatus.ACCEPTED.value}
 
     try:
-        result = await orders_client.update_order_status(user.telegram_id, order_id, payload)
+        result = await orders_client.update_order_status(token, order_id, payload)
 
         if result.success:
             return OrderMessages.ORDER_ACCEPTED.format(order_id)

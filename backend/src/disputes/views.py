@@ -1,4 +1,4 @@
-from backend.src.auth.user_auth import get_current_user, require_role
+from backend.src.auth.dependencies import get_current_user, require_role
 from backend.src.common.enums import UserRole
 from backend.src.core.database import get_db
 from backend.src.core.logging import get_logger
@@ -23,11 +23,13 @@ async def create_new_dispute(
     """
     if current_user.role not in [UserRole.SHOP, UserRole.COURIER]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав доступа"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Только магазины и курьеры могут открывать споры",
         )
-
+    # The role of the creator is now reliably taken from the token
+    dispute_in.created_by_role = current_user.role
     try:
-        return await service.create_dispute(db=db, dispute_data=dispute_in)
+        return await service.create_dispute(db=db, dispute_data=dispute_in, initiator=current_user)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -45,16 +47,16 @@ async def get_dispute_details(
     if not dispute:
         raise HTTPException(status_code=404, detail="Спор не найден")
 
-    # Проверка доступа
+    # Authorization logic using the trusted current_user from the JWT
     if current_user.role == UserRole.ADMIN:
-        pass  # Админ имеет доступ ко всем спорам
+        pass  # Admin can see all disputes
     elif current_user.role == UserRole.SHOP:
-        if dispute.shop_id != current_user.shop.id:
+        if not current_user.shop or dispute.shop_id != current_user.shop.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к этому спору"
             )
     elif current_user.role == UserRole.COURIER:
-        if dispute.courier_id != current_user.courier.id:
+        if not current_user.courier or dispute.courier_id != current_user.courier.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к этому спору"
             )
@@ -74,7 +76,7 @@ async def update_existing_dispute(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Обновление спора (для админов).
+    Обновление спора (только для админов).
     """
     updated_dispute = await service.update_dispute(
         db=db, dispute_id=dispute_id, update_data=dispute_in

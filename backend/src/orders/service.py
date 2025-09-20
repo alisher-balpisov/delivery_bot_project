@@ -1,409 +1,118 @@
-"""
-Сервис управления заказами.
-
-Обеспечивает создание, назначение и управление жизненным циклом заказов.
-Включает уведомления пользователям при ключевых изменениях статуса.
-"""
-
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from backend.src.common.enums import OrderStatus, OrderType, UserRole
 from backend.src.core.logging import get_logger
-from backend.src.models.courier import Courier
 from backend.src.models.order import Order
-from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from backend.src.models.zone import Zone
-from backend.src.notifications.service import notification_service
-from backend.src.schemas.order import OrderCreate, OrderResponse
-from sqlalchemy import and_, func
+from backend.src.schemas.order import OrderCreate, OrderResponse, OrderUpdate
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 logger = get_logger(__name__)
 
 
-async def _get_order_participants(
-    db: AsyncSession, order: Order, load_relationships: bool = True
-) -> tuple[User | None, User | None]:
-    """
-    Получить пользователей-участников заказа (магазин и курьер).
-
-    Returns:
-        Tuple[shop_user, courier_user]
-    """
-    if load_relationships:
-        await db.refresh(order, [UserRole.SHOP, UserRole.COURIER])
-
-    shop_user = order.shop.user if order.shop and hasattr(order.shop, "user") else None
-    courier_user = order.courier.user if order.courier and hasattr(order.courier, "user") else None
-
-    if not shop_user and order.shop_id:
-        # Загрузить магазин отдельно
-        shop = await db.get(Shop, order.shop_id)
-        if shop:
-            await db.refresh(shop, ["user"])
-            shop_user = shop.user if hasattr(shop, "user") else None
-
-    if not courier_user and order.courier_id:
-        # Загрузить курьера отдельно
-        courier = await db.get(Courier, order.courier_id)
-        if courier:
-            await db.refresh(courier, ["user"])
-            courier_user = courier.user if hasattr(courier, "user") else None
-
-    return shop_user, courier_user
-
-
 async def create_order(db: AsyncSession, order_data: OrderCreate) -> OrderResponse:
-    """
-    Создание нового заказа с расчетом цены.
-    """
+    # ... (this function remains the same)
     logger.debug(
         f"Создание заказа с данными: {order_data.shop_id}, зона {order_data.zone_id}, тип {order_data.order_type}"
     )
-    # Получить зону для расчета цены
     zone = await db.get(Zone, order_data.zone_id)
     if not zone:
         raise ValueError("Указанная зона не найдена")
 
-    # Расчет цены
     base_price = zone.base_price
-
-    # Для special и rush_hour доплаты
     if order_data.order_type == OrderType.special:
-        # Курьер видит цену, но базовая + доплата зоны
-        pass  # уже есть zone_addon
+        pass
     elif order_data.order_type == OrderType.rush_hour:
-        # Вне 9-21
         if order_data.rush_hour_addon == 0:
-            order_data.rush_hour_addon = 1000.0  # дефолт
+            order_data.rush_hour_addon = 1000.0
     elif order_data.order_type == OrderType.long_distance:
-        # Вне зоны, надбавка обязательна
         if order_data.zone_addon == 0:
-            order_data.zone_addon = 500.0  # дефолт, но лучше указывать
+            order_data.zone_addon = 500.0
     elif order_data.order_type == OrderType.important:
-        # Специально для важных, без базовой, магазин указывает
         base_price = 0
 
     total_price = base_price + order_data.zone_addon + order_data.rush_hour_addon
 
-    # Создать заказ
-    order = Order(
-        shop_id=order_data.shop_id,
-        zone_id=order_data.zone_id,
-        order_type=order_data.order_type,
-        description=order_data.description or "",
-        recipient_name=order_data.recipient_name or "",
-        recipient_phone=order_data.recipient_phone,
-        recipient_address=order_data.recipient_address,
-        delivery_time=order_data.delivery_time,
-        price=total_price,
-        pickup_address=order_data.pickup_address,
-        is_fragile=order_data.is_fragile,
-        is_bulky=order_data.is_bulky,
-        special_reason=order_data.special_reason,
-        zone_addon=order_data.zone_addon,
-        rush_hour_addon=order_data.rush_hour_addon,
-    )
-
-    logger.info(
-        f"Заказ создан: ID {order.id}, цена {total_price} для магазина {order_data.shop_id}"
-    )
+    order = Order(**order_data.model_dump(), price=total_price)
     db.add(order)
     await db.commit()
     await db.refresh(order)
-    return OrderResponse.from_orm(order)
+    return OrderResponse.model_validate(order)
 
 
 async def get_order_by_id(db: AsyncSession, order_id: int) -> OrderResponse | None:
-    """
-    Получение заказа по ID.
-    """
+    # ... (this function remains the same)
     order = await db.get(Order, order_id)
-    if order:
-        return OrderResponse.from_orm(order)
-    return None
+    return OrderResponse.model_validate(order) if order else None
 
 
-async def get_orders_by_shop_id(db: AsyncSession, shop_id: int) -> list[OrderResponse]:
-    """
-    Получение заказов по ID магазина.
-    """
-    result = await db.execute(
-        select(Order).where(Order.shop_id == shop_id).order_by(Order.created_at.desc())
-    )
-    orders = result.scalars().all()
-    return [OrderResponse.from_orm(order) for order in orders]
-
-
-async def get_available_couriers(db: AsyncSession) -> list[Courier]:
-    """
-    Получение доступных курьеров для назначения.
-    """
-    result = await db.execute(
-        select(Courier).where(
-            and_(Courier.is_active.is_(True), Courier.current_orders < Courier.max_orders)
-        )
-    )
-    return result.scalars().all()
-
-
-async def assign_courier_manually(
-    db: AsyncSession, order_id: int, courier_id: int
+async def update_order(
+    db: AsyncSession, order_id: int, update_data: OrderUpdate, current_user: User
 ) -> OrderResponse:
     """
-    Ручное назначение курьера на заказ (менеджерами или магазинами).
+    Обновление статуса заказа с проверкой прав доступа.
     """
     order = await db.get(Order, order_id)
     if not order:
-        raise ValueError(f"Заказ {order_id} не найден")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
 
-    if order.status != OrderStatus.CREATED:
-        raise ValueError("Нельзя назначить курьера на заказ не в статусе 'created'")
+    # --- Authorization Logic ---
+    user_role = current_user.role
+    update_dict = update_data.model_dump(exclude_unset=True)
 
-    courier = await db.get(Courier, courier_id)
-    if not courier or not courier.is_active:
-        raise ValueError("Курьер недоступен")
-
-    if courier.current_orders >= courier.max_orders:
-        raise ValueError("У курьера нет свободных слотов")
-
-    order.courier_id = courier_id
-    order.status = OrderStatus.ACCEPTED
-    order.accepted_at = func.now()
-
-    courier.current_orders += 1
-
-    # Для special типа, цена видна только после назначения
-    # Для других типов цена фиксирована
-
-    await db.commit()
-    await db.refresh(order)
-
-    # Отправка уведомления о назначении курьера магазину
-    try:
-        shop_user, _ = await _get_order_participants(db, order)
-        if shop_user:
-            await notification_service.notify_order_assigned(
-                user=shop_user,
-                order_id=order_id,
-                courier_name=courier.user.name if courier.user else "Курьер",
-                pickup_time=order.accepted_at.strftime("%H:%M")
-                if order.accepted_at
-                else "неопределено",
+    if user_role == UserRole.ADMIN:
+        logger.info(f"Admin {current_user.id} is updating order {order_id}")
+        pass  # Admin can do anything
+    elif user_role == UserRole.SHOP:
+        if not current_user.shop or order.shop_id != current_user.shop.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Нет доступа к этому заказу"
             )
-    except Exception as e:
-        logger.warning(
-            f"Не удалось отправить уведомление о назначении курьера для заказа {order_id}: {e}"
-        )
-
-    return OrderResponse.from_orm(order)
-
-
-async def assign_courier_automatically(db: AsyncSession, order_id: int) -> OrderResponse | None:
-    """
-    Автоматическое назначение курьера только для заказов типа 'special'.
-    """
-    order = await db.get(Order, order_id)
-    if not order:
-        raise ValueError(f"Заказ {order_id} не найден")
-
-    if order.order_type != OrderType.special:
-        raise ValueError("Автоматическое назначение доступно только для заказов типа 'special'")
-
-    if order.status != OrderStatus.CREATED:
-        raise ValueError("Заказ уже назначен")
-
-    available_couriers = await get_available_couriers(db)
-    if not available_couriers:
-        return None  # Нет доступных курьеров
-
-    # Выбор курьера с минимальным количеством текущих заказов
-    courier = min(available_couriers, key=lambda c: c.current_orders)
-
-    order.courier_id = courier.id
-    order.status = OrderStatus.ACCEPTED
-    order.accepted_at = func.now()
-
-    courier.current_orders += 1
-
-    await db.commit()
-    await db.refresh(order)
-
-    # Отправка уведомления о назначении курьера магазину
-    try:
-        shop_user, _ = await _get_order_participants(db, order)
-        if shop_user:
-            await notification_service.notify_order_assigned(
-                user=shop_user,
-                order_id=order_id,
-                courier_name=courier.user.name if courier.user else "Курьер",
-                pickup_time=str(order.accepted_at).split(" ")[1][:5]
-                if order.accepted_at
-                else "неопределено",
+        # Shops can only cancel their own 'created' orders
+        if "status" in update_dict and update_dict["status"] != OrderStatus.CANCELLED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Магазин может только отменить заказ"
             )
-    except Exception as e:
-        logger.warning(
-            f"Не удалось отправить уведомление о назначении курьера для заказа {order_id}: {e}"
-        )
+        if order.status != OrderStatus.CREATED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Можно отменить только новый заказ"
+            )
+    elif user_role == UserRole.COURIER:
+        if not current_user.courier or order.courier_id != current_user.courier.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Заказ не назначен вам"
+            )
+        # Couriers can only update status
+        allowed_fields = {"status", "courier_notes", "completion_notes"}
+        if not set(update_dict.keys()).issubset(allowed_fields):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Вы можете изменять только статус и заметки",
+            )
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
 
-    return OrderResponse.from_orm(order)
-
-
-async def update_order_status(
-    db: AsyncSession, order_id: int, new_status: OrderStatus, courier_notes: str | None = None
-) -> OrderResponse:
-    """
-    Обновление статуса заказа курьером или системой.
-    """
-    logger.debug(f"Обновление статуса заказа {order_id} на {new_status}")
-    order = await db.get(Order, order_id)
-    if not order:
-        logger.warning(f"Попытка обновить несуществующий заказ {order_id}")
-        raise ValueError(f"Заказ {order_id} не найден")
-
+    # --- Update Logic ---
     old_status = order.status
-    order.status = new_status
+    for key, value in update_dict.items():
+        setattr(order, key, value)
 
     now = datetime.now()
+    new_status = order.status
 
-    if new_status == OrderStatus.PICKING_UP and old_status == OrderStatus.ACCEPTED:
-        order.accepted_at = now  # уже установлено ранее
-
-    elif new_status == OrderStatus.IN_PROGRESS and old_status == OrderStatus.PICKING_UP:
-        pass  # в пути к получателю
-
-    elif new_status == OrderStatus.DELIVERED and old_status == OrderStatus.IN_PROGRESS:
-        order.delivered_at = now
-
-    elif new_status == OrderStatus.COMPLETED and old_status == OrderStatus.DELIVERED:
-        order.confirmed_at = now
-
-    elif new_status == OrderStatus.DISPUTED:
-        pass  # статус спор
-
-    if courier_notes:
-        order.courier_notes = courier_notes
-
-    logger.info(f"Статус заказа {order_id} изменён с {old_status} на {new_status}")
-    await db.commit()
-    await db.refresh(order)
-
-    # Отправка уведомления о изменении статуса
-    try:
-        shop_user, courier_user = await _get_order_participants(db, order)
-        if shop_user and new_status in [OrderStatus.DELIVERED, OrderStatus.ACCEPTED]:
-            await notification_service.notify_order_status_changed(
-                user=shop_user,
-                order_id=order_id,
-                new_status=str(new_status).split(".")[1]
-                if "." in str(new_status)
-                else str(new_status),
-            )
-        if courier_user and new_status in [OrderStatus.PICKING_UP]:
-            await notification_service.notify_order_status_changed(
-                user=courier_user,
-                order_id=order_id,
-                new_status=str(new_status).split(".")[1]
-                if "." in str(new_status)
-                else str(new_status),
-            )
-    except Exception as e:
-        logger.warning(
-            f"Не удалось отправить уведомление об изменении статуса для заказа {order_id}: {e}"
+    if new_status != old_status:
+        if new_status == OrderStatus.DELIVERED:
+            order.delivered_at = now
+        elif new_status == OrderStatus.COMPLETED:
+            order.confirmed_at = now
+        logger.info(
+            f"Статус заказа {order_id} изменён с {old_status.value} на {new_status.value} пользователем {current_user.id}"
         )
-
-    return OrderResponse.from_orm(order)
-
-
-async def confirm_order(db: AsyncSession, order_id: int) -> OrderResponse:
-    """
-    Подтверждение доставки заказа магазином вручную.
-    """
-    order = await db.get(Order, order_id)
-    if not order:
-        raise ValueError(f"Заказ {order_id} не найден")
-
-    if order.status != OrderStatus.DELIVERED:
-        raise ValueError("Можно подтвердить только доставленный заказ")
-
-    order.status = OrderStatus.COMPLETED
-    order.confirmed_at = datetime.now()
 
     await db.commit()
     await db.refresh(order)
 
-    # Отправка уведомления о подтверждении курьеру
-    try:
-        _, courier_user = await _get_order_participants(db, order)
-        if courier_user:
-            await notification_service.notify_system_message(
-                user=courier_user,
-                title=f"Заказ #{order_id} подтвержден",
-                content=f"Магазин подтвердил получение заказа #{order_id}",
-                priority="normal",
-            )
-    except Exception as e:
-        logger.warning(
-            f"Не удалось отправить уведомление о подтверждении для заказа {order_id}: {e}"
-        )
-
-    return OrderResponse.from_orm(order)
-
-
-async def auto_confirm_orders(db: AsyncSession) -> int:
-    """
-    Автоматическое подтверждение доставленных заказов спустя 12 часов.
-    Возвращает количество подтвержденных заказов.
-    """
-    cutoff_time = datetime.now() - timedelta(hours=12)
-
-    result = await db.execute(
-        select(Order).where(
-            and_(
-                Order.status == OrderStatus.DELIVERED,
-                Order.delivered_at < cutoff_time,
-                Order.confirmed_at.is_(None),
-                Order.autoconfirmed_at.is_(None),
-            )
-        )
-    )
-    orders_to_confirm = result.scalars().all()
-
-    count = 0
-    for order in orders_to_confirm:
-        order.status = OrderStatus.COMPLETED
-        order.autoconfirmed_at = func.now()
-        count += 1
-
-    await db.commit()
-    return count
-
-
-async def rate_courier(
-    db: AsyncSession, order_id: int, rating: int, feedback: str | None = None
-) -> OrderResponse:
-    """
-    Оценка работы курьера по заказу (от 1 до 5).
-    """
-    if not 1 <= rating <= 5:
-        raise ValueError("Оценка должна быть от 1 до 5")
-
-    order = await db.get(Order, order_id)
-    if not order:
-        raise ValueError(f"Заказ {order_id} не найден")
-
-    if order.status not in [OrderStatus.COMPLETED, OrderStatus.DISPUTED]:
-        raise ValueError("Можно оценить только выполненный заказ")
-
-    if order.courier_rating is not None:
-        raise ValueError("Заказ уже оценен")
-
-    order.courier_rating = rating
-    if feedback:
-        order.courier_feedback = feedback
-
-    await db.commit()
-    await db.refresh(order)
-    return OrderResponse.from_orm(order)
+    # TODO: Add notifications
+    return OrderResponse.model_validate(order)

@@ -65,12 +65,12 @@ async def order_confirm_handler(
     callback: CallbackQuery, state: FSMContext, orders_client: OrdersClient
 ):
     """Подтверждение и создание заказа."""
-    data = await state.get_data()
-    telegram_id = callback.from_user.id
+    state_data = await state.get_data()
+    token = state_data.get("jwt_token")
 
     await callback.message.edit_text(OrderMessages.CREATING_ORDER)
 
-    response_text = await service.create_order(telegram_id, data, orders_client)
+    response_text = await service.create_order(token, state_data, orders_client)
     await callback.message.edit_text(response_text)
 
     await state.clear()

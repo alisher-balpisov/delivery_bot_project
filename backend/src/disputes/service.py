@@ -1,129 +1,87 @@
 from backend.src.core.logging import get_logger
 from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
+from backend.src.models.user import User
 from backend.src.schemas.dispute import DisputeCreate, DisputeRead, DisputeUpdate
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+logger = get_logger(__name__)
 
-async def create_dispute(db: AsyncSession, dispute_data: DisputeCreate) -> DisputeRead:
+
+async def create_dispute(
+    db: AsyncSession, dispute_data: DisputeCreate, initiator: User
+) -> DisputeRead:
     """
     Создает новый спор по заказу.
 
     Args:
         db: Сессия базы данных.
         dispute_data: Данные для создания спора.
-
-    Returns:
-        Схема с данными созданного спора.
+        initiator: Пользователь, который создает спор (из токена).
     """
+    logger.info(f"User {initiator.id} creating dispute for order {dispute_data.order_id}")
 
-    logger = get_logger(__name__)
-
-    logger.info(
-        f"Создание спора для заказа {dispute_data.order_id} с описанием: {dispute_data.description[:50]}..."
-    )
-
-    # TODO: Добавить проверку, что по этому заказу еще нет спора (уже в модели unique=True, но проверить ошибку)
-    # Получить shop_id и courier_id из заказа
-    # Теперь данные берутся из объекта order
     order = await db.get(Order, dispute_data.order_id)
     if not order:
-        logger.warning(f"Заказ {dispute_data.order_id} не найден.")
+        logger.warning(f"Order {dispute_data.order_id} not found.")
         raise ValueError("Заказ не найден")
 
-    if not order.courier_id:
-        logger.warning(f"Заказ {dispute_data.order_id} без курьера.")
-        raise ValueError("Невозможно создать спор для заказа без курьера")
+    # Authorization check within the service
+    is_shop = initiator.shop and initiator.shop.id == order.shop_id
+    is_courier = initiator.courier and initiator.courier.id == order.courier_id
+    if not (is_shop or is_courier):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Вы можете открывать споры только по своим заказам",
+        )
 
-    logger.info(f"Данные заказа получены: shop_id={order.shop_id}, courier_id={order.courier_id}")
+    if not order.courier_id:
+        raise ValueError("Невозможно создать спор для заказа без курьера")
 
     new_dispute = Dispute(
         order_id=dispute_data.order_id,
         description=dispute_data.description,
-        created_by_role=dispute_data.created_by_role,
+        created_by_role=initiator.role,  # Role is from the trusted initiator object
         shop_id=order.shop_id,
         courier_id=order.courier_id,
     )
-
-    logger.info(f"Добавление спора в БД: {new_dispute}")
 
     try:
         db.add(new_dispute)
         await db.commit()
         await db.refresh(new_dispute)
-        logger.info(f"Спор успешно создан с ID {new_dispute.id}")
+        logger.info(f"Dispute created successfully with ID {new_dispute.id}")
         return DisputeRead.model_validate(new_dispute)
     except Exception as e:
-        logger.error(f"Ошибка при создании спора: {e}")
+        logger.error(f"Error creating dispute: {e}")
+        await db.rollback()
         raise
 
 
 async def get_dispute_by_id(db: AsyncSession, dispute_id: int) -> DisputeRead | None:
-    """
-    Получает спор по его ID.
-
-    Args:
-        db: Сессия базы данных.
-        dispute_id: ID спора.
-
-    Returns:
-        Схема с данными спора или None, если спор не найден.
-    """
-
-    logger = get_logger(__name__)
-
-    logger.info(f"Получение спора ID {dispute_id}")
-
+    """Получает спор по его ID."""
     dispute = await db.get(Dispute, dispute_id)
-    if dispute:
-        logger.info(f"Спор найден: order_id={dispute.order_id}, status={dispute.status}")
-        return DisputeRead.model_validate(dispute)
-    else:
-        logger.warning(f"Спор ID {dispute_id} не найден.")
-    return None
+    return DisputeRead.model_validate(dispute) if dispute else None
 
 
 async def update_dispute(
     db: AsyncSession, dispute_id: int, update_data: DisputeUpdate
 ) -> DisputeRead | None:
-    """
-    Обновляет данные спора (для админов).
-
-    Args:
-        db: Сессия базы данных.
-        dispute_id: ID спора для обновления.
-        update_data: Данные для обновления.
-
-    Returns:
-        Схема с обновленными данными спора или None, если спор не найден.
-    """
-
-    logger = get_logger(__name__)
-
-    logger.info(
-        f"Обновление спора ID {dispute_id} с данными: {update_data.model_dump(exclude_unset=True)}"
-    )
-
+    """Обновляет данные спора (для админов)."""
     dispute = await db.get(Dispute, dispute_id)
     if not dispute:
-        logger.warning(f"Спор ID {dispute_id} не найден.")
         return None
 
-    logger.info(f"Найден спор: status={dispute.status}, created_by={dispute.created_by_role}")
-
     update_data_dict = update_data.model_dump(exclude_unset=True)
-    logger.info(f"Поля для обновления: {update_data_dict}")
-
     for key, value in update_data_dict.items():
         setattr(dispute, key, value)
-
-    logger.info(f"Обновленные поля: {update_data_dict}")
 
     try:
         await db.commit()
         await db.refresh(dispute)
-        logger.info(f"Спор ID {dispute_id} успешно обновлен.")
         return DisputeRead.model_validate(dispute)
     except Exception as e:
-        logger.error(f"Ошибка при обновлении спора ID {dispute_id}: {e}")
+        logger.error(f"Error updating dispute ID {dispute_id}: {e}")
+        await db.rollback()
         raise

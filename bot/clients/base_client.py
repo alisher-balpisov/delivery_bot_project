@@ -3,25 +3,16 @@ from __future__ import annotations
 import asyncio
 import random
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any, ClassVar
 
 import httpx
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
 
-from bot.constants import error_map
+from bot.constants import HttpMethod, error_map
 from bot.messages import BaseClientMessages
 
 logger = get_logger(__name__)
-
-
-class HttpMethod(Enum):
-    GET = "GET"
-    POST = "POST"
-    PUT = "PUT"
-    DELETE = "DELETE"
-    PATCH = "PATCH"
 
 
 @dataclass
@@ -33,7 +24,6 @@ class RequestResult:
 
 
 class ConnectionPool:
-    # ... (код этого класса не меняется)
     _instance: ClassVar[ConnectionPool | None] = None
     _client: httpx.AsyncClient | None = None
 
@@ -76,12 +66,11 @@ class BaseApiClient:
         self.timeout = timeout
         self.rng = random.SystemRandom()
 
-    # --- РЕФАКТОРИНГ: ОСНОВНОЙ МЕТОД-ОРКЕСТРАТОР ---
     async def _make_request(
         self,
         method: str | HttpMethod,
         endpoint: str,
-        telegram_id: int | None = None,
+        token: str | None = None,
         json_data: dict[str, Any] | None = None,
         custom_headers: dict[str, str] | None = None,
         expected_status: int = 200,
@@ -91,19 +80,17 @@ class BaseApiClient:
         Выполняет HTTP-запрос, координируя подготовку, выполнение с ретраями и обработку ответа.
         """
         method_str, url, headers = self._prepare_request_params(
-            method, endpoint, telegram_id, custom_headers
+            method, endpoint, token, custom_headers
         )
-
         return await self._execute_with_retry(
             method_str, url, headers, json_data, expected_status, retry_count
         )
 
-    # --- РЕФАКТОРИНГ: ОТВЕЧАЕТ ЗА ПОДГОТОВКУ ДАННЫХ ДЛЯ ЗАПРОСА ---
     def _prepare_request_params(
         self,
         method: str | HttpMethod,
         endpoint: str,
-        telegram_id: int | None,
+        token: str | None,
         custom_headers: dict[str, str] | None,
     ) -> tuple[str, str, dict[str, str]]:
         """Готовит и валидирует URL, заголовки и HTTP-метод."""
@@ -118,12 +105,11 @@ class BaseApiClient:
         url = f"{self.api_base_url}{self.api_prefix}{endpoint}"
 
         headers = custom_headers.copy() if custom_headers else {}
-        if telegram_id:
-            headers["X-Telegram-ID"] = str(telegram_id)
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
         return method_str, url, headers
 
-    # --- РЕФАКТОРИНГ: ОТВЕЧАЕТ ЗА ЛОГИКУ ПОВТОРНЫХ ПОПЫТОК ---
     async def _execute_with_retry(
         self,
         method: str,
@@ -163,7 +149,6 @@ class BaseApiClient:
             success=False, detail=BaseClientMessages.RETRIES_EXCEEDED, status_code=503
         )
 
-    # --- РЕФАКТОРИНГ: ИЗОЛИРОВАННЫЙ ВЫЗОВ HTTPX ---
     async def _execute_request(
         self, method: str, url: str, headers: dict[str, str], json_data: dict[str, Any] | None
     ) -> httpx.Response:

@@ -14,7 +14,7 @@ async def get_api_status_text(system_client: SystemClient) -> str:
     """Проверяет состояние API и возвращает отформатированный текст."""
     try:
         result = await system_client.health_check()
-        if result.success and isinstance(result.data, dict) and result.data.get("status") == "ok":
+        if result.success and isinstance(result.data, dict):
             health_data = result.data
             return CommonMessages.API_STATUS_TEMPLATE.format(
                 status=health_data.get("status", "N/A"),
@@ -51,10 +51,14 @@ def get_new_dispute_text() -> str:
     return DisputeMessages.NEW_DISPUTE_PROMPT.format(status=DisputeStatus.OPEN.value)
 
 
-async def get_user_disputes_text(telegram_id: int, disputes_client: DisputesClient) -> str:
+async def get_user_disputes_text(
+    token: str | None, disputes_client: DisputesClient
+) -> str:
     """Получает споры пользователя и возвращает отформатированный текст."""
+    if not token:
+        return ErrorMessages.Auth.UNAUTHORIZED
     try:
-        result = await disputes_client.get_my_disputes(telegram_id)
+        result = await disputes_client.get_my_disputes(token)
         if not result.success or not isinstance(result.data, list):
             return ErrorMessages.Disputes.DISPUTES_LOAD_ERROR
 
@@ -83,5 +87,5 @@ async def get_user_disputes_text(telegram_id: int, disputes_client: DisputesClie
         return "\n".join(text_lines)
 
     except Exception as e:
-        logger.error(CommonServiceMessages.DISPUTES_ERROR.format(telegram_id, e), exc_info=True)
+        logger.error(CommonServiceMessages.DISPUTES_ERROR.format(e), exc_info=True)
         return ErrorMessages.Disputes.DISPUTES_LOAD_ERROR
