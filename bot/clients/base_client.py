@@ -17,6 +17,16 @@ logger = get_logger(__name__)
 
 @dataclass
 class RequestResult:
+    """
+    Результат выполнения запроса к API.
+
+    Attributes:
+        success: Успешность выполнения запроса.
+        data: Данные ответа в случае успеха.
+        detail: Детали ошибки в случае неудачи.
+        status_code: HTTP-статус код ответа.
+    """
+
     success: bool
     data: Any | None = None
     detail: Any | None = None
@@ -24,6 +34,8 @@ class RequestResult:
 
 
 class ConnectionPool:
+    """Синглтон для управления пулом соединений httpx.AsyncClient."""
+
     _instance: ClassVar[ConnectionPool | None] = None
     _client: httpx.AsyncClient | None = None
 
@@ -33,6 +45,7 @@ class ConnectionPool:
         return cls._instance
 
     async def get_client(self) -> httpx.AsyncClient:
+        """Возвращает активный экземпляр httpx.AsyncClient, создавая его при необходимости."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(10.0),
@@ -42,12 +55,15 @@ class ConnectionPool:
         return self._client
 
     async def close(self):
+        """Закрывает httpx.AsyncClient, если он открыт."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
 
 
 class BaseApiClient:
+    """Базовый класс для всех клиентов API."""
+
     def __init__(
         self,
         pool: ConnectionPool,
@@ -55,11 +71,11 @@ class BaseApiClient:
         timeout: float = 10.0,
     ):
         if timeout <= 0:
-            raise ValueError("Timeout must be a positive number.")
+            raise ValueError("Тайм-аут должен быть положительным числом.")
         if api_base_url and not (
             api_base_url.startswith("http://") or api_base_url.startswith("https://")
         ):
-            raise ValueError("api_base_url must be a valid HTTP or HTTPS URL.")
+            raise ValueError("api_base_url должен быть валидным HTTP или HTTPS URL.")
         self.pool = pool
         self.api_base_url = api_base_url or f"http://{settings.api_host}:{settings.api_port}"
         self.api_prefix = settings.api_prefix
@@ -97,7 +113,7 @@ class BaseApiClient:
         method_str = self._validate_method(method)
 
         if not isinstance(endpoint, str) or not endpoint:
-            raise ValueError("Endpoint must be a non-empty string")
+            raise ValueError("Endpoint должен быть непустой строкой")
 
         if not endpoint.startswith("/"):
             endpoint = f"/{endpoint}"
@@ -166,7 +182,7 @@ class BaseApiClient:
             method_upper = method.upper()
             if method_upper in [m.value for m in HttpMethod]:
                 return method_upper
-        raise ValueError(f"Unsupported or invalid HTTP method: {method}")
+        raise ValueError(f"Неподдерживаемый или неверный HTTP-метод: {method}")
 
     def _should_retry(self, status_code: int, attempt: int, retry_count: int) -> bool:
         """Определяет, нужно ли повторять запрос на основе статуса ответа."""
@@ -219,7 +235,9 @@ class BaseApiClient:
             error_data = response.json()
             detail = error_data.get("detail", response.text[:200])
         except (ValueError, TypeError):
-            detail = response.text[:200] or error_map.get(response.status_code, "Unknown Error")
+            detail = response.text[:200] or error_map.get(
+                response.status_code, "Неизвестная ошибка"
+            )
 
         logger.warning(
             BaseClientMessages.HTTP_ERROR.format(response.status_code, response.request.url, detail)

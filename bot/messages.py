@@ -6,7 +6,8 @@ from bot.constants import ROLE_EMOJI_MAP
 
 
 class AdminKeyboardMessages:
-    # ... (no changes)
+    """Клавиатуры для админ-панели"""
+
     CREATE_CODE = "📝 Создать код"
     VIEW_CODES = "📋 Просмотр кодов"
     STATS = "📊 Статистика"
@@ -16,7 +17,8 @@ class AdminKeyboardMessages:
 
 
 class AdminMessages:
-    # ... (no changes)
+    """Сообщения для админ-панели"""
+
     MENU = f"{ROLE_EMOJI_MAP[UserRole.ADMIN]} Панель администратора:\\Выберите действие:"
     CREATE_CODE_PROMPT = "📝 Выберите роль для создания регистрационного кода:"
     CODE_CREATED = "✅ Код для роли {} создан: `{}`"
@@ -27,7 +29,8 @@ class AdminMessages:
 
 
 class AdminServiceMessages:
-    # ... (no changes)
+    """Служебные сообщения для админ-панели"""
+
     UNKNOWN_ERROR = "неизвестная ошибка"
     CONNECTION_ERROR = "ошибка связи"
     INTERNAL_ERROR = "внутренняя ошибка"
@@ -51,7 +54,7 @@ class AdminServiceMessages:
 
 
 class AuthServiceMessages:
-    """Service messages for authentication processes."""
+    """Служебные сообщения для процессов аутентификации."""
 
     UNKNOWN_ROLE = "Получена неизвестная роль '{}' от API. Присвоена роль GUEST."
     STATE_UPDATED = "Обновлены данные в FSM для пользователя {}"
@@ -65,11 +68,12 @@ class AuthServiceMessages:
     REGISTRATION_CRITICAL_ERROR = "Критическая ошибка при регистрации {}"
     GENERIC_ERROR = "Произошла ошибка. Попробуйте перезапустить бота командой /start."
     CRITICAL_REGISTRATION_ERROR = "Произошла критическая ошибка при регистрации."
-    TOKEN_FETCH_ERROR = "Не удалось получить или обновить токен доступа."
+    TOKEN_FETCH_ERROR = "Не удалось получить или обновить токен доступа."  # noqa: S105
 
 
 class CommonServiceMessages:
-    # ... (no changes)
+    """Служебные сообщения для общих команд"""
+
     API_STATUS_ERROR = "не удалось получить статус"
     UNEXPECTED_ERROR = "Неожиданная ошибка в get_api_status_text: {}"
     SHOP_ORDERS = "{} Ваши заказы:\n\n📦 Создайте новый заказ командой /new_order"
@@ -87,7 +91,8 @@ class CommonServiceMessages:
 
 
 class CourierMessages:
-    # ... (no changes)
+    """Сообщения для курьеров"""
+
     ACCEPT_ORDER = "✅ Принять заказ"
     AVAILABLE_ORDERS_ERROR = "Ошибка при получении доступных заказов: {}"
     MISSING_USER_ID = "Отсутствует user_id в user_data для telegram_id: {}"
@@ -98,7 +103,7 @@ class CourierMessages:
 
 
 class AuthMessages:
-    """Messages for the authentication and registration process."""
+    """Сообщения для процесса аутентификации и регистрации."""
 
     WELCOME_NEW_USER = "Добро пожаловать! Для начала работы получите код у администратора и используйте команду /register"
     WELCOME_ADMIN = "Добро пожаловать, администратор!\nИспользуйте /admin для доступа к панели или /help для списка команд."
@@ -126,7 +131,8 @@ class AuthMessages:
 
 
 class OrderMessages:
-    # ... (no changes)
+    """Сообщения, связанные с заказами"""
+
     STEP_1_DESCRIPTION = (
         "📦 Создание нового заказа\n\nШаг 1/4: Введите описание заказа (что нужно доставить):"
     )
@@ -145,7 +151,8 @@ class OrderMessages:
 
 
 class CommonMessages:
-    # ... (no changes)
+    """Общие сообщения"""
+
     API_TESTING = "🔄 Тестирую соединение с API..."
     API_STATUS_TEMPLATE = "✅ API соединение успешно!\n\n🏥 Статус: {status}\n📱 Приложение: {app}\n🏷️ Версия: {version}\n🕐 Время: {timestamp}"
     UNKNOWN_COMMAND = "👋 Неизвестная команда. Используйте /help для просмотра списка команд."
@@ -154,7 +161,8 @@ class CommonMessages:
 
 
 class DisputeMessages:
-    # ... (no changes)
+    """Сообщения, связанные со спорами"""
+
     LOADING_DISPUTES = "⚠️ Загружаю ваши споры..."
     NO_DISPUTES = "⚠️ У вас нет активных споров."
     DISPUTES_HEADER = "⚠️ Ваши споры:\n"
@@ -162,7 +170,8 @@ class DisputeMessages:
 
 
 class BaseClientMessages:
-    # ... (no changes)
+    """Сообщения для базового API клиента"""
+
     INVALID_JSON = "Не удалось распарсить ответ как JSON"
     HTTP_ERROR = "HTTP ошибка {} на {}: {}"
     SERVER_ERROR_RETRY = "Серверная ошибка {} - попытка {} из {}"
@@ -178,7 +187,8 @@ class BaseClientMessages:
 
 
 class PublicMessages:
-    # ... (no changes)
+    """Сообщения для публичных команд"""
+
     MENU_KEYWORDS: ClassVar = {"меню", "команды", "помощь", "help", "menu", "commands"}
     STATUS_KEYWORDS: ClassVar = {"статус", "status", "мой статус", "my status"}
     HELP_HEADER = "🤖 Доступные команды бота:"
@@ -191,7 +201,8 @@ class PublicMessages:
 
 
 class ShopMessages:
-    # ... (no changes)
+    """Сообщения для магазинов"""
+
     CONFIRM_ORDER = "✅ Подтвердить заказ"
     CANCEL_ORDER = "❌ Отменить"
     UNKNOWN_ERROR = "неизвестная ошибка"

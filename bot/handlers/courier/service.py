@@ -3,7 +3,7 @@ from backend.src.common.enums import OrderStatus
 from backend.src.core.logging import get_logger
 from bot.clients.orders_client import OrdersClient
 from bot.dto import UserDTO
-from bot.errors import ErrorMessages
+from bot.exceptions import ErrorMessages
 from bot.messages import CourierMessages, OrderMessages, ShopMessages
 
 logger = get_logger(__name__)

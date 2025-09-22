@@ -1,12 +1,8 @@
 from datetime import datetime, timedelta
 
 import redis.asyncio as aioredis
-from backend.src.auth.eceptions import (
-    AccountLockedError,
-    AttemptsLimitExceededError,
-    InvalidCredentialsError,
-    UserAlreadyRegisteredError,
-)
+from backend.src.auth import exceptions
+from backend.src.common.constants import LOGIN_ATTEMPTS_KEY, LOGIN_LOCK_KEY
 from backend.src.common.enums import UserRole
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
@@ -19,10 +15,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
-
-# Константы для ключей Redis
-LOGIN_ATTEMPTS_KEY = "login_attempts:{telegram_id}"
-LOGIN_LOCK_KEY = "login_lock:{telegram_id}"
 
 
 def create_access_token(user: User) -> str:
@@ -51,14 +43,14 @@ async def _handle_failed_attempt(redis: aioredis.Redis, telegram_id: int):
 
     if attempts_left > 0:
         logger.info(f"У пользователя {telegram_id} осталось {attempts_left} попыток.")
-        raise InvalidCredentialsError(f"Неверный код. Осталось попыток: {attempts_left}")
+        raise exceptions.InvalidCredentialsError(f"Неверный код. Осталось попыток: {attempts_left}")
     else:
         logger.warning(f"Пользователь {telegram_id} заблокирован из-за превышения попыток.")
         lock_key = LOGIN_LOCK_KEY.format(telegram_id=telegram_id)
         await redis.set(lock_key, "locked", ex=settings.redis.default_ttl_seconds)
         await redis.delete(attempts_key)
         lock_duration_min = settings.redis.default_ttl_seconds // 60
-        raise AttemptsLimitExceededError(
+        raise exceptions.AttemptsLimitExceededError(
             f"Превышено количество попыток. Попробуйте снова через {lock_duration_min} минут."
         )
 
@@ -78,7 +70,7 @@ async def auth_by_code(
         ttl = await redis.ttl(lock_key)
         lock_duration_min = ttl // 60 + 1
         logger.warning(f"Попытка входа от заблокированного пользователя {telegram_id}.")
-        raise AccountLockedError(
+        raise exceptions.AccountLockedError(
             f"Превышено количество попыток. Попробуйте снова через {lock_duration_min} минут."
         )
 
@@ -87,7 +79,7 @@ async def auth_by_code(
     if user and user.role not in [UserRole.PENDING, UserRole.GUEST]:
         logger.info(f"Пользователь {telegram_id} уже зарегистрирован с ролью {user.role.value}.")
         access_token = create_access_token(user)
-        raise UserAlreadyRegisteredError(
+        raise exceptions.UserAlreadyRegisteredError(
             detail="Пользователь уже зарегистрирован.",
             user_data={"id": user.id, "role": user.role.value},
             access_token=access_token,
@@ -144,25 +136,42 @@ async def get_user_by_telegram_id_or_create_guest(telegram_id: int, db: AsyncSes
     """
     Находит пользователя по telegram_id. Если не найден - создает нового
     пользователя с ролью GUEST.
+
+    Args:
+        telegram_id: ID пользователя в Telegram.
+        db: Сессия базы данных.
+
+    Returns:
+        Найденный или вновь созданный пользователь.
     """
     user = await db.scalar(select(User).where(User.telegram_id == telegram_id))
     if user:
+        logger.debug(f"Найден существующий пользователь для telegram_id={telegram_id}.")
         return user
 
-    logger.info(f"User with telegram_id {telegram_id} not found. Creating a new GUEST user.")
+    logger.info(
+        f"Пользователь с telegram_id={telegram_id} не найден. Создается новый пользователь-ГОСТЬ."
+    )
     new_guest_user = User(telegram_id=telegram_id, role=UserRole.GUEST)
     db.add(new_guest_user)
     try:
         await db.commit()
         await db.refresh(new_guest_user)
+        logger.info(
+            f"Создан новый пользователь-ГОСТЬ с ID={new_guest_user.id} для telegram_id={telegram_id}."
+        )
         return new_guest_user
     except IntegrityError:
+        # Обработка состояния гонки, когда два запроса одновременно пытаются создать пользователя
         await db.rollback()
+        logger.warning(
+            f"Произошла гонка при создании пользователя для telegram_id={telegram_id}. Повторный запрос."
+        )
         user = await db.scalar(select(User).where(User.telegram_id == telegram_id))
         if user:
             return user
         # Если все равно не удалось, значит, проблема серьезнее
         logger.error(
-            f"Failed to retrieve or create user for telegram_id={telegram_id} after race condition."
+            f"Не удалось получить или создать пользователя для telegram_id={telegram_id} после состояния гонки."
         )
         raise  # Перевыбрасываем исходное исключение

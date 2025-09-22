@@ -36,7 +36,7 @@ async def start_handler(
     if token_result.success and isinstance(token_result.data, dict):
         token = token_result.data.get("access_token")
         await state.update_data(jwt_token=token)
-        logger.info(f"JWT token obtained and cached for user {telegram_id}")
+        logger.info(f"JWT токен для пользователя {telegram_id} получен и кэширован")
 
         # Теперь, когда токен есть, получаем профиль
         user_profile_result = await service.get_user_profile_by_token(token, users_client)

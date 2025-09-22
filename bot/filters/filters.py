@@ -80,14 +80,14 @@ class RoleFilter(BaseAuthFilter):
         if not roles:
             raise ValueError("RoleFilter требует хотя бы одну роль.")
         self.roles: set[UserRole] = set(roles)
-        logger.info(f"RoleFilter initialized with roles: {[role.value for role in self.roles]}")
+        logger.debug(f"RoleFilter инициализирован с ролями: {[role.value for role in self.roles]}")
 
     async def _check_access(self, user: UserDTO) -> bool:
         return user.role in self.roles
 
     def get_required_roles(self) -> set[str]:
         required = {role.value for role in self.roles}
-        logger.info(f"RoleFilter get_required_roles: {required}")
+        logger.debug(f"RoleFilter get_required_roles: {required}")
         return required
 
 

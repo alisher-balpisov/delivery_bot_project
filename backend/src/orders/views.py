@@ -1,12 +1,10 @@
-from backend.src.auth.dependencies import get_current_user, require_role
+from backend.src.auth.dependencies import RequireAllRoles, RequireShop
 from backend.src.common.enums import UserRole
-from backend.src.core.database import get_db
+from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.models.user import User
 from backend.src.orders import service
 from backend.src.schemas.order import OrderCreate, OrderCreateRequest, OrderRead, OrderUpdate
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, status
 
 logger = get_logger(__name__)
 
@@ -16,8 +14,8 @@ router = APIRouter()
 @router.post("/", response_model=OrderRead, status_code=201)
 async def create_new_order(
     order_in: OrderCreateRequest,
-    current_user: User = Depends(require_role(UserRole.SHOP)),
-    db: AsyncSession = Depends(get_db),
+    current_user: RequireShop,
+    db: DbSession,
 ):
     """
     Создание нового заказа. Доступно только магазинам.
@@ -47,8 +45,8 @@ async def create_new_order(
 @router.get("/{order_id}", response_model=OrderRead)
 async def get_order_details(
     order_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: RequireAllRoles,
+    db: DbSession,
 ):
     """
     Получение деталей заказа по ID.
@@ -87,8 +85,8 @@ async def get_order_details(
 async def update_existing_order(
     order_id: int,
     order_in: OrderUpdate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: RequireAllRoles,
+    db: DbSession,
 ):
     """
     Обновление существующего заказа.

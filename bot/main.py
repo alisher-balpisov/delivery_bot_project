@@ -17,18 +17,20 @@ logger = get_logger(__name__)
 
 
 def create_bot(**kwargs) -> Bot:
+    """Создает экземпляр бота."""
     return Bot(token=get_bot_token(), **kwargs)
 
 
 def create_dispatcher(storage, **kwargs) -> Dispatcher:
+    """Создает и настраивает диспетчер."""
     dp = Dispatcher(storage=storage, **kwargs)
 
-    # The UserDataFilter now needs clients to perform its token/user lookups.
-    # We pass these clients directly to its constructor.
-    # Aiogram will use these instances when the filter is triggered.
+    # UserDataFilter теперь нуждается в клиентах для выполнения
+    # поиска токенов/пользователей. Мы передаем эти клиенты напрямую в его конструктор.
+    # Aiogram будет использовать эти экземпляры при срабатывании фильтра.
     user_data_provider = UserDataFilter()
 
-    # Apply the filter to all routers that handle user interactions.
+    # Применяем фильтр ко всем роутерам, которые обрабатывают взаимодействия с пользователем.
     for router in [auth_router, protected_router, orders_router, public_router]:
         router.message.filter(user_data_provider)
         router.callback_query.filter(user_data_provider)
@@ -51,6 +53,7 @@ def create_dispatcher(storage, **kwargs) -> Dispatcher:
 
 @asynccontextmanager
 async def lifespan():
+    """Асинхронный менеджер контекста для жизненного цикла приложения."""
     logger.info("🚀 Инициализация Telegram бота...")
     bot = None
     pool = ConnectionPool()
@@ -60,8 +63,8 @@ async def lifespan():
         client_manager = ClientManager(pool=pool)
         bot = create_bot()
 
-        # Pass all clients as keyword arguments to the dispatcher.
-        # These will be available in handlers and, importantly, in the filters.
+        # Передаем все клиенты как именованные аргументы в диспетчер.
+        # Они будут доступны в обработчиках и, что важно, в фильтрах.
         dp = create_dispatcher(
             storage=storage,
             admin_client=client_manager.admin,
@@ -84,6 +87,7 @@ async def lifespan():
 
 
 async def run_polling(skip_updates: bool = True):
+    """Запускает бота в режиме опроса."""
     async with lifespan() as (bot, dp):
         logger.info("🔄 Запуск бота в режиме polling...")
         try:
@@ -101,6 +105,7 @@ async def run_polling(skip_updates: bool = True):
 
 
 def main():
+    """Основная функция для запуска бота."""
     setup_logging()
     try:
         asyncio.run(run_polling(skip_updates=settings.telegram.skip_updates))

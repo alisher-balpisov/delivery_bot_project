@@ -31,3 +31,10 @@ CACHE_TTL = {
     "order_list": 60,  # 1 минута
     "statistics": 1800,  # 30 минут
 }
+
+
+ALL_ROLES_LIST = [UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER, UserRole.GUEST, UserRole.PENDING]
+
+
+LOGIN_ATTEMPTS_KEY = "login_attempts:{telegram_id}"
+LOGIN_LOCK_KEY = "login_lock:{telegram_id}"

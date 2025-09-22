@@ -1,16 +1,13 @@
-from logging import getLogger
+from fastapi import APIRouter, HTTPException
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from backend.src.admin import service as admin_service
-from backend.src.auth.dependencies import require_role
+from backend.src.admin import service
+from backend.src.auth.dependencies import RequireAdmin
 from backend.src.common.enums import UserRole
-from backend.src.core.database import get_db
-from backend.src.models.user import User
+from backend.src.core.database import DbSession
+from backend.src.core.logging import get_logger
 from backend.src.schemas.admin import RegistrationCodeResponse
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter()
@@ -19,8 +16,8 @@ router = APIRouter()
 @router.post("/create-code/{role}", response_model=RegistrationCodeResponse, status_code=201)
 async def create_registration_code(
     role: UserRole,
-    current_user: User = Depends(require_role(UserRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    current_user: RequireAdmin,
+    db: DbSession,
 ):
     """
     Генерирует одноразовый код для регистрации пользователя определенной роли.
@@ -31,105 +28,89 @@ async def create_registration_code(
             status_code=400, detail="Недопустимая роль. Используйте 'courier' или 'shop'"
         )
 
-    logger.info(f"Admin ID {current_user.id} generating {role.value} registration code")
+    logger.info(
+        f"Администратор ID {current_user.id} генерирует код регистрации для роли {role.value}"
+    )
     try:
-        new_code = await admin_service.generate_registration_code(
+        new_code = await service.generate_registration_code(
             db=db, role=role, created_by_admin_id=current_user.id
         )
         logger.info(
-            f"{role.capitalize()} registration code generated successfully by Admin ID {current_user.id}"
+            f"Код регистрации для {role.capitalize()} успешно сгенерирован администратором ID {current_user.id}"
         )
         return new_code
     except Exception as e:
-        logger.error(f"Failed to generate {role.value} code for admin {current_user.id}: {e}")
+        logger.error(
+            f"Ошибка генерации кода для роли {role.value} для администратора {current_user.id}: {e}"
+        )
         raise HTTPException(
             status_code=500, detail=f"Не удалось сгенерировать код для {role.value}: {e!s}"
         )
 
 
-# Temporary endpoint for initial setup - REMOVE in production
-@router.post("/setup-code/{role}", response_model=RegistrationCodeResponse, status_code=201)
-async def create_initial_registration_code(role: UserRole, db: AsyncSession = Depends(get_db)):
-    """
-    Temporary endpoint for creating registration codes during initial setup.
-    Allows creating codes without authentication. Remove after first admin registration.
-    """
-    if role not in [UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER]:
-        raise HTTPException(
-            status_code=400, detail="Invalid role. Use 'courier', 'shop', or 'admin'"
-        )
-    logger.info(f"Creating initial {role.value} registration code (temporary endpoint)")
-    try:
-        new_code = await admin_service.generate_registration_code(db=db, role=role)
-        logger.info(f"Initial {role} registration code created successfully")
-        return new_code
-    except Exception as e:
-        logger.error(f"Failed to create initial {role} code: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate code for {role}: {e!s}")
-
-
 @router.get("/registration-codes", response_model=list[RegistrationCodeResponse])
-async def get_all_registration_codes(
-    current_user: User = Depends(require_role(UserRole.ADMIN)), db: AsyncSession = Depends(get_db)
-):
+async def get_all_registration_codes(current_user: RequireAdmin, db: DbSession):
     """
     Получить все коды регистрации.
     Доступно только администраторам.
     """
-    logger.info(f"Admin ID {current_user.id} requesting all registration codes")
+    logger.info(f"Администратор ID {current_user.id} запрашивает все коды регистрации")
     try:
-        codes = await admin_service.get_all_registration_codes(db=db)
+        codes = await service.get_all_registration_codes(db=db)
         return codes
     except Exception as e:
+        logger.error(f"Ошибка при получении всех кодов регистрации: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Не удалось получить коды: {e!s}")
 
 
 @router.get("/registration-codes/{role}", response_model=list[RegistrationCodeResponse])
 async def get_registration_codes_by_role(
     role: UserRole,
-    current_user: User = Depends(require_role(UserRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    current_user: RequireAdmin,
+    db: DbSession,
 ):
     """
     Получить все коды регистрации для определенной роли.
     Доступно только администраторам.
     """
-    logger.info(f"Admin ID {current_user.id} requesting registration codes for role {role.value}")
+    logger.info(
+        f"Администратор ID {current_user.id} запрашивает коды регистрации для роли {role.value}"
+    )
     try:
-        codes = await admin_service.get_registration_codes_by_role(db=db, role=role)
+        codes = await service.get_registration_codes_by_role(db=db, role=role)
         return codes
     except Exception as e:
+        logger.error(
+            f"Ошибка при получении кодов регистрации для роли {role.value}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=f"Не удалось получить коды: {e!s}")
 
 
 @router.get("/registration-codes/stats", response_model=dict)
-async def get_registration_codes_stats(
-    current_user: User = Depends(require_role(UserRole.ADMIN)), db: AsyncSession = Depends(get_db)
-):
+async def get_registration_codes_stats(current_user: RequireAdmin, db: DbSession):
     """
     Получить статистику кодов регистрации.
     Доступно только администраторам.
     """
-    logger.info(f"Admin ID {current_user.id} requesting registration codes stats")
+    logger.info(f"Администратор ID {current_user.id} запрашивает статистику по кодам регистрации")
     try:
-        stats = await admin_service.get_unused_registration_codes_count(db=db)
+        stats = await service.get_unused_registration_codes_count(db=db)
         return stats
     except Exception as e:
+        logger.error(f"Ошибка при получении статистики кодов регистрации: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Не удалось получить статистику: {e!s}")
 
 
 @router.get("/system-stats", response_model=dict)
-async def get_system_stats(
-    current_user: User = Depends(require_role(UserRole.ADMIN)), db: AsyncSession = Depends(get_db)
-):
+async def get_system_stats(current_user: RequireAdmin, db: DbSession):
     """
     Получить системную статистику (общие метрики пользователей, заказов, споров).
     Доступно только администраторам.
     """
-    logger.info(f"Admin ID {current_user.id} requesting system stats")
+    logger.info(f"Администратор ID {current_user.id} запрашивает системную статистику")
     try:
-        stats = await admin_service.get_system_stats(db=db)
+        stats = await service.get_system_stats(db=db)
         return stats
     except Exception as e:
-        logger.error(f"Failed to get system stats: {e}")
+        logger.error(f"Ошибка при получении системной статистики: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Не удалось получить статистику: {e!s}")

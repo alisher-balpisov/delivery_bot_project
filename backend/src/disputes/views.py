@@ -1,12 +1,10 @@
-from backend.src.auth.dependencies import get_current_user, require_role
+from backend.src.auth.dependencies import RequireAdmin, RequireAllRoles
 from backend.src.common.enums import UserRole
-from backend.src.core.database import get_db
+from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.disputes import service
-from backend.src.models.user import User
 from backend.src.schemas.dispute import DisputeCreate, DisputeRead, DisputeUpdate
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, status
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -15,8 +13,8 @@ router = APIRouter()
 @router.post("/", response_model=DisputeRead, status_code=201)
 async def create_new_dispute(
     dispute_in: DisputeCreate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: RequireAllRoles,
+    db: DbSession,
 ):
     """
     Создание нового спора по заказу.
@@ -37,8 +35,8 @@ async def create_new_dispute(
 @router.get("/{dispute_id}", response_model=DisputeRead)
 async def get_dispute_details(
     dispute_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: RequireAllRoles,
+    db: DbSession,
 ):
     """
     Получение деталей спора по ID.
@@ -72,8 +70,8 @@ async def get_dispute_details(
 async def update_existing_dispute(
     dispute_id: int,
     dispute_in: DisputeUpdate,
-    current_user: User = Depends(require_role(UserRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
+    current_user: RequireAdmin,
+    db: DbSession,
 ):
     """
     Обновление спора (только для админов).

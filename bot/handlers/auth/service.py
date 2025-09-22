@@ -9,7 +9,7 @@ from backend.src.core.logging import get_logger
 from bot.clients.users_client import UsersClient
 from bot.constants import ROLE_EMOJI_MAP
 from bot.dto import UserDTO
-from bot.errors import ErrorMessages
+from bot.exceptions import ErrorMessages
 from bot.messages import AuthMessages, AuthServiceMessages
 from bot.utils.helpers import parse_user_role
 
@@ -46,14 +46,14 @@ async def handle_registration_success(
     user_info = response_data.get("user", {})
 
     if not access_token:
-        logger.error(f"No access_token in successful registration response for {telegram_id}")
+        logger.error(f"В успешном ответе регистрации для {telegram_id} отсутствует access_token")
         await message.answer(AuthServiceMessages.GENERIC_ERROR)
         await state.clear()
         return
 
     # Сохраняем токен в FSM
     await state.update_data(jwt_token=access_token)
-    logger.info(f"JWT token obtained and cached for user {telegram_id} after registration.")
+    logger.info(f"JWT токен для пользователя {telegram_id} получен и кэширован после регистрации.")
 
     # Обновляем DTO пользователя
     user_dto = await _update_user_state_from_profile(state, user_info, telegram_id)
@@ -108,7 +108,7 @@ async def get_user_profile_by_token(token: str, users_client: UsersClient) -> di
     profile_result = await users_client.get_user_profile(token)
     if profile_result.success and isinstance(profile_result.data, dict):
         return profile_result.data
-    logger.warning(f"Failed to get user profile with token: {profile_result.detail}")
+    logger.warning(f"Не удалось получить профиль пользователя с помощью токена: {profile_result.detail}")
     return None
 
 

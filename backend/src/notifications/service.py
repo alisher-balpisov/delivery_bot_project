@@ -1,23 +1,13 @@
-"""
-Сервис уведомлений для Delivery Bot.
-
-Обеспечивает отправку уведомлений пользователям о различных событиях:
-- Изменение статуса заказов
-- Назначение курьера на заказ
-- Создание споров
-- Системные уведомления
-
-Поддерживает асинхронную отправку через Telegram Bot API с повторными попытками.
-Логирует все уведомления для отслеживания отправленных сообщений.
-"""
-
 import asyncio
+from typing import Annotated
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
 from backend.src.models.user import User
+from fastapi import Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -268,3 +258,13 @@ def get_notification_service() -> NotificationService:
 
 # Глобальный экземпляр сервиса (можно инициализировать с ботом при запуске)
 notification_service = NotificationService()
+
+Notification = Annotated[NotificationService, Depends(get_notification_service)]
+
+
+async def get_user_by_id(db: AsyncSession, user_id: int) -> User:
+    """Получить пользователя по ID."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail=f"Пользователь с ID {user_id} не найден")
+    return user

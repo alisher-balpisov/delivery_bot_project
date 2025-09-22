@@ -1,54 +1,39 @@
 from typing import Any
 
-from backend.src.auth.dependencies import require_role
-from backend.src.common.enums import UserRole
-from backend.src.core.database import get_db
+from backend.src.auth.dependencies import RequireAdmin
+from backend.src.core.database import DbSession
+from backend.src.core.logging import get_logger
 from backend.src.models.user import User
-from backend.src.notifications.service import NotificationService, notification_service
+from backend.src.notifications import service
+from backend.src.notifications.service import Notification
 from backend.src.schemas.notification import (
     NotificationBulkRequest,
     NotificationBulkResponse,
     NotificationResponse,
     NotificationSendRequest,
 )
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException
 from sqlalchemy.future import select
 
-# Создаем новый router
 router = APIRouter()
 
-
-async def get_notification_service() -> NotificationService:
-    """Получить сервис уведомлений."""
-    return notification_service
-
-
-async def get_user_by_id(db: AsyncSession, user_id: int) -> User:
-    """Получить пользователя по ID."""
-    user = await db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail=f"Пользователь с ID {user_id} не найден")
-    return user
+logger = get_logger(__name__)
 
 
 @router.post("/send", response_model=NotificationResponse)
 async def send_notification(
     request: NotificationSendRequest,
-    current_user: User = Depends(require_role(UserRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
-    notification_svc: NotificationService = Depends(get_notification_service),
+    current_user: RequireAdmin,
+    db: DbSession,
+    notification_svc: Notification,
 ) -> dict[str, Any]:
     """
     Отправка уведомления конкретному пользователю.
     Доступно только администраторам.
     """
-    from logging import getLogger
-
-    logger = getLogger(__name__)
 
     logger.info(f"Admin {current_user.id} sending notification to user {request.user_id}")
-    user = await get_user_by_id(db, request.user_id)
+    user = await service.get_user_by_id(db, request.user_id)
 
     success = await notification_svc.send_notification(
         user=user,
@@ -67,9 +52,9 @@ async def send_notification(
 @router.post("/send-bulk", response_model=NotificationBulkResponse)
 async def send_bulk_notifications(
     request: NotificationBulkRequest,
-    current_user: User = Depends(require_role(UserRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
-    notification_svc: NotificationService = Depends(get_notification_service),
+    current_user: RequireAdmin,
+    db: DbSession,
+    notification_svc: Notification,
 ) -> dict[str, Any]:
     """
     Массовая отправка уведомлений нескольким пользователям.
@@ -104,8 +89,8 @@ async def send_bulk_notifications(
 
 @router.post("/test-notification", response_model=dict)
 async def send_test_notification(
-    current_user: User = Depends(require_role(UserRole.ADMIN)),
-    notification_svc: NotificationService = Depends(get_notification_service),
+    current_user: RequireAdmin,
+    notification_svc: Notification,
 ) -> dict[str, Any]:
     """
     Тестовая отправка уведомления самому себе (администратору).

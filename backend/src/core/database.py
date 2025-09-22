@@ -1,3 +1,6 @@
+from typing import Annotated
+
+from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
@@ -99,6 +102,9 @@ async def get_db():
             raise
         finally:
             await session.close()
+
+
+DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
 async def create_tables() -> None:
@@ -239,6 +245,7 @@ async def get_db_session() -> AsyncSession:
 __all__ = [
     "AsyncSessionLocal",
     "Base",
+    "DbSession",
     "_import_models",
     "check_database_connection",
     "close_db",

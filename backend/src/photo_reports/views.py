@@ -1,41 +1,31 @@
-from backend.src.core.database import get_db
-from backend.src.photo_reports.service import (
-    create_photo_report,
-    delete_photo_report,
-    get_all_photo_reports,
-    get_photo_report_by_id,
-    get_photo_reports_by_order_id,
-    update_photo_report,
-)
+from backend.src.core.database import DbSession
+from backend.src.photo_reports import service
 from backend.src.schemas.photo_report import (
     PhotoReportCreate,
     PhotoReportListResponse,
     PhotoReportResponse,
     PhotoReportUpdate,
 )
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/photo-reports", tags=["photo-reports"])
 
 
 @router.post("/", response_model=PhotoReportResponse)
 async def create_photo_report_endpoint(
-    photo_data: PhotoReportCreate, db: AsyncSession = Depends(get_db)
+    photo_data: PhotoReportCreate, db: DbSession
 ) -> PhotoReportResponse:
     """Создание нового фотоотчета для заказа."""
     try:
-        return await create_photo_report(db, photo_data)
+        return await service.create_photo_report(db, photo_data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{photo_id}", response_model=PhotoReportResponse)
-async def get_photo_report(
-    photo_id: int, db: AsyncSession = Depends(get_db)
-) -> PhotoReportResponse:
+async def get_photo_report(photo_id: int, db: DbSession) -> PhotoReportResponse:
     """Получение фотоотчета по ID."""
-    photo = await get_photo_report_by_id(db, photo_id)
+    photo = await service.get_photo_report_by_id(db, photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="Фотоотчет не найден")
     return photo
@@ -43,14 +33,14 @@ async def get_photo_report(
 
 @router.get("/order/{order_id}/photos", response_model=PhotoReportListResponse)
 async def get_photos_by_order(
+    db: DbSession,
     order_id: int,
     skip: int = 0,
     limit: int = 10,
-    db: AsyncSession = Depends(get_db),
 ) -> PhotoReportListResponse:
     """Получение всех фотоотчетов для конкретного заказа с пагинацией."""
     try:
-        return await get_photo_reports_by_order_id(db, order_id, skip, limit)
+        return await service.get_photo_reports_by_order_id(db, order_id, skip, limit)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -59,11 +49,11 @@ async def get_photos_by_order(
 async def update_photo_report_endpoint(
     photo_id: int,
     update_data: PhotoReportUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: DbSession,
 ) -> PhotoReportResponse:
     """Обновление фотоотчета по ID."""
     try:
-        photo = await update_photo_report(db, photo_id, update_data)
+        photo = await service.update_photo_report(db, photo_id, update_data)
         if not photo:
             raise HTTPException(status_code=404, detail="Фотоотчет не найден")
         return photo
@@ -72,9 +62,9 @@ async def update_photo_report_endpoint(
 
 
 @router.delete("/{photo_id}", response_model=dict)
-async def delete_photo_report_endpoint(photo_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+async def delete_photo_report_endpoint(photo_id: int, db: DbSession) -> dict:
     """Удаление фотоотчета по ID."""
-    deleted = await delete_photo_report(db, photo_id)
+    deleted = await service.delete_photo_report(db, photo_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Фотоотчет не найден")
     return {"message": "Фотоотчет успешно удален"}
@@ -82,7 +72,9 @@ async def delete_photo_report_endpoint(photo_id: int, db: AsyncSession = Depends
 
 @router.get("/", response_model=PhotoReportListResponse)
 async def get_all_photos(
-    skip: int = 0, limit: int = 50, db: AsyncSession = Depends(get_db)
+    db: DbSession,
+    skip: int = 0,
+    limit: int = 50,
 ) -> PhotoReportListResponse:
     """Получение всех фотоотчетов с пагинацией (endpoint для администраторов)."""
-    return await get_all_photo_reports(db, skip, limit)
+    return await service.get_all_photo_reports(db, skip, limit)

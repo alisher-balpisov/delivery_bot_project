@@ -1,8 +1,8 @@
-"""Модуль исключений аутентификации."""
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+
+from fastapi import HTTPException, status
 
 
 @dataclass
@@ -16,7 +16,7 @@ class AuthError(Exception):
     def __post_init__(self) -> None:
         """Валидация после инициализации."""
         if not self.detail or not self.detail.strip():
-            raise ValueError("Detail cannot be empty")
+            raise ValueError("Поле 'detail' не может быть пустым")
         super().__init__(self.detail)
 
     def to_dict(self) -> dict[str, Any]:
@@ -67,3 +67,20 @@ class AccountLockedError(AuthError):
     """Аккаунт временно или постоянно заблокирован."""
 
     status_code: int = 423
+
+
+CREDENTIALS_EXCEPTION = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Не удалось проверить учетные данные",
+    headers={"WWW-Authenticate": "Bearer"},
+)
+
+ACCOUNT_INACTIVE_EXCEPTION = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail="Аккаунт отключен",
+)
+
+ACCOUNT_BLOCKED_EXCEPTION = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail="Аккаунт заблокирован",
+)

@@ -3,7 +3,7 @@ from typing import Any
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.constants import MAX_MESSAGE_LENGTH, ROLE_EMOJI_MAP, STATS_EMOJIS
-from bot.errors import ErrorMessages
+from bot.exceptions import ErrorMessages
 from bot.messages import AdminServiceMessages
 
 logger = get_logger(__name__)
@@ -17,7 +17,7 @@ def parse_user_role(role: Any) -> UserRole:
         return UserRole(role)
     except ValueError:
         logger.warning(
-            f"Получена неизвестная роль '{role!s}' от API.Устанавливается роль GUEST по умолчанию."
+            f"Получена неизвестная роль '{role!s}' от API. Устанавливается роль GUEST по умолчанию."
         )
         return UserRole.GUEST
 

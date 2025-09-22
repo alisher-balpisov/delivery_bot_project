@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardMarkup
 from backend.src.common.enums import OrderStatus
 from backend.src.core.logging import get_logger
 from bot.clients.orders_client import OrdersClient
-from bot.errors import ErrorMessages
+from bot.exceptions import ErrorMessages
 from bot.handlers.keyboards import get_order_confirmation_keyboard
 from bot.messages import OrderMessages, ShopMessages
 
@@ -46,12 +46,12 @@ async def create_order(
     order_data = {
         "description": order_details.get("description"),
         "pickup_address": order_details.get("pickup_address"),
-        "recipient_address": order_details.get("delivery_address"),  # Mismatch fixed
+        "recipient_address": order_details.get("delivery_address"),
         "price": order_details.get("price"),
         "status": OrderStatus.CREATED.value,
-        # TODO: Add other required fields like recipient_phone, zone_id etc.
-        "recipient_phone": "+70000000000",  # Placeholder
-        "zone_id": 1,  # Placeholder
+        # TODO: Добавить другие обязательные поля, такие как recipient_phone, zone_id и т.д.
+        "recipient_phone": "+70000000000",  # Заглушка
+        "zone_id": 1,  # Заглушка
     }
 
     try:

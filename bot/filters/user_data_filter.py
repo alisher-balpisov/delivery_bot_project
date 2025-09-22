@@ -54,7 +54,7 @@ class UserDataFilter(BaseFilter):
             if token_result.success and isinstance(token_result.data, dict):
                 new_token = token_result.data.get("access_token")
                 await state.update_data(jwt_token=new_token)
-                logger.info(f"JWT token refreshed and cached for user {telegram_id}")
+                logger.info(f"JWT токен для пользователя {telegram_id} обновлен и кэширован")
 
                 # Получаем профиль с новым токеном
                 profile_result = await users_client.get_user_profile(new_token)
@@ -85,5 +85,5 @@ class UserDataFilter(BaseFilter):
         guest_dto = UserDTO(telegram_id=telegram_id, role=UserRole.GUEST)
         # Очищаем старые данные, чтобы не было конфликтов, и записываем гостя
         await state.set_data({"user": guest_dto.model_dump()})
-        logger.info(f"Created and cached a 'GUEST' profile for {telegram_id}.")
+        logger.info(f"Создан и кэширован профиль 'ГОСТЬ' для {telegram_id}.")
         return guest_dto

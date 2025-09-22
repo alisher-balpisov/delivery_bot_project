@@ -6,7 +6,7 @@ from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
 from bot.clients.system_client import SystemClient
 from bot.constants import STATS_TIMEOUT
-from bot.errors import ErrorMessages
+from bot.exceptions import ErrorMessages
 from bot.handlers.keyboards import get_admin_main_keyboard, get_back_to_menu_keyboard
 from bot.messages import AdminMessages, AdminServiceMessages, CommonMessages
 from bot.utils.formatters import format_codes_as_html_table
@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 
 
 def get_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
+    """Возвращает текст и клавиатуру для главного меню администратора."""
     return AdminMessages.MENU, get_admin_main_keyboard()
 
 
@@ -24,6 +25,7 @@ async def create_registration_code(
     admin_client: AdminClient,
     role: UserRole,
 ) -> str:
+    """Создает регистрационный код для указанной роли."""
     if not token:
         return ErrorMessages.Auth.UNAUTHORIZED
     try:
@@ -57,6 +59,7 @@ async def get_formatted_codes(token: str | None, admin_client: AdminClient) -> s
 
 
 async def get_system_stats_text(token: str | None, admin_client: AdminClient) -> str:
+    """Получает и форматирует текст системной статистики."""
     if not token:
         return ErrorMessages.Auth.UNAUTHORIZED
     try:
@@ -87,7 +90,7 @@ async def _handle_callback_stats(
     """Обрабатывает запрос статистики через callback."""
 
     if callback.message is None:
-        logger.warning("CallbackQuery без связанного сообщения.")
+        logger.warning("CallbackQuery не имеет связанного сообщения.")
         await callback.answer()
         return
     await _send_system_stats(callback.message, token, admin_client, edit=True)

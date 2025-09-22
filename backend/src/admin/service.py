@@ -5,11 +5,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole
+from backend.src.core.logging import get_logger
 from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
 from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.user import User
 from backend.src.schemas.admin import RegistrationCodeResponse
+
+logger = get_logger(__name__)
 
 
 async def generate_registration_code(
@@ -26,6 +29,7 @@ async def generate_registration_code(
     Returns:
         RegistrationCodeResponse: Созданный код регистрации
     """
+    logger.info(f"Генерация кода регистрации для роли: {role.value}")
     # Генерируем уникальный код длиной 8 символов
     while True:
         code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
@@ -41,6 +45,8 @@ async def generate_registration_code(
     db.add(reg_code)
     await db.commit()
     await db.refresh(reg_code)
+
+    logger.info(f"Сгенерирован код регистрации '{reg_code.code}' для роли: {role.value}")
 
     return RegistrationCodeResponse.model_validate(reg_code)
 

@@ -9,7 +9,6 @@ from backend.src.users.views import router as users_router
 
 api_router = APIRouter()
 
-# TODO: Раскомментировать по мере реализации view-слоя
 api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(users_router, prefix="/users", tags=["Users"])
 api_router.include_router(orders_router, prefix="/orders", tags=["Orders"])
