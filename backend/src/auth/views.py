@@ -41,6 +41,7 @@ async def auth_by_code(
         result = await service.auth_by_code(db, redis, form_data.telegram_id, form_data.code)
         logger.info(f"Успешная аутентификация для telegram_id: {form_data.telegram_id}")
         return result
+
     except exceptions.UserAlreadyRegisteredError as e:
         # Это не ошибка, а штатная ситуация. Возвращаем успешный ответ.
         logger.info(
