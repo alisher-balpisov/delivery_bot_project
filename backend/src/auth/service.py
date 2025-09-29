@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import redis.asyncio as aioredis
 from backend.src.auth import exceptions
@@ -49,12 +49,12 @@ class AuthService:
         to_encode = {
             "sub": str(user.id),
             "role": user.role.value,
-            "iat": datetime.utcnow(),
+            "iat": datetime.now(UTC),
         }
         if getattr(user, "telegram_id", None) is not None:
             to_encode["tid"] = str(user.telegram_id)
 
-        expire = datetime.utcnow() + timedelta(minutes=settings.jwt.access_token_expire_minutes)
+        expire = datetime.now(UTC) + timedelta(minutes=settings.jwt.access_token_expire_minutes)
         to_encode["exp"] = expire
 
         try:
@@ -102,7 +102,7 @@ class AuthService:
         if current_attempts == 1:
             await self.redis.expire(attempts_key, settings.redis.default_ttl_seconds)
 
-        attempts_left = settings.business.registration_max_attempts - current_attempts
+        attempts_left = settings.redis.registration_max_attempts - current_attempts
 
         if attempts_left > 0:
             logger.info(

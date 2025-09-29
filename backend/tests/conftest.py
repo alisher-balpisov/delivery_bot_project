@@ -80,7 +80,7 @@ async def test_user(db_session: AsyncSession) -> User:
         telegram_id=int(uuid.uuid4().int & (1 << 31) - 1),
         name="Test User",
         role=UserRole.SHOP,
-        is_active=True,
+        is_deleted=False,
     )
     db_session.add(user)
     await db_session.commit()

@@ -1,28 +1,29 @@
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, func
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Enum, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.common.enums import UserRole
 from backend.src.core.database import Base
+from backend.src.models.mixins import CreatedAtMixin
+
+if TYPE_CHECKING:
+    from .user import User
 
 
-class RegistrationCode(Base):
-    """
-    Представляет одноразовый код для регистрации.
-    """
-
+class RegistrationCode(CreatedAtMixin, Base):
     __tablename__ = "registration_codes"
-    __repr_attrs__ = ("code", "role", "is_used")
+    __repr_attrs__ = ("id", "code", "role", "is_used")
 
-    id = Column(Integer, primary_key=True)
-    code = Column(String(20), unique=True, nullable=False, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole))
+    is_used: Mapped[bool] = mapped_column(default=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
-    # Используем native_enum=False для совместимости с существующими данными в БД
-    role = Column(Enum(UserRole, native_enum=False), nullable=False)
-
-    is_used = Column(Boolean, default=False, nullable=False)
-
-    # ID пользователя, который активировал код
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    user = relationship("User", back_populates="registration_code", foreign_keys=[user_id])
-
-    created_at = Column(DateTime, server_default=func.now())
+    created_by_user: Mapped[User] = relationship(
+        foreign_keys=[created_by_user_id], back_populates="created_registration_codes"
+    )
+    user: Mapped[User | None] = relationship(back_populates="registration_code", uselist=False)

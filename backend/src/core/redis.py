@@ -23,7 +23,7 @@ class RedisClient:
             self._pool = aioredis.ConnectionPool.from_url(
                 f"redis://{settings.redis.host}:{settings.redis.port}/{settings.redis.db}",
                 password=password,
-                max_connections=20,
+                max_connections=settings.redis.max_connections,
                 decode_responses=True,  # Важно для работы со строками
             )
             logger.info("✅ Пул соединений Redis успешно инициализирован")

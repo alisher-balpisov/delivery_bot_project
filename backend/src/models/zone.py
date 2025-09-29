@@ -1,25 +1,33 @@
-from sqlalchemy import DECIMAL, Column, Integer, String
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import TYPE_CHECKING
+
+from sqlalchemy import DECIMAL, CheckConstraint, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.core.database import Base
+
+if TYPE_CHECKING:
+    from .order import Order
 
 
 class Zone(Base):
     """
     Представляет зону доставки в таблице `zones`.
-
-    Определяет географическую зону с радиусом, базовой ценой и надбавками.
     """
 
     __tablename__ = "zones"
-    __repr_attrs__ = ("name", "radius_km", "base_price")
+    __repr_attrs__ = ("name", "base_price")
 
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)  # Название зоны (центр города и т.д.)
-    radius_km = Column(Integer, nullable=False)  # Радиус зоны в километрах
-    base_price = Column(
-        DECIMAL(10, 2), nullable=False, default=3000.00
-    )  # Фиксированная цена для обычных заказов
-    # Для гео-расчётов можно добавить отдельную модель с координатами
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    radius_km: Mapped[int] = mapped_column()
+    base_price: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), default=Decimal("3000.00"))
 
-    orders = relationship("Order", back_populates="zone")
+    orders: Mapped[list[Order]] = relationship(back_populates="zone")
+
+    __table_args__ = (
+        CheckConstraint("radius_km > 0", name="check_radius_positive"),
+        CheckConstraint("base_price >= 0", name="check_base_price_non_negative"),
+    )

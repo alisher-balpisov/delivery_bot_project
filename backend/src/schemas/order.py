@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from backend.src.common.enums import OrderStatus, OrderType
@@ -33,8 +34,6 @@ class OrderBase(BaseModel):
     @classmethod
     def sanitize_strings(cls, v):
         if isinstance(v, str):
-            import re
-
             v = re.sub(r"<[^>]*>", "", v)  # Remove HTML tags
         return v
 
@@ -43,7 +42,7 @@ class OrderCreateRequest(OrderBase):
     """Схема для создания нового заказа магазином (входные данные API)."""
 
     zone_id: int
-    order_type: OrderType = OrderType.normal
+    order_type: OrderType = OrderType.NORMAL
     zone_addon: float = 0.0
     rush_hour_addon: float = 0.0
 

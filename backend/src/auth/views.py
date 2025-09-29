@@ -43,7 +43,6 @@ async def auth_by_code(
         return result
 
     except exceptions.UserAlreadyRegisteredError as e:
-        # Это не ошибка, а штатная ситуация. Возвращаем успешный ответ.
         logger.info(
             f"Пользователь {form_data.telegram_id} уже зарегистрирован. Возвращаем существующие данные."
         )

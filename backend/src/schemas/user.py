@@ -42,7 +42,7 @@ class UserRead(UserBase):
     id: int
     role: UserRole
     is_blocked: bool
-    is_active: bool
+    is_deleted: bool
 
     class Config:
         from_attributes = True

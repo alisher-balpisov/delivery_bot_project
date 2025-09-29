@@ -1,13 +1,10 @@
-"""
-Кастомные валидаторы для Pydantic схем.
-Обеспечивают дополнительную защиту от SQL injection и XSS атак.
-"""
-
 import re
 from typing import Any
 
-# Список подозрительных паттернов
-DANGEROUS_PATTERNS = [
+from pydantic import ValidationError
+
+# Список подозрительных строковых паттернов
+DANGEROUS_PATTERNS_STR = [
     r";\s*--",  # SQL комментарии
     r";\s*/\*",  # Начало SQL блока комментариев
     r"union\s+select",  # UNION SELECT атаки
@@ -18,18 +15,22 @@ DANGEROUS_PATTERNS = [
     r"eval\s*\(",  # JavaScript eval
 ]
 
+# Скомпилированные паттерны для производительности
+# re.IGNORECASE делает проверку нечувствительной к регистру (например, 'SELECT' и 'select')
+COMPILED_DANGEROUS_PATTERNS = [re.compile(p, re.IGNORECASE) for p in DANGEROUS_PATTERNS_STR]
+
 
 def validate_no_malicious_content(value: Any) -> Any:
     """
     Валидатор для обнаружения подозрительного контента в строковых полях.
+    Примечание: Это базовый фильтр, он не является полноценной защитой
+    от всех видов SQL-инъекций или XSS-атак.
     """
     if not isinstance(value, str):
         return value
 
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, value, re.IGNORECASE):
-            from pydantic import ValidationError
-
+    for pattern in COMPILED_DANGEROUS_PATTERNS:
+        if pattern.search(value):
             raise ValidationError.from_exception_data(
                 title="InputValidationError",
                 line_errors=[
@@ -49,8 +50,6 @@ def validate_string_length(value: Any, max_length: int = 1000) -> Any:
     Валидатор для ограничения длины строковых полей.
     """
     if isinstance(value, str) and len(value) > max_length:
-        from pydantic import ValidationError
-
         raise ValidationError.from_exception_data(
             title="StringLengthError",
             line_errors=[
@@ -67,7 +66,7 @@ def validate_string_length(value: Any, max_length: int = 1000) -> Any:
 
 # Экспорт функций
 __all__ = [
-    "DANGEROUS_PATTERNS",
+    "COMPILED_DANGEROUS_PATTERNS",
     "validate_no_malicious_content",
     "validate_string_length",
 ]

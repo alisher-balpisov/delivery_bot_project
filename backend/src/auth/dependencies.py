@@ -56,7 +56,7 @@ async def _get_current_user(db: DbSession, token: str = Depends(oauth2_scheme)) 
         logger.warning(f"Пользователь с ID {user_id} из токена не найден в БД")
         raise exceptions.CREDENTIALS_EXCEPTION
 
-    if not user.is_active:
+    if user.is_deleted:
         logger.warning(f"Неактивный пользователь {user.id} попытался получить доступ")
         raise exceptions.ACCOUNT_INACTIVE_EXCEPTION
 

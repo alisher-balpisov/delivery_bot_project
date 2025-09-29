@@ -1,27 +1,25 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.core.database import Base
+from backend.src.models.mixins import CreatedAtMixin, SoftDeleteMixin
+
+if TYPE_CHECKING:
+    from .order import Order
 
 
-class PhotoReport(Base):
-    """
-    Представляет фотоотчет по заказу в таблице `photo_reports`.
-
-    Хранит ссылку на файл (file_id из Telegram) и другую мета-информацию.
-    """
-
+class PhotoReport(CreatedAtMixin, SoftDeleteMixin, Base):
     __tablename__ = "photo_reports"
-    __repr_attrs__ = "order_id"
+    __repr_attrs__ = ("id", "order_id")
 
-    id = Column(Integer, primary_key=True)
-    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
-    # file_id, полученный от Telegram API.
-    file_id = Column(String(255), nullable=False)
-    # Локальный путь, если файл сохраняется на сервере.
-    file_path = Column(String(500), nullable=True)
-    description = Column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True)
+    file_id: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str | None] = mapped_column(String(500))
+    description: Mapped[str | None] = mapped_column(Text)
 
-    created_at = Column(DateTime, server_default=func.now())
-
-    order = relationship("Order", back_populates="photo_reports")
+    order: Mapped[Order] = relationship(back_populates="photo_reports")

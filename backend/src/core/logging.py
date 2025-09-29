@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import logging.handlers
 import sys
+from copy import copy
 from pathlib import Path
 from typing import ClassVar
 
@@ -9,11 +11,10 @@ from backend.src.core.config import settings
 
 class ColoredFormatter(logging.Formatter):
     """
-    Форматтер с цветным выводом для консоли
+    Форматтер с цветным выводом для консоли.
     """
 
-    # Цветовые коды ANSI
-    COLORS: ClassVar = {
+    COLORS: ClassVar[dict[str, str]] = {
         "DEBUG": "\033[36m",  # Cyan
         "INFO": "\033[32m",  # Green
         "WARNING": "\033[33m",  # Yellow
@@ -22,206 +23,167 @@ class ColoredFormatter(logging.Formatter):
     }
     RESET = "\033[0m"
 
-    def format(self, record):
-        # Добавляем цвет к уровню логирования
-        if record.levelname in self.COLORS:
-            record.levelname = f"{self.COLORS[record.levelname]}{record.levelname}{self.RESET}"
-
-        return super().format(record)
+    def format(self, record: logging.LogRecord) -> str:
+        """
+        Создает копию record, чтобы безопасно добавить цвет,
+        и затем форматирует сообщение.
+        """
+        # Создаем поверхностную копию, чтобы не изменять оригинал
+        record_copy = copy(record)
+        level_name = record_copy.levelname
+        if level_name in self.COLORS:
+            record_copy.levelname = f"{self.COLORS[level_name]}{level_name}{self.RESET}"
+        # Форматируем сообщение, используя измененную копию
+        return super().format(record_copy)
 
 
 class TelegramFormatter(logging.Formatter):
     """
-    Специальный форматтер для логов Telegram бота
+    Специальный форматтер для логов Telegram бота.
+    Добавляет emoji в запись лога.
     """
 
-    def format(self, record):
-        # Добавляем эмодзи для разных уровней
+    def format(self, record: logging.LogRecord) -> str:
         emoji_map = {"DEBUG": "🐛", "INFO": "📋", "WARNING": "⚠️", "ERROR": "❌", "CRITICAL": "🚨"}
+        # Используем copy, чтобы следовать лучшим практикам, как и в ColoredFormatter
+        record_copy = copy(record)
+        record_copy.emoji = emoji_map.get(record_copy.levelname, "📋")
+        return super().format(record_copy)
 
-        emoji = emoji_map.get(record.levelname, "📋")
-        record.emoji = emoji
 
-        return super().format(record)
+# --- Вспомогательные функции для создания обработчиков ---
+
+
+def _create_rotating_file_handler(
+    filename: Path, level: int, formatter: logging.Formatter, handler_kwargs: dict
+) -> logging.handlers.RotatingFileHandler:
+    """Вспомогательная функция для создания файлового обработчика с ротацией."""
+    filename.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(filename=str(filename), **handler_kwargs)
+    handler.setFormatter(formatter)
+    handler.setLevel(level)
+    return handler
 
 
 def setup_console_handler() -> logging.Handler:
-    """
-    Настройка обработчика для вывода в консоль
-    """
-    from backend.src.core.config import settings  # Lazy import to avoid circular dependency
-
+    """Настройка обработчика для вывода в консоль."""
     console_handler = logging.StreamHandler(sys.stdout)
+    formatter_class = (
+        ColoredFormatter if settings.debug and sys.stdout.isatty() else logging.Formatter
+    )
 
-    if settings.debug and sys.stdout.isatty():
-        # Цветной вывод для терминала в режиме разработки
-        formatter = ColoredFormatter(
-            fmt=settings.logging.format, datefmt=settings.logging.date_format, style="{"
-        )
-    else:
-        # Обычный вывод для продакшена или файлов
-        formatter = logging.Formatter(
-            fmt=settings.logging.format, datefmt=settings.logging.date_format, style="{"
-        )
-
+    formatter = formatter_class(
+        fmt=settings.logging.format, datefmt=settings.logging.date_format, style="{"
+    )
     console_handler.setFormatter(formatter)
     console_handler.setLevel(settings.logging.level)
-
     return console_handler
 
 
 def setup_file_handler() -> logging.Handler | None:
-    """
-    Настройка обработчика для записи в файл
-    """
+    """Настройка обработчика для записи в основной файл логов."""
     if not settings.logging.file_path:
         return None
 
-    # Создаем директорию для логов если не существует
     log_file = Path(settings.logging.file_path)
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Используем RotatingFileHandler для ротации логов
-    file_handler = logging.handlers.RotatingFileHandler(
-        filename=str(log_file), **settings.logging.handler_kwargs()
-    )
-
-    # Подробный формат для файловых логов
     formatter = logging.Formatter(
         fmt=settings.logging.file_format, datefmt=settings.logging.date_format, style="{"
     )
 
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(settings.logging.level)
+    return _create_rotating_file_handler(
+        filename=log_file,
+        level=settings.logging.level,
+        formatter=formatter,
+        handler_kwargs=settings.logging.handler_kwargs(),
+    )
 
-    return file_handler
 
+def setup_telegram_handler() -> logging.Handler | None:
+    """Настройка специального обработчика для логов Telegram бота."""
+    if not settings.logging.file_path:
+        return None
 
-def setup_telegram_handler() -> logging.Handler:
-    """
-    Настройка специального обработчика для логов Telegram бота
-    """
-    # Создаем отдельный файл для логов бота если указан основной файл логов
-    if settings.logging.file_path:
-        bot_log_file = Path(settings.logging.file_path).parent / "telegram_bot.log"
+    bot_log_file = Path(settings.logging.file_path).parent / "telegram_bot.log"
+    formatter = TelegramFormatter(
+        fmt=settings.logging.telegram_format, datefmt=settings.logging.date_format, style="{"
+    )
 
-        bot_handler = logging.handlers.RotatingFileHandler(
-            filename=str(bot_log_file), **settings.logging.handler_kwargs()
-        )
-
-        formatter = TelegramFormatter(
-            fmt=settings.logging.telegram_format, datefmt=settings.logging.date_format, style="{"
-        )
-
-        bot_handler.setFormatter(formatter)
-        bot_handler.setLevel(settings.logging.level)
-
-        return bot_handler
-
-    return None
+    return _create_rotating_file_handler(
+        filename=bot_log_file,
+        level=settings.logging.level,
+        formatter=formatter,
+        handler_kwargs=settings.logging.handler_kwargs(),
+    )
 
 
 def setup_error_handler() -> logging.Handler | None:
-    """
-    Отдельный обработчик только для ошибок (ERROR и CRITICAL)
-    """
+    """Отдельный обработчик только для ошибок (ERROR и CRITICAL)."""
     if not settings.logging.file_path:
         return None
 
     error_log_file = Path(settings.logging.file_path).parent / "errors.log"
-
-    error_handler = logging.handlers.RotatingFileHandler(
-        filename=str(error_log_file), **settings.logging.handler_kwargs()
-    )
-
-    # Только ошибки и критические события
-    error_handler.setLevel(logging.ERROR)
-
     formatter = logging.Formatter(
         fmt=settings.logging.error_format, datefmt=settings.logging.date_format, style="{"
     )
 
-    error_handler.setFormatter(formatter)
-
-    return error_handler
-
-
-def configure_third_party_loggers():
-    """
-    Настройка уровней логирования для сторонних библиотек
-    """
-    # SQLAlchemy
-    logging.getLogger("sqlalchemy.engine").setLevel(
-        getattr(logging, settings.logging.sqlalchemy_level)
+    return _create_rotating_file_handler(
+        filename=error_log_file,
+        level=logging.ERROR,
+        formatter=formatter,
+        handler_kwargs=settings.logging.handler_kwargs(),
     )
-    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
 
-    # Aiogram
-    logging.getLogger("aiogram").setLevel(getattr(logging, settings.logging.aiogram_level))
 
-    # HTTP библиотеки
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+# --- Основные функции настройки ---
 
-    # Uvicorn
-    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
-    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
 
-    # Отключаем слишком болтливые логи
-    logging.getLogger("multipart").setLevel(logging.WARNING)
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
+def configure_third_party_loggers() -> None:
+    """Настройка уровней логирования для сторонних библиотек."""
+    # Код остался без изменений, он и так был хорош
+    loggers_config = {
+        "sqlalchemy.engine": settings.logging.sqlalchemy_level,
+        "sqlalchemy.pool": "WARNING",
+        "sqlalchemy.dialects": "WARNING",
+        "aiogram": settings.logging.aiogram_level,
+        "httpx": "WARNING",
+        "httpcore": "WARNING",
+        "uvicorn.access": "INFO",
+        "uvicorn.error": "INFO",
+        "multipart": "WARNING",
+        "asyncio": "WARNING",
+    }
+    for name, level in loggers_config.items():
+        logging.getLogger(name).setLevel(getattr(logging, level.upper()))
 
 
 def setup_logging() -> None:
-    """
-    Основная функция настройки системы логирования
-    """
-    # Получаем корневой логгер
+    """Основная функция настройки системы логирования."""
     root_logger = logging.getLogger()
 
-    # Очищаем существующие обработчики
-    root_logger.handlers.clear()
+    # Проверка, чтобы избежать повторной инициализации.
+    # clear() остается для случаев, когда нужна принудительная перезагрузка.
+    if root_logger.handlers:
+        root_logger.handlers.clear()
 
-    # Устанавливаем общий уровень
     root_logger.setLevel(logging.DEBUG)
 
-    # Добавляем обработчики
-    handlers = []
+    # Собираем обработчики, отфильтровывая None
+    handlers = [
+        setup_console_handler(),
+        setup_file_handler(),
+        setup_telegram_handler(),
+        setup_error_handler(),
+    ]
 
-    # Консольный вывод
-    console_handler = setup_console_handler()
-    handlers.append(console_handler)
-
-    # Файловый вывод
-    file_handler = setup_file_handler()
-    if file_handler:
-        handlers.append(file_handler)
-
-    # Telegram логи
-    telegram_handler = setup_telegram_handler()
-    if telegram_handler:
-        handlers.append(telegram_handler)
-
-    # Логи ошибок
-    error_handler = setup_error_handler()
-    if error_handler:
-        handlers.append(error_handler)
-
-    # Добавляем все обработчики к корневому логгеру
-    for handler in handlers:
+    for handler in filter(None, handlers):
         root_logger.addHandler(handler)
 
-    # Настройка сторонних библиотек
     configure_third_party_loggers()
 
-    # Логируем успешную настройку
     logger = logging.getLogger(__name__)
-    logger.info(f"📝 Логирование настроено. Уровень: {settings.logging.level}")
-
+    logger.info("📝 Логирование настроено. Уровень: %s", settings.logging.level)
     if settings.logging.file_path:
-        logger.info(f"📁 Логи сохраняются в: {settings.logging.file_path}")
-
+        logger.info("📁 Логи сохраняются в: %s", settings.logging.file_path)
     if settings.debug:
         logger.debug("🐛 Режим отладки включен")
 
@@ -313,9 +275,6 @@ def log_function_calls(logger_name: str | None = None):
                 execution_time = time.time() - start_time
                 logger.error(f"❌ Ошибка в {func.__name__} за {execution_time:.3f}с: {e}")
                 raise
-
-        # Возвращаем подходящий wrapper в зависимости от типа функции
-        import asyncio
 
         if asyncio.iscoroutinefunction(func):
             return async_wrapper

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from backend.src.common.enums import OrderStatus, OrderType, UserRole
 from backend.src.core.logging import get_logger
@@ -104,7 +104,7 @@ async def update_order(
         for key, value in update_dict.items():
             setattr(order, key, value)
 
-        now = datetime.now()
+        now = datetime.now(UTC)
         new_status = order.status
 
         if new_status != old_status:
@@ -115,7 +115,6 @@ async def update_order(
             logger.info(
                 f"Статус заказа {order_id} изменён с {old_status.value} на {new_status.value} пользователем {current_user.id}"
             )
-
 
     # после выхода из блока — данные зафиксированы
     await db.refresh(order)

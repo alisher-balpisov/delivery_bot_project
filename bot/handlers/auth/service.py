@@ -108,7 +108,9 @@ async def get_user_profile_by_token(token: str, users_client: UsersClient) -> di
     profile_result = await users_client.get_user_profile(token)
     if profile_result.success and isinstance(profile_result.data, dict):
         return profile_result.data
-    logger.warning(f"Не удалось получить профиль пользователя с помощью токена: {profile_result.detail}")
+    logger.warning(
+        f"Не удалось получить профиль пользователя с помощью токена: {profile_result.detail}"
+    )
     return None
 
 
@@ -128,9 +130,9 @@ async def get_user_stats_text(token: str | None, users_client: UsersClient) -> s
                 role=parse_user_role(user_info.get("role", "guest")),
             )
             status = (
-                AuthServiceMessages.ACTIVE
-                if user_info.get("is_active")
-                else AuthServiceMessages.DEACTIVATED
+                AuthServiceMessages.DEACTIVATED
+                if user_info.get("is_deleted")
+                else AuthServiceMessages.ACTIVE
             )
             is_blocked = (
                 AuthServiceMessages.YES if user_info.get("is_blocked") else AuthServiceMessages.NO

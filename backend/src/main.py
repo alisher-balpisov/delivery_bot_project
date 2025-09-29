@@ -16,7 +16,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from backend.src.api.routes import api_router
-from backend.src.core.config import get_upload_dir, settings
+from backend.src.core.config import ensure_upload_dir_exists, get_upload_path, settings
 from backend.src.core.database import close_db, init_db
 from backend.src.core.logging import get_logger, setup_logging
 from backend.src.core.redis import redis_manager
@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Сервис уведомлений инициализирован")
 
         # Создание директорий для файлов
-        get_upload_dir()
+        ensure_upload_dir_exists()
         logger.info("✅ Директории созданы")
 
         logger.info("🎉 Приложение успешно запущено!")
@@ -161,7 +161,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix=settings.api_prefix)
 
     # Статические файлы (для загруженных фото)
-    upload_dir = get_upload_dir()
+    upload_dir = get_upload_path()
     app.mount("/static", StaticFiles(directory=str(upload_dir)), name="static")
 
     # Root endpoint
@@ -260,7 +260,6 @@ def main():
     Основная функция для запуска через CLI
     """
     try:
-        # Запуск приложения
         asyncio.run(run_app())
 
     except KeyboardInterrupt:

@@ -1,34 +1,35 @@
-from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import CheckConstraint, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.core.database import Base
+from backend.src.models.mixins import UpdatedAtMixin
+
+if TYPE_CHECKING:
+    from .dispute import Dispute
+    from .order import Order
+    from .user import User
 
 
-class Courier(Base):
-    """
-    Представляет профиль курьера в таблице `couriers`.
-
-    Содержит информацию о статусе курьера, его текущей и максимальной загрузке.
-    """
-
+class Courier(UpdatedAtMixin, Base):
     __tablename__ = "couriers"
-    __repr_attrs__ = ("user_id", "is_active")
+    __repr_attrs__ = ("id", "user_id", "is_active")
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    # Показывает, работает ли курьер в данный момент (на смене).
-    is_active = Column(Boolean, default=False, nullable=False)
-    # Счётчик текущих заказов в работе.
-    current_orders = Column(Integer, default=0)
-    # Максимальное количество заказов, которое курьер может взять одновременно.
-    max_orders = Column(Integer, default=5, nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    is_active: Mapped[bool] = mapped_column(default=False)
+    current_orders: Mapped[int] = mapped_column(default=0)
+    max_orders: Mapped[int] = mapped_column(default=5)
 
-    # Ограничения на уровне базы данных для обеспечения целостности данных.
     __table_args__ = (
         CheckConstraint("current_orders >= 0", name="check_current_orders_positive"),
         CheckConstraint("current_orders <= max_orders", name="check_max_orders_limit"),
+        CheckConstraint("max_orders > 0", name="check_max_orders_positive"),
     )
 
-    user = relationship("User", back_populates="courier")
-    orders = relationship("Order", back_populates="courier")
-    disputes = relationship("Dispute", back_populates="courier")
+    user: Mapped[User] = relationship(back_populates="courier", uselist=False)
+    orders: Mapped[list[Order]] = relationship(back_populates="courier")
+    disputes: Mapped[list[Dispute]] = relationship(back_populates="courier")

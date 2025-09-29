@@ -1,24 +1,33 @@
-from sqlalchemy import Column, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.core.database import Base
+from backend.src.models.mixins import SoftDeleteMixin, TimestampMixin
+
+if TYPE_CHECKING:
+    from .dispute import Dispute
+    from .order import Order
+    from .user import User
 
 
-class Shop(Base):
-    """
-    Представляет профиль магазина в таблице `shops`.
-
-    Магазин связан с конкретным пользователем и является создателем заказов.
-    """
-
+class Shop(TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "shops"
-    __repr_attrs__ = "name"
+    __repr_attrs__ = ("id", "name", "user_id")
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    name = Column(String(255), nullable=False)
-    address = Column(String(255))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    address: Mapped[str | None] = mapped_column(String(255))
 
-    user = relationship("User", back_populates="shop")
-    orders = relationship("Order", back_populates="shop", cascade="all, delete-orphan")
-    disputes = relationship("Dispute", back_populates="shop")
+    user: Mapped[User] = relationship(back_populates="shop", uselist=False)
+    orders: Mapped[list[Order]] = relationship(back_populates="shop")
+    disputes: Mapped[list[Dispute]] = relationship(back_populates="shop")
+
+    __table_args__ = (
+        Index("idx_shops_user_id", "user_id"),
+        Index("idx_shops_is_deleted", "is_deleted"),
+    )
