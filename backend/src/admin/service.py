@@ -42,12 +42,11 @@ async def generate_registration_code(
     # Создаем запись кода
     reg_code = RegistrationCode(code=code, role=role, is_used=False)
 
-    db.add(reg_code)
-    await db.commit()
+    async with db.begin():
+        db.add(reg_code)
+
     await db.refresh(reg_code)
-
     logger.info(f"Сгенерирован код регистрации '{reg_code.code}' для роли: {role.value}")
-
     return RegistrationCodeResponse.model_validate(reg_code)
 
 
@@ -74,8 +73,8 @@ async def deactivate_registration_code(db: AsyncSession, code_id: int) -> bool:
         return False
 
     # Помечаем как использованный
-    code.is_used = True
-    await db.commit()
+    async with db.begin():
+        code.is_used = True
 
     return True
 

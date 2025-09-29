@@ -29,9 +29,11 @@ async def create_photo_report(
         description=photo_data.description,
     )
 
-    db.add(photo_report)
-    await db.commit()
-    await db.refresh(photo_report)
+    async with db.begin():
+        db.add(photo_report)
+        # flush и refresh для получения сгенерированных БД полей (id, created_at)
+        await db.flush()
+        await db.refresh(photo_report)
 
     return PhotoReportResponse.model_validate(photo_report)
 
@@ -79,17 +81,14 @@ async def update_photo_report(
     """
     Обновление фотоотчета по его идентификатору.
     """
-    photo_report = await db.get(PhotoReport, photo_id)
-    if not photo_report:
-        raise ValueError(f"Фотоотчет с ID {photo_id} не найден")
+    async with db.begin():
+        photo_report = await db.get(PhotoReport, photo_id)
+        if not photo_report:
+            raise ValueError(f"Фотоотчет с ID {photo_id} не найден")
 
-    # Обновить поля
-    update_dict = update_data.model_dump(exclude_unset=True)
-    for key, value in update_dict.items():
-        setattr(photo_report, key, value)
-
-    await db.commit()
-    await db.refresh(photo_report)
+        update_dict = update_data.model_dump(exclude_unset=True)
+        for key, value in update_dict.items():
+            setattr(photo_report, key, value)
 
     return PhotoReportResponse.model_validate(photo_report)
 
@@ -103,8 +102,8 @@ async def delete_photo_report(db: AsyncSession, photo_id: int) -> bool:
     if not photo_report:
         return False
 
-    await db.delete(photo_report)
-    await db.commit()
+    async with db.begin():
+        await db.delete(photo_report)
     return True
 
 

@@ -26,17 +26,19 @@ async def update_user(db: AsyncSession, user_id: int, user_data: UserUpdate) -> 
         Обновленный объект пользователя или None, если пользователь не найден.
     """
     logger.info(f"Обновление пользователя с ID: {user_id}")
-    user = await db.get(User, user_id)
-    if not user:
-        logger.warning(f"Пользователь с ID {user_id} не найден для обновления.")
-        return None
 
-    update_data = user_data.model_dump(exclude_unset=True)
-    logger.debug(f"Данные для обновления пользователя {user_id}: {update_data}")
-    for field, value in update_data.items():
-        setattr(user, field, value)
+    async with db.begin():
+        user = await db.get(User, user_id)
+        if not user:
+            logger.warning(f"Пользователь с ID {user_id} не найден для обновления.")
+            return None
 
-    await db.commit()
+        update_data = user_data.model_dump(exclude_unset=True)
+        logger.debug(f"Данные для обновления пользователя {user_id}: {update_data}")
+
+        for field, value in update_data.items():
+            setattr(user, field, value)
+
     await db.refresh(user)
     logger.info(f"Пользователь с ID {user_id} успешно обновлен.")
     return user
@@ -78,30 +80,30 @@ async def complete_user_registration(
         ValueError: Если пользователь не найден.
     """
     logger.info(f"Завершение регистрации для пользователя с ID: {user_id}")
-    user = await db.get(User, user_id)
-    if not user:
-        logger.error(f"Пользователь с ID {user_id} не найден для завершения регистрации.")
-        raise ValueError("Пользователь не найден")
+    async with db.begin():
+        user = await db.get(User, user_id)
+        if not user:
+            logger.error(f"Пользователь с ID {user_id} не найден для завершения регистрации.")
+            raise ValueError("Пользователь не найден")
 
-    # Обновить данные пользователя
-    update_data = user_data.model_dump(exclude_unset=True)
-    logger.debug(f"Данные для завершения регистрации пользователя {user_id}: {update_data}")
-    for field, value in update_data.items():
-        setattr(user, field, value)
+        # Обновить данные пользователя
+        update_data = user_data.model_dump(exclude_unset=True)
+        logger.debug(f"Данные для завершения регистрации пользователя {user_id}: {update_data}")
+        for field, value in update_data.items():
+            setattr(user, field, value)
 
-    # Создать связанную сущность (магазин или курьера)
-    if user.role == UserRole.SHOP:
-        shop = await db.scalar(select(Shop).where(Shop.user_id == user.id))
-        if not shop:
-            logger.info(f"Создание сущности Shop для пользователя {user.id}")
-            db.add(Shop(user_id=user.id, name="Default Shop", address=""))
-    elif user.role == UserRole.COURIER:
-        courier = await db.scalar(select(Courier).where(Courier.user_id == user.id))
-        if not courier:
-            logger.info(f"Создание сущности Courier для пользователя {user.id}")
-            db.add(Courier(user_id=user.id))
+        # Создать связанную сущность (магазин или курьера)
+        if user.role == UserRole.SHOP:
+            shop = await db.scalar(select(Shop).where(Shop.user_id == user.id))
+            if not shop:
+                logger.info(f"Создание сущности Shop для пользователя {user.id}")
+                db.add(Shop(user_id=user.id, name="Default Shop", address=""))
+        elif user.role == UserRole.COURIER:
+            courier = await db.scalar(select(Courier).where(Courier.user_id == user.id))
+            if not courier:
+                logger.info(f"Создание сущности Courier для пользователя {user.id}")
+                db.add(Courier(user_id=user.id))
 
-    await db.commit()
     await db.refresh(user)
     logger.info(f"Пользователь с ID {user_id} успешно завершил регистрацию как {user.role.value}.")
     return UserResponse.model_validate(user)

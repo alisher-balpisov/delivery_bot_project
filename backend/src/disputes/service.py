@@ -48,14 +48,19 @@ async def create_dispute(
     )
 
     try:
-        db.add(new_dispute)
-        await db.commit()
-        await db.refresh(new_dispute)
+        async with db.begin():
+            db.add(new_dispute)
+            # Используем flush, чтобы получить ID нового спора до завершения транзакции.
+            # Это полезно для логирования или если ID нужен для последующих операций.
+            await db.flush()
+            await db.refresh(new_dispute)
+
         logger.info(f"Dispute created successfully with ID {new_dispute.id}")
         return DisputeRead.model_validate(new_dispute)
     except Exception as e:
+        # Контекстный менеджер `async with db.begin()` уже выполнил rollback при ошибке.
+        # Мы просто логируем исключение перед его передачей выше.
         logger.error(f"Error creating dispute: {e}")
-        await db.rollback()
         raise
 
 
@@ -78,10 +83,13 @@ async def update_dispute(
         setattr(dispute, key, value)
 
     try:
-        await db.commit()
+        async with db.begin():
+            pass
+
         await db.refresh(dispute)
         return DisputeRead.model_validate(dispute)
+
     except Exception as e:
+        # `async with db.begin()` уже выполнил rollback.
         logger.error(f"Error updating dispute ID {dispute_id}: {e}")
-        await db.rollback()
         raise
