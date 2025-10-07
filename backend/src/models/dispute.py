@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, DateTime, ForeignKey, Text
+from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,32 +17,81 @@ if TYPE_CHECKING:
 
 
 class Dispute(Base):
+    """
+    Модель спора/претензии по заказу.
+
+    Создается когда магазин или курьер открывает спор по заказу.
+    Может привести к штрафу одной из сторон после разрешения администратором.
+    """
+
     __tablename__ = "disputes"
     __repr_attrs__ = ("order_id", "status")
 
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), unique=True, nullable=False)
-    opened_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    fined_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id"),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="ID заказа, по которому открыт спор",
+    )
+    opened_by_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+        comment="ID пользователя, открывшего спор",
+    )
+    fined_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+        comment="ID пользователя, которому назначен штраф",
+    )
 
-    description: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, comment="Описание причины спора")
     status: Mapped[DisputeStatus] = mapped_column(
         ENUM(DisputeStatus, create_type=False),
         default=DisputeStatus.pending_review,
         nullable=False,
         index=True,
-    )  # new
+        comment="Текущий статус спора",
+    )
     resolution_type: Mapped[DisputeResolutionType | None] = mapped_column(
-        ENUM(DisputeResolutionType, create_type=False), nullable=True
-    )  # new
-    resolution_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    fine_amount: Mapped[Decimal | None] = mapped_column(DECIMAL(10, 2), nullable=True)
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+        ENUM(DisputeResolutionType, create_type=False),
+        nullable=True,
+        comment="Тип разрешения спора",
+    )
+    resolution_comment: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Комментарий администратора по разрешению спора"
+    )
+    fine_amount: Mapped[Decimal | None] = mapped_column(
+        DECIMAL(10, 2), nullable=True, comment="Сумма штрафа (если назначен)"
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Дата и время разрешения спора"
+    )
 
     # Связи
-    order: Mapped[Order] = relationship(back_populates="dispute")
+    order: Mapped[Order] = relationship(back_populates="dispute", lazy="joined")
     opened_by_user: Mapped[User] = relationship(
-        back_populates="opened_disputes", foreign_keys=[opened_by_user_id]
+        back_populates="opened_disputes", foreign_keys=[opened_by_user_id], lazy="joined"
     )
-    fined_user: Mapped[User] = relationship(
-        back_populates="fined_in_disputes", foreign_keys=[fined_user_id]
+    fined_user: Mapped[User | None] = relationship(
+        back_populates="fined_in_disputes", foreign_keys=[fined_user_id], lazy="joined"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "fine_amount IS NULL OR fine_amount >= 0", name="check_fine_amount_non_negative"
+        ),
+        CheckConstraint(
+            "length(trim(description)) > 0", name="check_dispute_description_not_empty"
+        ),
+        CheckConstraint(
+            "(status != 'resolved') OR (resolved_at IS NOT NULL AND resolution_type IS NOT NULL)",
+            name="check_resolution_details_if_resolved",
+        ),
+        CheckConstraint(
+            "(fine_amount IS NULL) OR (status = 'resolved' AND fined_user_id IS NOT NULL)",
+            name="check_fine_logic",
+        ),
     )

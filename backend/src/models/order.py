@@ -4,63 +4,119 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, DateTime, ForeignKey, String, Text
+from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
 from backend.src.core.database import Base
-from backend.src.models.courier_rating import CourierRating
-from backend.src.models.order_history import OrderHistory
 
 if TYPE_CHECKING:
     from .courier import Courier
+    from .courier_rating import CourierRating
     from .dispute import Dispute
+    from .order_history import OrderHistory
     from .shop import Shop
 
 
 class Order(Base):
+    """
+    Модель заказа.
+
+    Основная сущность системы, представляющая заказ от магазина,
+    который должен быть доставлен курьером.
+    """
+
     __tablename__ = "orders"
     __repr_attrs__ = ("shop_id", "status", "price")
 
-    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), nullable=False, index=True)  # new
+    shop_id: Mapped[int] = mapped_column(
+        ForeignKey("shops.id"), nullable=False, index=True, comment="ID магазина, создавшего заказ"
+    )
     courier_id: Mapped[int | None] = mapped_column(
-        ForeignKey("couriers.id"), nullable=True, index=True
-    )  # new
+        ForeignKey("couriers.id"),
+        nullable=True,
+        index=True,
+        comment="ID назначенного курьера (NULL если еще не назначен)",
+    )
 
     status: Mapped[OrderStatus] = mapped_column(
         ENUM(OrderStatus, create_type=False),
         nullable=False,
         default=OrderStatus.pending,
         index=True,
-    )  # new
+        comment="Текущий статус заказа",
+    )
     order_type: Mapped[OrderType] = mapped_column(
-        ENUM(OrderType, create_type=False), nullable=False
-    )  # new
+        ENUM(OrderType, create_type=False),
+        nullable=False,
+        index=True,
+        comment="Тип заказа (обычный/срочный и т.д.)",
+    )
     special_type: Mapped[SpecialOrderType | None] = mapped_column(
-        ENUM(SpecialOrderType, create_type=False), nullable=True
-    )  # new
+        ENUM(SpecialOrderType, create_type=False),
+        nullable=True,
+        comment="Специальный тип заказа (если применимо)",
+    )
 
-    price: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), nullable=False)
-    client_phone: Mapped[str] = mapped_column(String(50), nullable=False)
-    recipient_address: Mapped[str] = mapped_column(Text, nullable=False)
-    recipient_phone: Mapped[str] = mapped_column(String(50), nullable=False)
-    delivery_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    photo_report_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    price: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2), nullable=False, comment="Стоимость доставки"
+    )
+    client_phone: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="Телефон клиента (заказчика в магазине)"
+    )
+    recipient_address: Mapped[str] = mapped_column(Text, nullable=False, comment="Адрес получателя")
+    recipient_phone: Mapped[str] = mapped_column(
+        String(50), nullable=False, comment="Телефон получателя"
+    )
+    delivery_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True, comment="Желаемое время доставки"
+    )
+    description: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Описание/комментарии к заказу"
+    )
+    photo_report_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, comment="ID фото-отчета о доставке в Telegram"
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Дата и время завершения заказа"
+    )
 
-    # Связи "родитель-ребёнок"
-    shop: Mapped[Shop] = relationship(back_populates="orders")
-    courier: Mapped[Courier] = relationship(back_populates="orders")
+    # Связи многие-к-одному (родительские)
+    shop: Mapped[Shop] = relationship(back_populates="orders", lazy="joined")
+    courier: Mapped[Courier | None] = relationship(back_populates="orders", lazy="joined")
 
-    # Связи один-к-одному
+    # Связи один-ко-многим и один-к-одному (дочерние)
     history: Mapped[list[OrderHistory]] = relationship(
-        back_populates="order", cascade="all, delete-orphan"
+        back_populates="order", cascade="all, delete-orphan", lazy="selectin"
     )
-    dispute: Mapped[Dispute] = relationship(
-        back_populates="order", cascade="all, delete-orphan", uselist=False
+    dispute: Mapped[Dispute | None] = relationship(
+        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="select"
     )
-    rating: Mapped[CourierRating] = relationship(
-        back_populates="order", cascade="all, delete-orphan", uselist=False
+    rating: Mapped[CourierRating | None] = relationship(
+        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="select"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(client_phone)) > 0", name="check_order_client_phone_not_empty"
+        ),
+        CheckConstraint(
+            "length(trim(recipient_address)) > 0", name="check_order_recipient_address_not_empty"
+        ),
+        CheckConstraint(
+            "length(trim(recipient_phone)) > 0", name="check_order_recipient_phone_not_empty"
+        ),
+        CheckConstraint("price > 0", name="check_price_positive"),
+        CheckConstraint(
+            """
+            (order_type = 'regular' AND special_type IS NULL) OR
+            (order_type = 'special' AND special_type IS NOT NULL)
+            """,
+            name="check_special_type_logic",
+        ),
+        CheckConstraint(
+            "(status != 'completed') OR (completed_at IS NOT NULL)",
+            name="check_completed_at_if_completed",
+        ),
     )

@@ -15,16 +15,34 @@ if TYPE_CHECKING:
 
 
 class OrderHistory(Base):
+    """
+    Модель истории изменений заказа.
+
+    Записывает все изменения статусов и параметров заказа
+    для аудита и отслеживания жизненного цикла заказа.
+    """
+
     __tablename__ = "order_history"
     __repr_attrs__ = ("order_id", "change_type")
 
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
-    changed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id"), nullable=False, index=True, comment="ID заказа"
+    )
+    changed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+        comment="ID пользователя, внесшего изменение (NULL для системных изменений)",
+    )
     change_type: Mapped[ChangeType] = mapped_column(
-        ENUM(ChangeType, create_type=False), nullable=False
-    )  # new
-    changes: Mapped[dict] = mapped_column(JSONB, nullable=False)
+        ENUM(ChangeType, create_type=False), nullable=False, index=True, comment="Тип изменения"
+    )
+    changes: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, comment="JSON с деталями изменений (старые/новые значения)"
+    )
 
     # Связи
-    order: Mapped[Order] = relationship(back_populates="history")
-    changed_by_user: Mapped[User] = relationship(back_populates="order_history_entries")
+    order: Mapped[Order] = relationship(back_populates="history", lazy="joined")
+    changed_by_user: Mapped[User | None] = relationship(
+        back_populates="order_history_entries", lazy="joined"
+    )

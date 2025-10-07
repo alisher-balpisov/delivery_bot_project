@@ -2,53 +2,86 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, String
+from sqlalchemy import BigInteger, CheckConstraint, String
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.src.common.enums import UserRole, UserStatus
 from backend.src.core.database import Base
-from backend.src.models.order_history import OrderHistory
 
 if TYPE_CHECKING:
     from .courier import Courier
     from .dispute import Dispute
-    from .registration_code import RegistrationCode
+    from .order_history import OrderHistory
     from .shop import Shop
 
 
 class User(Base):
+    """
+    Модель пользователя системы.
+
+    Пользователь может иметь одну из ролей: магазин, курьер или администратор.
+    Каждый пользователь связан с Telegram аккаунтом через telegram_id.
+    """
+
     __tablename__ = "users"
     __repr_attrs__ = ("telegram_id", "role", "status")
 
     telegram_id: Mapped[int] = mapped_column(
-        BigInteger, unique=True, nullable=False, index=True
-    )  # new - Добавлен индекс для быстрого поиска
-    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+        BigInteger,
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Уникальный ID пользователя в Telegram",
+    )
+    username: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, comment="Username пользователя в Telegram"
+    )
     role: Mapped[UserRole | None] = mapped_column(
-        ENUM(UserRole, create_type=False), nullable=True, index=True
-    )  # new
+        ENUM(UserRole, create_type=False),
+        nullable=True,
+        index=True,
+        comment="Роль пользователя в системе",
+    )
     status: Mapped[UserStatus] = mapped_column(
-        ENUM(UserStatus, create_type=False), nullable=False, default=UserStatus.pending_registration
-    )  # new
-    registration_attempts: Mapped[int] = mapped_column(nullable=False, default=0)
+        ENUM(UserStatus, create_type=False),
+        nullable=False,
+        default=UserStatus.pending_registration,
+        index=True,
+        comment="Текущий статус регистрации пользователя",
+    )
+    registration_attempts: Mapped[int] = mapped_column(
+        nullable=False, default=0, comment="Количество попыток регистрации"
+    )
 
-    # Связи один-к-одному с профилями
+    # Связи один-к-одному
     shop: Mapped[Shop | None] = relationship(
-        back_populates="user", cascade="all, delete-orphan", uselist=False
-    )  # new - Каскадное удаление профиля при удалении юзера
+        back_populates="user", cascade="all, delete-orphan", uselist=False, lazy="joined"
+    )
     courier: Mapped[Courier | None] = relationship(
-        back_populates="user", cascade="all, delete-orphan", uselist=False
-    )  # new
+        back_populates="user", cascade="all, delete-orphan", uselist=False, lazy="joined"
+    )
 
     # Связи один-ко-многим
     order_history_entries: Mapped[list[OrderHistory]] = relationship(
-        back_populates="changed_by_user"
+        back_populates="changed_by_user", lazy="selectin"
     )
     opened_disputes: Mapped[list[Dispute]] = relationship(
-        back_populates="opened_by_user", foreign_keys=[Dispute.opened_by_user_id]
+        back_populates="opened_by_user", foreign_keys=[Dispute.opened_by_user_id], lazy="selectin"
     )
     fined_in_disputes: Mapped[list[Dispute]] = relationship(
-        back_populates="fined_user", foreign_keys=[Dispute.fined_user_id]
+        back_populates="fined_user", foreign_keys=[Dispute.fined_user_id], lazy="selectin"
     )
-    created_codes: Mapped[list[RegistrationCode]] = relationship(back_populates="created_by_admin")
+
+    __table_args__ = (
+        CheckConstraint(
+            "registration_attempts >= 0", name="check_registration_attempts_non_negative"
+        ),
+        CheckConstraint(
+            "username IS NULL OR length(trim(username)) > 0", name="check_user_username_not_empty"
+        ),
+        CheckConstraint(
+            "(role IS NULL) = (status = 'pending_registration')",
+            name="check_user_role_and_status_logic",
+        ),
+    )

@@ -1,65 +1,61 @@
-from enum import Enum, StrEnum
+from enum import StrEnum
 
 
-class TokenType(str, Enum):
-    BEARER = "BEARER"
-    BOT = "BOT"
+class TokenType(StrEnum):
+    BEARER = "bearer"
+    BOT = "bot"
 
 
+class UserRole(StrEnum):
+    ADMIN = "admin"
+    SHOP = "shop"
+    COURIER = "courier"
 
 
+class UserStatus(StrEnum):
+    PENDING_REGISTRATION = "pending_registration"
+    ACTIVE = "active"
+    BLOCKED = "blocked"
+    INACTIVE = "inactive"
 
 
+class OrderStatus(StrEnum):
+    PENDING = "pending"  # Заказ создан и ожидает назначения свободного курьера
+    COURIER_EN_ROUTE = "courier_en_route"  # Курьер назначен и едет за заказом в магазин
+    DELIVERING = "delivering"  # Курьер забрал заказ и доставляет его клиенту
+    SEMI_COMPLETED = "semi_completed"  # Заказ доставлен, но ожидает подтверждения
+    COMPLETED = "completed"  # Заказ успешно завершён и подтверждён
 
-class UserRole(str, Enum):
-    ADMIN = "ADMIN"
-    SHOP = "SHOP"
-    COURIER = "COURIER"
-
-
-class UserStatus(str, Enum):
-    pending_registration = "pending_registration"
-    active = "active"
-    blocked = "blocked"
-    inactive = "inactive"
+    DISPUTED = "disputed"  # Возник спор по заказу (например, клиент недоволен)
+    CANCELED = "canceled"  # Заказ был отменён
 
 
-class OrderStatus(str, Enum):
-    pending = "pending"  # В ожидании свободного курьера
-    courier_en_route = "courier_en_route"  # Курьер едет за заказом
-    delivering = "delivering"  # Курьер доставляет заказ
-    semi_completed = "semi_completed"  # Завершён, ожидает подтверждения
-    completed = "completed"  # Завершён и подтверждён
-    disputed = "disputed"  # В споре
-    canceled = "canceled"  # Отменён
+class OrderType(StrEnum):
+    REGULAR = "regular"
+    SPECIAL = "special"
 
 
-class OrderType(str, Enum):
-    regular = "regular"
-    special = "special"
+class SpecialOrderType(StrEnum):
+    TIME = "time"
+    DISTANCE = "distance"
+    CUSTOM = "custom"
+    SUPPLY = "supply"
 
 
-class SpecialOrderType(str, Enum):
-    time = "time"
-    distance = "distance"
-    custom = "custom"
-    supply = "supply"
+class DisputeStatus(StrEnum):
+    PENDING_REVIEW = "pending_review"  # Спор открыт и ожидает рассмотрения
+    IN_REVIEW = "in_review"  # Спор находится в процессе активного рассмотрения
+    RESOLVED = "resolved"  # Спор был разрешён
 
 
-class DisputeStatus(str, Enum):
-    pending_review = "pending_review"
-    in_review = "in_review"
-    resolved = "resolved"
+class DisputeResolutionType(StrEnum):
+    IN_FAVOR_OF_SHOP = "in_favor_of_shop"  # Спор решён в пользу магазина
+    IN_FAVOR_OF_COURIER = "in_favor_of_courier"  # Спор решён в пользу курьера
+    COMPROMISE = "compromise"  # Найдено компромиссное решение
+    OTHER = "other"  # Другой тип разрешения спора
 
 
-class DisputeResolutionType(str, Enum):
-    in_favor_of_shop = "in_favor_of_shop"
-    in_favor_of_courier = "in_favor_of_courier"
-    compromise = "compromise"
-    other = "other"
-
-
-class ChangeType(str, Enum):
-    status_update = "status_update"
-    details_update = "details_update"
-    courier_reassign = "courier_reassign"
+class ChangeType(StrEnum):
+    STATUS_UPDATE = "status_update"
+    DETAILS_UPDATE = "details_update"
+    COURIER_REASSIGN = "courier_reassign"  # Переназначение курьера на заказ

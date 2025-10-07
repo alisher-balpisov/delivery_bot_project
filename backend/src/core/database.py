@@ -34,6 +34,8 @@ class Base(DeclarativeBase):
     выводит id и указанные в __repr_attrs__ поля.
     """
 
+    __abstract__ = True
+
     id: Mapped[int] = mapped_column(primary_key=True)
 
     # Атрибуты, которые нужно показывать в __repr__
@@ -42,12 +44,13 @@ class Base(DeclarativeBase):
     __repr_max_length__: int = 15
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),  # нужен ли timezone?
+        DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),  # нужен ли timezone?
+        DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
