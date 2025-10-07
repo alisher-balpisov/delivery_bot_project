@@ -1,9 +1,14 @@
+from __future__ import annotations
+
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import text
+from sqlalchemy import DateTime, func, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
@@ -29,10 +34,24 @@ class Base(DeclarativeBase):
     выводит id и указанные в __repr_attrs__ поля.
     """
 
+    id: Mapped[int] = mapped_column(primary_key=True)
+
     # Атрибуты, которые нужно показывать в __repr__
     __repr_attrs__: tuple[str, ...] = ()
     # Максимальная длина значения атрибута в __repr__
     __repr_max_length__: int = 15
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),  # нужен ли timezone?
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),  # нужен ли timezone?
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
     @property
     def _id_str(self) -> str | None:
@@ -89,7 +108,7 @@ class Base(DeclarativeBase):
         return f"<{self.__class__.__name__} {id_part}{attrs_part}>"
 
 
-async def get_db():
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Асинхронный генератор зависимости для FastAPI.
     """
@@ -150,17 +169,19 @@ async def check_database_connection() -> bool:
 
 def _import_models() -> None:
     """
-    Импортирует все модели для регистрации в метаданных Base.
-    Вызывается один раз для избежания дублирования кода.
+    Импортирует все модели, чтобы зарегистрировать их в Base metadata.
+    Это имеет решающее значение для "create_all" в SQLAlchemy для обнаружения таблиц.
     """
-    from backend.src.models.shop import Shop  # noqa
-    from backend.src.models.courier import Courier  # noqa
-    from backend.src.models.user import User  # noqa
-    from backend.src.models.order import Order  # noqa
-    from backend.src.models.dispute import Dispute  # noqa
-    from backend.src.models.photo_report import PhotoReport  # noqa
-    from backend.src.models.registration_code import RegistrationCode  # noqa
-    from backend.src.models.zone import Zone  # noqa
+    from backend.src.models import (  # noqa
+        courier,
+        courier_rating,
+        dispute,
+        order,
+        order_history,
+        registration_code,
+        shop,
+        user,
+    )
 
 
 async def init_db() -> None:
@@ -228,17 +249,16 @@ async def reset_database() -> None:
     logger.info("✅ База данных сброшена и пересоздана")
 
 
-async def get_db_session() -> AsyncSession:
+@asynccontextmanager
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Получить новую сессию базы данных для использования вне FastAPI.
-    Не забудьте закрыть сессию после использования!
-
-    Пример использования:
-    async with get_db_session() as session:
-        # работа с БД
-        pass
     """
-    return AsyncSessionLocal()
+    session = AsyncSessionLocal()
+    try:
+        yield session
+    finally:
+        await session.close()
 
 
 # Экспорт основных компонентов

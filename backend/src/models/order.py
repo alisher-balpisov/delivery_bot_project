@@ -4,80 +4,63 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, CheckConstraint, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import DECIMAL, DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.src.common.enums import OrderStatus, OrderType
+from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
 from backend.src.core.database import Base
-from backend.src.models.mixins import TimestampMixin
+from backend.src.models.courier_rating import CourierRating
+from backend.src.models.order_history import OrderHistory
 
 if TYPE_CHECKING:
     from .courier import Courier
     from .dispute import Dispute
-    from .photo_report import PhotoReport
     from .shop import Shop
-    from .zone import Zone
 
 
-class Order(TimestampMixin, Base):
-    """
-    Представляет заказ в таблице `orders`.
-    """
-
+class Order(Base):
     __tablename__ = "orders"
-    __repr_attrs__ = ("status", "shop_id", "courier_id")
+    __repr_attrs__ = ("shop_id", "status", "price")
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"))
-    zone_id: Mapped[int] = mapped_column(ForeignKey("zones.id"))
-    courier_id: Mapped[int | None] = mapped_column(ForeignKey("couriers.id"))
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), nullable=False, index=True)  # new
+    courier_id: Mapped[int | None] = mapped_column(
+        ForeignKey("couriers.id"), nullable=True, index=True
+    )  # new
 
     status: Mapped[OrderStatus] = mapped_column(
-        Enum(OrderStatus), default=OrderStatus.CREATED, index=True
-    )
-    order_type: Mapped[OrderType] = mapped_column(Enum(OrderType), default=OrderType.NORMAL)
-    description: Mapped[str | None] = mapped_column(Text)
-    recipient_name: Mapped[str | None] = mapped_column(String(100))
-    recipient_phone: Mapped[str] = mapped_column(String(20))
-    recipient_address: Mapped[str] = mapped_column(String(255))
-    delivery_time: Mapped[datetime | None] = mapped_column()
-    price: Mapped[Decimal] = mapped_column(DECIMAL(10, 2))
-    pickup_address: Mapped[str] = mapped_column(String(255))
-    courier_notes: Mapped[str | None] = mapped_column(Text)
-    completion_notes: Mapped[str | None] = mapped_column(Text)
+        ENUM(OrderStatus, create_type=False),
+        nullable=False,
+        default=OrderStatus.pending,
+        index=True,
+    )  # new
+    order_type: Mapped[OrderType] = mapped_column(
+        ENUM(OrderType, create_type=False), nullable=False
+    )  # new
+    special_type: Mapped[SpecialOrderType | None] = mapped_column(
+        ENUM(SpecialOrderType, create_type=False), nullable=True
+    )  # new
 
-    is_fragile: Mapped[bool] = mapped_column(default=False)
-    is_bulky: Mapped[bool] = mapped_column(default=False)
-    special_reason: Mapped[str | None] = mapped_column(Text)
+    price: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), nullable=False)
+    client_phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    recipient_address: Mapped[str] = mapped_column(Text, nullable=False)
+    recipient_phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    delivery_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_report_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    zone_addon: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), default=Decimal("0.00"))
-    rush_hour_addon: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), default=Decimal("0.00"))
-
-    courier_rating: Mapped[int | None] = mapped_column()
-    courier_feedback: Mapped[str | None] = mapped_column(Text)
-
-    accepted_at: Mapped[datetime | None] = mapped_column()
-    delivered_at: Mapped[datetime | None] = mapped_column()
-    confirmed_at: Mapped[datetime | None] = mapped_column()
-    autoconfirmed_at: Mapped[datetime | None] = mapped_column()
-
+    # Связи "родитель-ребёнок"
     shop: Mapped[Shop] = relationship(back_populates="orders")
-    courier: Mapped[Courier | None] = relationship(back_populates="orders")
-    zone: Mapped[Zone] = relationship(back_populates="orders")
-    dispute: Mapped[Dispute | None] = relationship(
-        back_populates="order", uselist=False, cascade="all, delete-orphan"
-    )
-    photo_reports: Mapped[list[PhotoReport]] = relationship(
+    courier: Mapped[Courier] = relationship(back_populates="orders")
+
+    # Связи один-к-одному
+    history: Mapped[list[OrderHistory]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
-
-    __table_args__ = (
-        CheckConstraint(
-            "courier_rating IS NULL OR (courier_rating >= 1 AND courier_rating <= 5)",
-            name="check_courier_rating_range",
-        ),
-        # Индексы для оптимизации запросов
-        Index("idx_orders_shop_id", "shop_id"),
-        Index("idx_orders_courier_id", "courier_id"),
-        Index("idx_orders_status_created", "status", "created_at"),
+    dispute: Mapped[Dispute] = relationship(
+        back_populates="order", cascade="all, delete-orphan", uselist=False
+    )
+    rating: Mapped[CourierRating] = relationship(
+        back_populates="order", cascade="all, delete-orphan", uselist=False
     )

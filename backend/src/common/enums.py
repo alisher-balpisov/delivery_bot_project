@@ -1,40 +1,65 @@
-from enum import Enum
+from enum import Enum, StrEnum
+
+
+class TokenType(str, Enum):
+    BEARER = "BEARER"
+    BOT = "BOT"
+
+
+
+
+
 
 
 class UserRole(str, Enum):
     ADMIN = "ADMIN"
     SHOP = "SHOP"
     COURIER = "COURIER"
-    GUEST = "GUEST"
-    PENDING = "PENDING"
+
+
+class UserStatus(str, Enum):
+    pending_registration = "pending_registration"
+    active = "active"
+    blocked = "blocked"
+    inactive = "inactive"
 
 
 class OrderStatus(str, Enum):
-    CREATED = "CREATED"  # В ожидании (не назначен курьеру)
-    ACCEPTED = "ACCEPTED"  # Курьер принял заказ
-    PICKING_UP = "PICKING_UP"  # В пути за заказом (курьер забирает заказ)
-    IN_PROGRESS = "IN_PROGRESS"  # В пути к получателю (забрал, едет к получателю)
-    DELIVERED = "DELIVERED"  # Завершен (курьер завершил доставку)
-    COMPLETED = "COMPLETED"  # Подтвержден магазином или автоматически через 12 часов
-    CANCELLED = "CANCELLED"  # Отменен
-    DISPUTED = "DISPUTED"  # Спор
+    pending = "pending"  # В ожидании свободного курьера
+    courier_en_route = "courier_en_route"  # Курьер едет за заказом
+    delivering = "delivering"  # Курьер доставляет заказ
+    semi_completed = "semi_completed"  # Завершён, ожидает подтверждения
+    completed = "completed"  # Завершён и подтверждён
+    disputed = "disputed"  # В споре
+    canceled = "canceled"  # Отменён
 
 
 class OrderType(str, Enum):
-    NORMAL = "NORMAL"  # обычный: курьер не видит цену, фиксированная 3000, зависит от зоны
-    SPECIAL = "SPECIAL"  # особенный: курьер видит цену заказа
-    RUSH_HOUR = "RUSH_HOUR"  # заказ ко времени доставки вне периода 9:00-21:00 (+1000-1500)
-    LONG_DISTANCE = "LONG_DISTANCE"  # заказ на большое расстояние (вне зоны)
-    IMPORTANT = "IMPORTANT"  # особый заказ (большой, дорогой, особому клиенту)
+    regular = "regular"
+    special = "special"
+
+
+class SpecialOrderType(str, Enum):
+    time = "time"
+    distance = "distance"
+    custom = "custom"
+    supply = "supply"
 
 
 class DisputeStatus(str, Enum):
-    OPEN = "OPEN"  # Открыт
-    IN_REVIEW = "IN_REVIEW"  # На рассмотрении
-    RESOLVED = "RESOLVED"  # Решено
-    CLOSED = "CLOSED"  # Закрыто
+    pending_review = "pending_review"
+    in_review = "in_review"
+    resolved = "resolved"
 
 
-class TokenType(str, Enum):
-    BEARER = "BEARER"
-    BOT = "BOT"
+class DisputeResolutionType(str, Enum):
+    in_favor_of_shop = "in_favor_of_shop"
+    in_favor_of_courier = "in_favor_of_courier"
+    compromise = "compromise"
+    other = "other"
+
+
+class ChangeType(str, Enum):
+    status_update = "status_update"
+    details_update = "details_update"
+    courier_reassign = "courier_reassign"
