@@ -196,89 +196,88 @@ class AuthService:
         username: str,
         code: str,
     ) -> AuthSuccessResponse:
-        """
-        Обрабатывает регистрацию/аутентификацию пользователя по коду приглашения.
-        Вся логика выполняется в одной атомарной транзакции для обеспечения консистентности данных.
-        """
+        """Регистрация/аутентификация пользователя по коду приглашения."""
         AuthService._validate_input_data(telegram_id, code)
         masked_code = AuthService._mask_sensitive_data(code)
         logger.info(f"Попытка аутентификации {telegram_id} с кодом {masked_code}")
 
         try:
-            user_to_return = None
             async with db.begin():
-                user = await AuthService._find_existing_user(db, telegram_id)
+                '''Проверяем существование пользователя'''
+                user = await AuthService._get_or_create_user(db, telegram_id)
 
-                if user and user.role is not None:
-                    if AuthService._is_user_locked(user):
-                        raise exceptions.AccountLockedError("Превышено количество попыток.")
+                '''Проверяем, не зарегистрирован ли уже'''
+                if AuthService._is_already_registered(user):
+                    return await AuthService._handle_already_registered(user)
 
-                    logger.info(
-                        f"Пользователь {telegram_id} уже зарегистрирован. Возвращаем существующие данные."
-                    )
-                    access_token = AuthService.create_access_token(user)
-                    return AuthSuccessResponse(
-                        user=UserInfo(id=user.id, role=user.role.value),
-                        access_token=access_token,
-                        already_registered=True,
-                    )
+                '''Пробуем применить код'''
+                role = await AuthService._try_consume_code(db, user, code, masked_code)
 
-                is_new_user = not user
+                '''Успешное присвоение роли'''
+                await AuthService._activate_user(user, username, role)
 
-                if is_new_user:
-                    logger.info(
-                        f"Пользователь с telegram_id={telegram_id} не найден. Создание нового."
-                    )
-                    user = User(telegram_id=telegram_id)
-                    db.add(user)
-                    await db.flush()
+            '''После транзакции: обновляем и возвращаем токен'''
+            await db.refresh(user)
+            return await AuthService._finalize_auth(user)
 
-                role = await AuthService._consume_registration_code(db, code, user.id)
-
-                if not role:
-                    if is_new_user:
-                        logger.warning(
-                            f"Новый пользователь {telegram_id} ввел неверный код {masked_code}."
-                        )
-                        raise exceptions.InvalidCredentialsError("Неверный код регистрации.")
-
-                    else:
-                        await AuthService._handle_failed_attempt(db, user)
-
-                logger.info(
-                    f"Код {masked_code} принят для пользователя {user}. Присвоена роль {role}."
-                )
-                user.username = username
-                user.role = role
-                user.status = UserStatus.ACTIVE
-                await AuthService._clear_login_attempts(user)
-
-                user_to_return = user
-
-            await db.refresh(user_to_return)
-
-            role_name = getattr(user_to_return.role, "value", str(user_to_return.role))
-            logger.info(
-                f"Пользователь {user_to_return} успешно аутентифицирован с ролью {role_name}"
-            )
-
-            access_token = AuthService.create_access_token(user_to_return)
-            return AuthSuccessResponse(
-                user=UserInfo(id=user_to_return.id, role=role_name),
-                access_token=access_token,
-                already_registered=False,
-            )
-
-        except (
-            exceptions.InvalidCredentialsError,
-            exceptions.AttemptsLimitExceededError,
-            exceptions.AccountLockedError,
-            exceptions.UserAlreadyRegisteredError,
-        ):
+        except exceptions.AuthBaseError:
             raise
         except Exception:
             logger.exception(f"Непредвиденная ошибка при аутентификации {telegram_id}")
             raise exceptions.AuthError("Произошла внутренняя ошибка при аутентификации.")
+
+    @staticmethod
+    async def _get_or_create_user(db: AsyncSession, telegram_id: int) -> User:
+        user = await AuthService._find_existing_user(db, telegram_id)
+        if not user:
+            user = User(telegram_id=telegram_id)
+            db.add(user)
+            await db.flush()
+            logger.info(f"Создан новый пользователь с telegram_id={telegram_id}")
+        return user
+    
+    @staticmethod
+    def _is_already_registered(user: User) -> bool:
+        return user.role is not None
+
+    @staticmethod
+    async def _handle_already_registered(user: User) -> AuthSuccessResponse:
+        if AuthService._is_user_locked(user):
+            raise exceptions.AccountLockedError("Превышено количество попыток.")
+        token = AuthService.create_access_token(user)
+        logger.info(f"Пользователь {user.telegram_id} уже зарегистрирован.")
+        return AuthSuccessResponse(
+            user=UserInfo(id=user.id, role=user.role.value),
+            access_token=token,
+            already_registered=True,
+        ) 
+    
+    @staticmethod
+    async def _try_consume_code(db: AsyncSession, user: User, code: str, masked_code: str) -> UserRole:
+        role = await AuthService._consume_registration_code(db, code, user.id)
+        if not role:
+            logger.warning(f"Пользователь {user.telegram_id} ввел неверный код {masked_code}")
+            await AuthService._handle_failed_attempt(db, user)
+        return role
+
+    @staticmethod
+    async def _activate_user(user: User, username: str, role: UserRole) -> None:
+        user.username = username
+        user.role = role
+        user.status = UserStatus.ACTIVE
+        await AuthService._clear_login_attempts(user)
+
+    @staticmethod
+    async def _finalize_auth(user: User) -> AuthSuccessResponse:
+        role_name = getattr(user.role, "value", str(user.role))
+        logger.info(f"Пользователь {user.telegram_id} успешно аутентифицирован с ролью {role_name}")
+        token = AuthService.create_access_token(user)
+        return AuthSuccessResponse(
+            user=UserInfo(id=user.id, role=role_name),
+            access_token=token,
+            already_registered=False,
+        )
+
 
 
 # Вспомогательные функции для обратной совместимости
