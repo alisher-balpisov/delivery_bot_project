@@ -73,19 +73,11 @@ class DatabaseConfig(BaseModel):
         }
 
 
-class RedisConfig(BaseModel):
-    """Конфигурация подключения к Redis."""
+class AuthConfig(BaseModel):
+    """Конфигурация авторизации."""
 
-    host: str = "localhost"  # Хост, на котором запущен Redis.
-    port: int = 6379  # Порт Redis.
-    db: int = 0  # Номер базы данных Redis для использования.
-    password: SecretStr | None = None  # Пароль для доступа к Redis.
-    # Максимальное количество соединений в пуле Redis.
-    max_connections: int = 20
     # Максимальное количество попыток ввода кода при регистрации.
     registration_max_attempts: int = 3
-    # Время жизни (TTL) по умолчанию для ключей в секундах.
-    default_ttl_seconds: int = 900  # 15 минут
 
 
 class MiddlewareConfig(BaseModel):
@@ -273,7 +265,7 @@ class Settings(BaseSettings):
 
     # --- Вложенные конфигурационные блоки ---
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    redis: RedisConfig = Field(default_factory=RedisConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     middleware: MiddlewareConfig = Field(default_factory=MiddlewareConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     file_storage: FileStorageConfig = Field(default_factory=FileStorageConfig)
@@ -396,12 +388,12 @@ def ensure_upload_dir_exists():
 # будут импортированы только перечисленные здесь объекты.
 __all__ = [
     "AdminConfig",
+    "AuthConfig",
     "BusinessConfig",
     "DatabaseConfig",
     "FileStorageConfig",
     "JwtConfig",
     "LoggingConfig",
-    "RedisConfig",
     "Settings",
     "TelegramConfig",
     "ensure_upload_dir_exists",

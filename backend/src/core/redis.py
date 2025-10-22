@@ -17,13 +17,11 @@ class RedisClient:
     async def init_redis(self):
         """Инициализация пула соединений Redis."""
         try:
-            password = (
-                settings.redis.password.get_secret_value() if settings.redis.password else None
-            )
+            password = settings.auth.password.get_secret_value() if settings.auth.password else None
             self._pool = aioredis.ConnectionPool.from_url(
-                f"redis://{settings.redis.host}:{settings.redis.port}/{settings.redis.db}",
+                f"redis://{settings.auth.host}:{settings.auth.port}/{settings.auth.db}",
                 password=password,
-                max_connections=settings.redis.max_connections,
+                max_connections=settings.auth.max_connections,
                 decode_responses=True,  # Важно для работы со строками
             )
             logger.info("✅ Пул соединений Redis успешно инициализирован")

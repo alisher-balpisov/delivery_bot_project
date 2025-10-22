@@ -36,10 +36,6 @@ CACHE_TTL = {
 ALL_ROLES_LIST = [UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER, UserRole.GUEST, UserRole.PENDING]
 
 
-LOGIN_ATTEMPTS_KEY = "login_attempts:{telegram_id}"
-LOGIN_LOCK_KEY = "login_lock:{telegram_id}"
-
-
 MIN_TELEGRAM_ID = 1
 MAX_TELEGRAM_ID = 2147483647
 MIN_CODE_LENGTH = 1

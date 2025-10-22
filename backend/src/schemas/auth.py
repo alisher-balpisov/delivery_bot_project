@@ -28,6 +28,7 @@ class AuthByCodeRequest(BaseModel):
 
     telegram_id: int
     code: str
+    username: str | None
 
 
 class UserInfo(BaseModel):

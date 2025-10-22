@@ -33,8 +33,8 @@ class AuthError(Exception):
 class UserAlreadyRegisteredError(AuthError):
     """Выбрасывается, когда пользователь уже зарегистрирован."""
 
-    user_data: dict[str, Any] = field(default_factory=dict)
-    access_token: str = ""
+    data: dict[str, Any] = field(default_factory=dict)
+    access_token: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Сериализация с дополнительными полями."""

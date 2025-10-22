@@ -40,13 +40,14 @@ class User(Base):
     role: Mapped[UserRole | None] = mapped_column(
         ENUM(UserRole, create_type=False),
         nullable=True,
+        default=None,
         index=True,
         comment="Роль пользователя в системе",
     )
     status: Mapped[UserStatus] = mapped_column(
         ENUM(UserStatus, create_type=False),
         nullable=False,
-        default=UserStatus.pending_registration,
+        default=UserStatus.PENDING_REGISTRATION,
         index=True,
         comment="Текущий статус регистрации пользователя",
     )
