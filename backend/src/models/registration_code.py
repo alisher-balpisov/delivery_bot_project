@@ -55,12 +55,8 @@ class RegistrationCode(Base):
     )
 
     # Связи
-    used_by_user: Mapped[User | None] = relationship(
-        back_populates="used_registration_code", foreign_keys=[used_by_user_id], lazy="joined"
-    )
-    created_by_admin: Mapped[User] = relationship(
-        back_populates="created_codes", foreign_keys=[created_by_admin_id], lazy="joined"
-    )
+    used_by_user: Mapped[User | None] = relationship(foreign_keys=[used_by_user_id], lazy="joined")
+    created_by_admin: Mapped[User] = relationship(foreign_keys=[created_by_admin_id], lazy="joined")
 
     __table_args__ = (
         CheckConstraint("length(trim(code)) > 0", name="check_reg_code_not_empty"),

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, String
+from sqlalchemy import BigInteger, CheckConstraint, String, and_, or_
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -82,7 +82,10 @@ class User(Base):
             "username IS NULL OR length(trim(username)) > 0", name="check_user_username_not_empty"
         ),
         CheckConstraint(
-            (role is None) == (status == UserStatus.PENDING_REGISTRATION),
+            or_(
+                and_(role.is_(None), status == UserStatus.PENDING_REGISTRATION),
+                and_(role.is_not(None), status != UserStatus.PENDING_REGISTRATION),
+            ),
             name="check_user_role_and_status_logic",
         ),
     )

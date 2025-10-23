@@ -22,5 +22,9 @@
         "данных",
         "директорий",
         "инициализирована"
-    ]
+    ],
+    "files.associations": {
+        "*.dbclient-js": "javascript",
+        "iostream": "cpp"
+    }
 }
