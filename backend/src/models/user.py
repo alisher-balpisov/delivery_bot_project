@@ -38,14 +38,14 @@ class User(Base):
         String(255), nullable=True, comment="Username пользователя в Telegram"
     )
     role: Mapped[UserRole | None] = mapped_column(
-        ENUM(UserRole, create_type=False),
+        ENUM(UserRole, name="userrole", create_type=True),
         nullable=True,
         default=None,
         index=True,
         comment="Роль пользователя в системе",
     )
     status: Mapped[UserStatus] = mapped_column(
-        ENUM(UserStatus, create_type=False),
+        ENUM(UserStatus, name="userstatus", create_type=True),
         nullable=False,
         default=UserStatus.PENDING_REGISTRATION,
         index=True,
@@ -68,10 +68,10 @@ class User(Base):
         back_populates="changed_by_user", lazy="selectin"
     )
     opened_disputes: Mapped[list[Dispute]] = relationship(
-        back_populates="opened_by_user", foreign_keys=[Dispute.opened_by_user_id], lazy="selectin"
+        back_populates="opened_by_user", foreign_keys="[Dispute.opened_by_user_id]", lazy="selectin"
     )
     fined_in_disputes: Mapped[list[Dispute]] = relationship(
-        back_populates="fined_user", foreign_keys=[Dispute.fined_user_id], lazy="selectin"
+        back_populates="fined_user", foreign_keys="[Dispute.fined_user_id]", lazy="selectin"
     )
 
     __table_args__ = (
@@ -82,7 +82,7 @@ class User(Base):
             "username IS NULL OR length(trim(username)) > 0", name="check_user_username_not_empty"
         ),
         CheckConstraint(
-            "(role IS NULL) = (status = 'pending_registration')",
+            (role is None) == (status == UserStatus.PENDING_REGISTRATION),
             name="check_user_role_and_status_logic",
         ),
     )

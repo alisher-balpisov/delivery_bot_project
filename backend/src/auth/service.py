@@ -203,20 +203,20 @@ class AuthService:
 
         try:
             async with db.begin():
-                '''Проверяем существование пользователя'''
+                """Проверяем существование пользователя"""
                 user = await AuthService._get_or_create_user(db, telegram_id)
 
-                '''Проверяем, не зарегистрирован ли уже'''
+                """Проверяем, не зарегистрирован ли уже"""
                 if AuthService._is_already_registered(user):
                     return await AuthService._handle_already_registered(user)
 
-                '''Пробуем применить код'''
+                """Пробуем применить код"""
                 role = await AuthService._try_consume_code(db, user, code, masked_code)
 
-                '''Успешное присвоение роли'''
+                """Успешное присвоение роли"""
                 await AuthService._activate_user(user, username, role)
 
-            '''После транзакции: обновляем и возвращаем токен'''
+            """После транзакции: обновляем и возвращаем токен"""
             await db.refresh(user)
             return await AuthService._finalize_auth(user)
 
@@ -235,7 +235,7 @@ class AuthService:
             await db.flush()
             logger.info(f"Создан новый пользователь с telegram_id={telegram_id}")
         return user
-    
+
     @staticmethod
     def _is_already_registered(user: User) -> bool:
         return user.role is not None
@@ -250,10 +250,12 @@ class AuthService:
             user=UserInfo(id=user.id, role=user.role.value),
             access_token=token,
             already_registered=True,
-        ) 
-    
+        )
+
     @staticmethod
-    async def _try_consume_code(db: AsyncSession, user: User, code: str, masked_code: str) -> UserRole:
+    async def _try_consume_code(
+        db: AsyncSession, user: User, code: str, masked_code: str
+    ) -> UserRole:
         role = await AuthService._consume_registration_code(db, code, user.id)
         if not role:
             logger.warning(f"Пользователь {user.telegram_id} ввел неверный код {masked_code}")
@@ -277,7 +279,6 @@ class AuthService:
             access_token=token,
             already_registered=False,
         )
-
 
 
 # Вспомогательные функции для обратной совместимости

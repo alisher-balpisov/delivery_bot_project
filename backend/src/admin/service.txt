@@ -141,7 +141,7 @@ async def get_system_stats(db: AsyncSession) -> dict:
     total_disputes = sum(disputes.values())
     unresolved_disputes = (
         total_disputes
-        - disputes.get(DisputeStatus.CLOSED.value, 0)
+        # - disputes.get(DisputeStatus.CLOSED.value, 0)
         - disputes.get(DisputeStatus.RESOLVED.value, 0)
     )
 

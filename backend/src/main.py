@@ -19,8 +19,8 @@ from backend.src.api.routes import api_router
 from backend.src.core.config import ensure_upload_dir_exists, get_upload_path, settings
 from backend.src.core.database import close_db, init_db
 from backend.src.core.logging import get_logger, setup_logging
-from backend.src.core.redis import redis_manager
-from backend.src.notifications.service import initialize_notification_service
+
+# from backend.src.notifications.service import initialize_notification_service
 
 logger = get_logger(__name__)
 
@@ -35,17 +35,13 @@ async def lifespan(app: FastAPI):
 
     # Инициализация при старте
     try:
-        # Инициализация Redis
-        await redis_manager.init_redis()
-        logger.info("✅ Redis инициализирован")
-
         # Инициализация базы данных
         await init_db()
         logger.info("✅ База данных инициалирована")
 
         # Инициализация сервиса уведомлений
-        await initialize_notification_service(app)
-        logger.info("✅ Сервис уведомлений инициализирован")
+        # await initialize_notification_service(app)
+        # logger.info("✅ Сервис уведомлений инициализирован")
 
         # Создание директорий для файлов
         ensure_upload_dir_exists()
@@ -66,10 +62,6 @@ async def lifespan(app: FastAPI):
         # Закрытие соединений
         await close_db()
         logger.info("✅ База данных отключена")
-
-        # Закрытие соединений Redis
-        await redis_manager.close_redis()
-        logger.info("✅ Redis отключен")
 
         logger.info("👋 Приложение завершено")
 

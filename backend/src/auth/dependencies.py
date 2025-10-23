@@ -116,8 +116,6 @@ RequireAllRoles = Annotated[
                 UserRole.ADMIN,
                 UserRole.SHOP,
                 UserRole.COURIER,
-                UserRole.GUEST,
-                UserRole.PENDING,
             ]
         )
     ),

@@ -35,7 +35,7 @@ class OrderHistory(Base):
         comment="ID пользователя, внесшего изменение (NULL для системных изменений)",
     )
     change_type: Mapped[ChangeType] = mapped_column(
-        ENUM(ChangeType, create_type=False), nullable=False, index=True, comment="Тип изменения"
+        ENUM(ChangeType, name="changetype", create_type=True), nullable=False
     )
     changes: Mapped[dict] = mapped_column(
         JSONB, nullable=False, comment="JSON с деталями изменений (старые/новые значения)"

@@ -17,23 +17,7 @@ COMMISSION = {
 }
 
 
-# Лимиты и ограничения
-RATE_LIMITS = {
-    UserRole.ADMIN: 100,  # запросов в минуту
-    UserRole.SHOP: 30,
-    UserRole.COURIER: 30,
-    UserRole.GUEST: 10,
-}
-
-CACHE_TTL = {
-    "token_validation": 300,  # 5 минут
-    "user_profile": 600,  # 10 минут
-    "order_list": 60,  # 1 минута
-    "statistics": 1800,  # 30 минут
-}
-
-
-ALL_ROLES_LIST = [UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER, UserRole.GUEST, UserRole.PENDING]
+ALL_ROLES_LIST = [UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER]
 
 
 MIN_TELEGRAM_ID = 1

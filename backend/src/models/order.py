@@ -41,22 +41,17 @@ class Order(Base):
     )
 
     status: Mapped[OrderStatus] = mapped_column(
-        ENUM(OrderStatus, create_type=False),
+        ENUM(OrderStatus, name="orderstatus", create_type=True),
         nullable=False,
-        default=OrderStatus.pending,
-        index=True,
-        comment="Текущий статус заказа",
+        default=OrderStatus.PENDING,
     )
     order_type: Mapped[OrderType] = mapped_column(
-        ENUM(OrderType, create_type=False),
+        ENUM(OrderType, name="ordertype", create_type=True),
         nullable=False,
-        index=True,
-        comment="Тип заказа (обычный/срочный и т.д.)",
+        default=OrderType.REGULAR,
     )
     special_type: Mapped[SpecialOrderType | None] = mapped_column(
-        ENUM(SpecialOrderType, create_type=False),
-        nullable=True,
-        comment="Специальный тип заказа (если применимо)",
+        ENUM(SpecialOrderType, name="specialordertype", create_type=True), nullable=True
     )
 
     price: Mapped[Decimal] = mapped_column(
@@ -109,14 +104,12 @@ class Order(Base):
         ),
         CheckConstraint("price > 0", name="check_price_positive"),
         CheckConstraint(
-            """
-            (order_type = 'regular' AND special_type IS NULL) OR
-            (order_type = 'special' AND special_type IS NOT NULL)
-            """,
-            name="check_special_type_logic",
+            (status != OrderStatus.COMPLETED) | (completed_at is not None),
+            name="check_completed_at_if_completed",
         ),
         CheckConstraint(
-            "(status != 'completed') OR (completed_at IS NOT NULL)",
-            name="check_completed_at_if_completed",
+            ((order_type == "regular") & (special_type is None))
+            | ((order_type == "special") & (special_type is not None)),
+            name="check_special_type_logic",
         ),
     )

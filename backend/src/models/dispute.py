@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Text
+from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Text, and_, or_
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,16 +49,12 @@ class Dispute(Base):
 
     description: Mapped[str] = mapped_column(Text, nullable=False, comment="Описание причины спора")
     status: Mapped[DisputeStatus] = mapped_column(
-        ENUM(DisputeStatus, create_type=False),
-        default=DisputeStatus.pending_review,
+        ENUM(DisputeStatus, name="disputestatus", create_type=True),
         nullable=False,
-        index=True,
-        comment="Текущий статус спора",
+        default=DisputeStatus.PENDING_REVIEW,
     )
     resolution_type: Mapped[DisputeResolutionType | None] = mapped_column(
-        ENUM(DisputeResolutionType, create_type=False),
-        nullable=True,
-        comment="Тип разрешения спора",
+        ENUM(DisputeResolutionType, name="disputeresolutiontype", create_type=True), nullable=True
     )
     resolution_comment: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Комментарий администратора по разрешению спора"
@@ -87,11 +83,17 @@ class Dispute(Base):
             "length(trim(description)) > 0", name="check_dispute_description_not_empty"
         ),
         CheckConstraint(
-            "(status != 'resolved') OR (resolved_at IS NOT NULL AND resolution_type IS NOT NULL)",
+            or_(
+                status != DisputeStatus.RESOLVED,
+                and_(resolved_at is not None, resolution_type is not None),
+            ),
             name="check_resolution_details_if_resolved",
         ),
         CheckConstraint(
-            "(fine_amount IS NULL) OR (status = 'resolved' AND fined_user_id IS NOT NULL)",
+            or_(
+                fine_amount is None,
+                and_(status == DisputeStatus.RESOLVED, fined_user_id is not None),
+            ),
             name="check_fine_logic",
         ),
     )
