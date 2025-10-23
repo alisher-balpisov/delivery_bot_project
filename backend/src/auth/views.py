@@ -47,7 +47,7 @@ async def auth_by_code(
     except exceptions.InvalidCredentialsError as e:
         logger.warning(f"Неверный код для telegram_id={form_data.telegram_id}: {e.detail}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.detail)
-    except (exceptions.AttemptsLimitExceededError, exceptions.ccountLockedError) as e:
+    except (exceptions.AttemptsLimitExceededError, exceptions.AccountLockedError) as e:
         logger.warning(f"Блокировка аккаунта для telegram_id={form_data.telegram_id}: {e.detail}")
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=e.detail)
     except exceptions.AuthError as e:
