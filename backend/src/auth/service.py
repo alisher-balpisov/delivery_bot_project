@@ -220,7 +220,12 @@ class AuthService:
             await db.refresh(user)
             return await AuthService._finalize_auth(user)
 
-        except exceptions.AuthBaseError:
+        except (
+            exceptions.InvalidCredentialsError,
+            exceptions.AttemptsLimitExceededError,
+            exceptions.AccountLockedError,
+            exceptions.UserAlreadyRegisteredError,
+        ):
             raise
         except Exception:
             logger.exception(f"Непредвиденная ошибка при аутентификации {telegram_id}")
