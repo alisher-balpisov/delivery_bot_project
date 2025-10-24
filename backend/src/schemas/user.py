@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from backend.src.common.enums import UserRole
 from backend.src.common.utils import Phone
@@ -27,25 +28,30 @@ class UserCreate(UserBase):
     role: UserRole
 
 
-class UserUpdate(BaseModel):
-    """Схема для обновления пользователя."""
+class ShopUserUpdate(BaseModel):
+    """Схема для обновления профиля магазина."""
 
-    name: str | None = None
-    phone: Phone | None = None
+    role: Literal[UserRole.SHOP]
+    name: str | None = Field(None, max_length=100)
+    address: str | None = Field(None, max_length=512)
+    address_link: str | None = Field(None, max_length=512)
+    phone_number: list[str] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class UserRead(UserBase):
-    """Схема для чтения данных пользователя."""
+class CourierUserUpdate(BaseModel):
+    """Схема для обновления профиля курьера."""
 
-    id: int
-    role: UserRole
-    is_blocked: bool
-    is_deleted: bool
+    role: Literal[UserRole.COURIER]
+    full_name: str | None = Field(None, max_length=255)
+    phone_number: list[str] | None = None
+    photo_id: str | None = Field(None, max_length=255)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+UserUpdate = ShopUserUpdate | CourierUserUpdate
 
 
 class UserResponse(UserBase):

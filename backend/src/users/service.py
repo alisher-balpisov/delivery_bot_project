@@ -4,43 +4,75 @@ from backend.src.models.courier import Courier
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from backend.src.schemas.courier import CourierResponse
-from backend.src.schemas.user import UserCreateWithoutPassword, UserResponse, UserUpdate
+from backend.src.schemas.user import (
+    CourierUserUpdate,
+    ShopUserUpdate,
+    UserCreateWithoutPassword,
+    UserResponse,
+    UserUpdate,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-
-MAX_ATTEMPTS = 3
 
 logger = get_logger(__name__)
 
 
-async def update_user(db: AsyncSession, user_id: int, user_data: UserUpdate) -> User | None:
-    """
-    Обновление данных пользователя по его ID.
+async def get_user_or_none(db: AsyncSession, user_id: int) -> User | None:
+    """Получить пользователя по ID, если существует."""
+    user = await db.get(User, user_id)
+    if not user:
+        logger.warning(f"Пользователь с ID {user_id} не найден.")
+        return None
+    return user
 
-    Args:
-        db: Сессия базы данных.
-        user_id: ID пользователя для обновления.
-        user_data: Данные для обновления.
 
-    Returns:
-        Обновленный объект пользователя или None, если пользователь не найден.
+async def _update_profile(db: AsyncSession, user: User, data: dict, model: type) -> bool:
     """
-    logger.info(f"Обновление пользователя с ID: {user_id}")
+    Универсальное обновление профиля (магазина или курьера).
+    model — класс модели: Shop или Courier.
+    """
+    profile = await db.scalar(select(model).where(model.user_id == user.id))
+    if not profile:
+        logger.warning(f"Профиль {model.__name__} для пользователя {user.id} не найден.")
+        return False
+
+    for field, value in data.items():
+        if hasattr(profile, field):
+            setattr(profile, field, value)
+        else:
+            logger.warning(f"Попытка обновить несуществующее поле '{field}' в модели {model}")
+
+    return True
+
+
+async def edit_user_profile(
+    db: AsyncSession, user_id: int, profile_data: UserUpdate
+) -> User | None:
+    """Обновление профиля пользователя (магазина или курьера)."""
+    logger.info(f"Обновление профиля пользователя ID: {user_id}")
+
+    user = await get_user_or_none(db, user_id)
+    if not user:
+        return None
+
+    # Берём только те поля, которые реально переданы
+    update_data = profile_data.model_dump(exclude_unset=True)
+    logger.debug(f"Данные для обновления: {update_data}")
 
     async with db.begin():
-        user = await db.get(User, user_id)
-        if not user:
-            logger.warning(f"Пользователь с ID {user_id} не найден для обновления.")
+        if profile_data.role == UserRole.SHOP and isinstance(profile_data, ShopUserUpdate):
+            ok = await _update_profile(db, user, update_data, Shop)
+        elif profile_data.role == UserRole.COURIER and isinstance(profile_data, CourierUserUpdate):
+            ok = await _update_profile(db, user, update_data, Courier)
+        else:
+            logger.error(f"Несоответствие роли и данных для пользователя {user_id}")
             return None
 
-        update_data = user_data.model_dump(exclude_unset=True)
-        logger.debug(f"Данные для обновления пользователя {user_id}: {update_data}")
-
-        for field, value in update_data.items():
-            setattr(user, field, value)
+        if not ok:
+            return None
 
     await db.refresh(user)
-    logger.info(f"Пользователь с ID {user_id} успешно обновлен.")
+    logger.info(f"Профиль пользователя {user_id} успешно обновлён.")
     return user
 
 

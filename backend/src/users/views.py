@@ -1,7 +1,7 @@
-from backend.src.auth.dependencies import RequireAllRoles
+from backend.src.auth.dependencies import RequireAllRoles, RequireShopOrCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.schemas.user import UserCreateWithoutPassword, UserRead, UserUpdate
+from backend.src.schemas.user import UserBase, UserCreateWithoutPassword, UserRead, UserUpdate
 from backend.src.users import service
 from fastapi import APIRouter, HTTPException
 
@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/me", response_model=UserRead)
+@router.get("/me", response_model=UserBase)
 async def get_user_profile(
     current_user: RequireAllRoles,
 ):
@@ -21,23 +21,31 @@ async def get_user_profile(
     return current_user
 
 
-@router.put("/me", response_model=UserRead)
-async def update_user_profile(
-    user_data: UserUpdate,
-    current_user: RequireAllRoles,
+@router.put("/me", response_model=UserBase)
+async def edit_user_profile(
+    profile_data: UserUpdate,
+    current_user: RequireShopOrCourier,
     db: DbSession,
 ):
     """
-    Обновление профиля текущего пользователя.
+    Обновление профиля текущего пользователя (магазин или курьер).
     """
     logger.info(f"Обновление профиля для пользователя ID: {current_user.id}")
-    updated_user = await service.update_user(db=db, user_id=current_user.id, user_data=user_data)
-    if not updated_user:
-        # Этот случай должен быть редким, так как get_current_user уже проверяет пользователя
-        logger.error(
-            f"Не удалось найти пользователя {current_user.id} для обновления, хотя он прошел аутентификацию."
+
+    if profile_data.role != current_user.role:
+        raise HTTPException(
+            status_code=400,
+            detail="Роль в запросе не соответствует роли пользователя.",
         )
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    updated_user = await service.edit_user_profile(
+        db=db, user_id=current_user.id, profile_data=profile_data
+    )
+    if not updated_user:
+        logger.error(f"Не удалось найти или обновить профиль для пользователя {current_user.id}.")
+        raise HTTPException(
+            status_code=404, detail="Профиль пользователя не найден или не может быть обновлен."
+        )
     logger.info(f"Профиль для пользователя ID: {current_user.id} успешно обновлен.")
     return updated_user
 
