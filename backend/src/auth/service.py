@@ -1,8 +1,7 @@
-import math
 from datetime import UTC, datetime, timedelta
 
 from backend.src.auth import exceptions
-from backend.src.common.constants import MAX_CODE_LENGTH, SECONDS_IN_MINUTE
+from backend.src.common.constants import MAX_CODE_LENGTH
 from backend.src.common.enums import UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
@@ -71,15 +70,6 @@ class AuthService:
         if len(code) <= 2:
             return "*" * len(code)
         return code[0] + "*" * (len(code) - 2) + code[-1]
-
-    @staticmethod
-    def _get_lock_duration_minutes(user: User) -> int:
-        """Получает оставшееся время блокировки в минутах из поля locked_until."""
-        if not user.locked_until or user.locked_until <= datetime.now(UTC):
-            return 0
-
-        ttl_seconds = (user.locked_until - datetime.now(UTC)).total_seconds()
-        return max(1, math.ceil(ttl_seconds / SECONDS_IN_MINUTE))
 
     @staticmethod
     def _is_user_locked(user: User) -> bool:
@@ -157,20 +147,6 @@ class AuthService:
                     f"Не удалось получить или создать пользователя для telegram_id={telegram_id}"
                 )
                 raise
-
-    @staticmethod
-    async def get_user_by_telegram_id_or_create_guest(telegram_id: int, db: AsyncSession) -> User:
-        """
-        Находит пользователя по telegram_id. Если не найден - создает нового
-        пользователя с ролью GUEST.
-
-        Важно: функция не выполняет commit. Ответственность за commit на вызывающем коде.
-        """
-        AuthService._validate_telegram_id(telegram_id)
-        user = await AuthService._find_existing_user(db, telegram_id)
-        if user:
-            return user
-        return await AuthService._create_guest_user(db, telegram_id)
 
     @staticmethod
     async def _consume_registration_code(
@@ -284,14 +260,3 @@ class AuthService:
             access_token=token,
             already_registered=False,
         )
-
-
-# Вспомогательные функции для обратной совместимости
-def create_access_token(user: User) -> str:
-    """Создает новый JWT токен (функция для обратной совместимости)."""
-    return AuthService.create_access_token(user)
-
-
-async def get_user_by_telegram_id_or_create_guest(telegram_id: int, db: AsyncSession) -> User:
-    """Находит или создает пользователя-гостя (функция для обратной совместимости)."""
-    return await AuthService.get_user_by_telegram_id_or_create_guest(telegram_id, db)

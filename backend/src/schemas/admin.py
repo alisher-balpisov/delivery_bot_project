@@ -44,3 +44,5 @@ class CodeActivationResponse(BaseModel):
     attempts_left: int | None = None
     blocked: bool = False
     detail: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)

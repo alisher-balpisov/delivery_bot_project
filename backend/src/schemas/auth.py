@@ -1,5 +1,5 @@
 from backend.src.common.enums import TokenType
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Token(BaseModel):
@@ -15,6 +15,8 @@ class TokenData(BaseModel):
     user_id: int | None = None
     role: str | None = None
     telegram_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TokenRequest(BaseModel):
@@ -40,3 +42,5 @@ class AuthSuccessResponse(BaseModel):
     user: UserInfo
     access_token: str
     already_registered: bool = False
+
+    model_config = ConfigDict(from_attributes=True)

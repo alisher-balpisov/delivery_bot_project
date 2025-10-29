@@ -1,3 +1,4 @@
+from backend.src.common.enums import UserStatus
 from backend.src.common.utils import Phone
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,8 +35,7 @@ class ShopRead(ShopBase):
     id: int
     user: UserRead
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ShopResponse(ShopBase):
@@ -59,3 +59,22 @@ class ShopRegistration(BaseModel):
     phone: Phone = Field(..., max_length=20)
     shop_name: str = Field(..., max_length=255)
     shop_address: str | None = Field(None, max_length=255)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShopCardResponse(BaseModel):
+    """
+    Схема для ответа с данными карточки магазина и кнопками на основе роли пользователя.
+    """
+
+    id: int
+    telegram_id: int
+    username: str | None
+    name: str
+    status: UserStatus
+    address: str
+    address_link: str
+    phone_numbers: list[str]
+
+    model_config = ConfigDict(from_attributes=True)

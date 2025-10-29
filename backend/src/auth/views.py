@@ -1,25 +1,11 @@
 from backend.src.auth import exceptions, service
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.schemas.auth import AuthByCodeRequest, AuthSuccessResponse, Token, TokenRequest
+from backend.src.schemas.auth import AuthByCodeRequest, AuthSuccessResponse
 from fastapi import APIRouter, HTTPException, status
 
 router = APIRouter()
 logger = get_logger(__name__)
-
-
-@router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: TokenRequest, db: DbSession) -> Token:
-    """
-    Выдает JWT токен для пользователя по его telegram_id.
-    Если пользователь не найден, создает гостя.
-    Используется ботом для получения токена перед каждым запросом к API.
-    """
-    logger.debug(f"Запрос токена для telegram_id: {form_data.telegram_id}")
-    user = await service.get_user_by_telegram_id_or_create_guest(form_data.telegram_id, db)
-    access_token = service.create_access_token(user)
-    logger.debug(f"Выдан токен для пользователя {user.id} (telegram_id: {form_data.telegram_id})")
-    return Token(access_token=access_token)
 
 
 @router.post("/by-code", response_model=AuthSuccessResponse)
