@@ -1,10 +1,13 @@
 import secrets
-import string
+from datetime import UTC, datetime, timedelta
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole
+from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
 from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
@@ -15,39 +18,63 @@ from backend.src.schemas.admin import RegistrationCodeResponse
 logger = get_logger(__name__)
 
 
-async def generate_registration_code(
-    db: AsyncSession, role: UserRole, created_by_admin_id: int | None = None
-) -> RegistrationCodeResponse:
+async def create_registration_code(
+    db: AsyncSession, role: UserRole, created_by_admin_id: int
+) -> RegistrationCode:
     """
-    Генерирует одноразовый код регистрации для пользователя.
+    Генерирует и сохраняет в БД одноразовый код регистрации для пользователя.
 
     Args:
-        db: Сессия базы данных
-        role: Роль для которой генерируется код (shop или courier)
-        created_by_admin_id: ID админа, который создал код (опционально)
+        db: Сессия базы данных.
+        role: Роль, для которой генерируется код (shop или courier).
+        created_by_admin_id: ID админа, который создал код.
 
     Returns:
-        RegistrationCodeResponse: Созданный код регистрации
+        Объект RegistrationCode, добавленный в сессию.
+
+    Raises:
+        HTTPException: если указана недопустимая роль.
+        RuntimeError: если не удалось сгенерировать уникальный код после нескольких попыток.
     """
     logger.info(f"Генерация кода регистрации для роли: {role.value}")
-    # Генерируем уникальный код длиной 8 символов
-    while True:
-        code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
 
-        # Проверяем уникальность
-        result = await db.execute(select(RegistrationCode).where(RegistrationCode.code == code))
-        if not result.scalars().first():
-            break
+    if role not in [UserRole.SHOP, UserRole.COURIER]:
+        raise HTTPException(
+            status_code=400, detail="Недопустимая роль. Используйте 'courier' или 'shop'"
+        )
 
-    # Создаем запись кода
-    reg_code = RegistrationCode(code=code, role=role, is_used=False)
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(hours=settings.auth.registration_code_lifetime_hours)
 
-    async with db.begin():
+    # Пытаемся сгенерировать уникальный код несколько раз
+    for _ in range(10):
+        code = "".join(
+            secrets.choice(settings.auth.code_characters) for _ in range(settings.auth.code_length)
+        )
+
+        reg_code = RegistrationCode(
+            code=code,
+            role=role,
+            is_used=False,
+            created_by_admin_id=created_by_admin_id,
+            created_at=now,
+            expires_at=expires_at,
+        )
         db.add(reg_code)
 
-    await db.refresh(reg_code)
-    logger.info(f"Сгенерирован код регистрации '{reg_code.code}' для роли: {role.value}")
-    return RegistrationCodeResponse.model_validate(reg_code)
+        try:
+            await db.flush()
+            await db.refresh(reg_code)
+
+            logger.info(f"Сгенерирован код регистрации '{reg_code.code}' для роли: {role.value}")
+            return reg_code
+        except IntegrityError:
+            logger.warning(f"Коллизия при генерации кода: '{code}'. Повторная попытка.")
+            await db.rollback()
+            continue
+
+    logger.error("Не удалось сгенерировать уникальный код регистрации после 10 попыток.")
+    raise RuntimeError("Не удалось сгенерировать уникальный код регистрации.")
 
 
 async def get_all_registration_codes(db: AsyncSession) -> list[RegistrationCodeResponse]:

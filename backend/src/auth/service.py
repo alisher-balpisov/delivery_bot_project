@@ -160,7 +160,7 @@ class AuthService:
             update(RegistrationCode)
             .where(RegistrationCode.code == code, RegistrationCode.is_used.is_(False))
             .values(is_used=True, used_by_user_id=user_id)
-            .returning(RegistrationCode.role_type)
+            .returning(RegistrationCode.role)
         )
         row = res.first()
         return row[0] if row else None

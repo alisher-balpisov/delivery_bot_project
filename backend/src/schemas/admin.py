@@ -11,16 +11,12 @@ class RegistrationCodeBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class RegistrationCodeCreate(RegistrationCodeBase):
-    pass
-
-
 class RegistrationCodeResponse(RegistrationCodeBase):
     id: int
     is_used: bool
-    user_id: int | None = None
+    used_by_user_id: int | None = None
     created_at: datetime
-    expires_at: datetime | None = None
+    expires_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

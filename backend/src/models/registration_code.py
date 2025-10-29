@@ -23,12 +23,12 @@ class RegistrationCode(Base):
     """
 
     __tablename__ = "registration_codes"
-    __repr_attrs__ = ("code", "role_type", "is_used")
+    __repr_attrs__ = ("code", "role", "is_used")
 
     code: Mapped[str] = mapped_column(
-        String(100), unique=True, nullable=False, index=True, comment="Уникальный код регистрации"
+        String(16), unique=True, nullable=False, index=True, comment="Уникальный код регистрации"
     )
-    role_type: Mapped[UserRole] = mapped_column(
+    role: Mapped[UserRole] = mapped_column(
         ENUM(UserRole, create_type=False),
         nullable=False,
         index=True,

@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/create-code/{role}", response_model=RegistrationCodeResponse, status_code=201)
+@router.post("/registration-codes", response_model=RegistrationCodeResponse, status_code=201)
 async def create_registration_code(
     role: UserRole,
     current_user: RequireAdmin,
@@ -23,29 +23,24 @@ async def create_registration_code(
     Генерирует одноразовый код для регистрации пользователя определенной роли.
     Доступно только администраторам.
     """
-    if role not in [UserRole.SHOP, UserRole.COURIER]:
-        raise HTTPException(
-            status_code=400, detail="Недопустимая роль. Используйте 'courier' или 'shop'"
-        )
+    logger.info(f"Администратор {current_user} инициировал генерацию кода для роли {role.value}")
 
-    logger.info(
-        f"Администратор ID {current_user.id} генерирует код регистрации для роли {role.value}"
-    )
     try:
-        new_code = await service.generate_registration_code(
+        new_code = await service.create_registration_code(
             db=db, role=role, created_by_admin_id=current_user.id
         )
+
         logger.info(
-            f"Код регистрации для {role.capitalize()} успешно сгенерирован администратором ID {current_user.id}"
+            f"Код регистрации '{new_code.code}' для роли {role.value} успешно сгенерирован "
+            f"администратором id={current_user}"
         )
         return new_code
-    except Exception as e:
+    except RuntimeError as e:
         logger.error(
-            f"Ошибка генерации кода для роли {role.value} для администратора {current_user.id}: {e}"
+            f"Критическая ошибка при генерации кода для роли {role.value} "
+            f"администратором {current_user}: {e}"
         )
-        raise HTTPException(
-            status_code=500, detail=f"Не удалось сгенерировать код для {role.value}: {e!s}"
-        )
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера при генерации кода.")
 
 
 @router.get("/registration-codes", response_model=list[RegistrationCodeResponse])

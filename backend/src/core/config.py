@@ -1,3 +1,4 @@
+import string
 from pathlib import Path
 from typing import ClassVar
 
@@ -78,6 +79,10 @@ class AuthConfig(BaseModel):
 
     # Максимальное количество попыток ввода кода при регистрации.
     registration_max_attempts: int = 3
+    registration_code_lifetime_hours: int = 5
+    code_length = 8
+    code_characters = string.ascii_uppercase + string.digits
+    max_retries = 10
 
 
 class MiddlewareConfig(BaseModel):
