@@ -25,6 +25,18 @@ class CourierResponse(CourierBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CourierRead(BaseModel):
+    """Схема для чтения данных о курьере."""
+
+    user_id: int
+    full_name: str
+    phone_number: list[str]
+    photo_id: str | None = None
+    is_active: bool = Field(..., description="Статус активности (на смене / не на смене)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CourierRegistration(BaseModel):
     """
     Комплексная схема для регистрации курьера,
@@ -53,5 +65,3 @@ class CourierCardResponse(BaseModel):
     photo_id: str | None = None
     is_active: bool
     rating: float | None = None
-
-    model_config = ConfigDict(from_attributes=True)

@@ -1,12 +1,14 @@
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func, select
 
-from backend.src.auth.dependencies import RequireAllRoles
+from backend.src.auth.dependencies import RequireAllRoles, RequireCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
 from backend.src.models.courier_rating import CourierRating
-from backend.src.schemas.courier import CourierCardResponse
+from backend.src.schemas.courier import CourierCardResponse, CourierRead
+
+from . import service
 
 logger = get_logger(__name__)
 
@@ -64,4 +66,13 @@ async def get_courier_card(
     )
 
     logger.info(f"Карточка курьера {courier_id} успешно возвращена для пользователя {current_user}")
+    return response
+
+
+@router.patch("/toggle-shift", response_model=CourierRead)
+async def toggle_courier_shift(db: DbSession, current_user: RequireCourier):
+    """
+    Переключает активный статус курьера (выход на смену / уход со смены).
+    """
+    response = await service.toggle_courier_shift(db=db, current_user=current_user)
     return response
