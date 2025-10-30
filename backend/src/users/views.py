@@ -17,7 +17,7 @@ async def get_user_profile(
     """
     Получение профиля текущего пользователя (идентифицированного по JWT).
     """
-    logger.debug(f"Пользователь {current_user.id} запросил свой профиль.")
+    logger.debug(f"Пользователь {current_user} запросил свой профиль.")
     return current_user
 
 

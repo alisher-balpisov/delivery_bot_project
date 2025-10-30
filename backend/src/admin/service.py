@@ -1,21 +1,35 @@
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Generic, TypeVar
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from pydantic import BaseModel, Field
+from sqlalchemy import Column, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import contains_eager
 
-from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole
+from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
+from backend.src.models.courier import Courier
 from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
 from backend.src.models.registration_code import RegistrationCode
+from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from backend.src.schemas.admin import RegistrationCodeResponse
+from backend.src.schemas.courier import CourierCardResponse
+from backend.src.schemas.shop import ShopCardResponse
 
 logger = get_logger(__name__)
+
+T = TypeVar("T")
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    total: int = Field(..., description="Общее количество элементов")
+    items: list[T] = Field(..., description="Список элементов на текущей странице")
 
 
 async def create_registration_code(
@@ -184,3 +198,125 @@ async def get_system_stats(db: AsyncSession) -> dict:
         "total_disputes": total_disputes,
         "unresolved_disputes": unresolved_disputes,
     }
+
+
+ModelType = TypeVar("ModelType")
+
+
+async def _get_paginated_list(
+    db: AsyncSession,
+    model: type[ModelType],
+    page: int,
+    limit: int,
+    join_model: type,
+    join_on: Column,
+    search_fields: list[Column],
+    status: UserStatus | None = None,
+    search: str | None = None,
+) -> tuple[int, list[ModelType]]:
+    """
+    Обобщенная функция для получения пагинированного списка сущностей.
+    """
+    # 1. Формируем список фильтров
+    filters = []
+    if status:
+        filters.append(join_model.status == status)
+
+    if search:
+        search_term = f"%{search.lower()}%"
+        search_conditions = [func.lower(field).like(search_term) for field in search_fields]
+        filters.append(or_(*search_conditions))
+
+    # 2. Запрос для подсчета общего количества записей с фильтрами
+    total_query = select(func.count(model.id)).join(join_model, join_on)
+    if filters:
+        total_query = total_query.where(*filters)
+
+    total = await db.scalar(total_query)
+    if not total:
+        return 0, []
+
+    # 3. Запрос для получения данных с фильтрами и пагинацией
+    data_query = select(model).join(join_model, join_on).options(contains_eager(model.user))
+    if filters:
+        data_query = data_query.where(*filters)
+
+    data_query = data_query.offset((page - 1) * limit).limit(limit)
+
+    result = await db.execute(data_query)
+    items = result.scalars().all()
+
+    return total, items
+
+
+async def get_all_couriers(
+    db: AsyncSession,
+    page: int,
+    limit: int,
+    status: UserStatus | None,
+    search: str | None,
+) -> PaginatedResponse[CourierCardResponse]:
+    total, couriers = await _get_paginated_list(
+        db=db,
+        model=Courier,
+        page=page,
+        limit=limit,
+        join_model=User,
+        join_on=(Courier.user_id == User.id),
+        search_fields=[Courier.full_name, User.username],
+        status=status,
+        search=search,
+    )
+
+    response_items = [
+        CourierCardResponse(
+            id=courier.id,
+            telegram_id=courier.user.telegram_id,
+            username=courier.user.username,
+            full_name=courier.full_name,
+            status=courier.user.status,
+            phone_numbers=courier.phone_number,
+            photo_id=courier.photo_id,
+            is_active=courier.is_active,
+            rating=None,
+        )
+        for courier in couriers
+    ]
+
+    return PaginatedResponse(total=total, items=response_items)
+
+
+async def get_all_shops(
+    db: AsyncSession,
+    page: int,
+    limit: int,
+    status: UserStatus | None,
+    search: str | None,
+) -> PaginatedResponse[ShopCardResponse]:
+    total, shops = await _get_paginated_list(
+        db=db,
+        model=Shop,
+        page=page,
+        limit=limit,
+        join_model=User,
+        join_on=(Shop.user_id == User.id),
+        search_fields=[Shop.name, User.username],
+        status=status,
+        search=search,
+    )
+
+    response_items = [
+        ShopCardResponse(
+            id=shop.id,
+            telegram_id=shop.user.telegram_id,
+            username=shop.user.username,
+            name=shop.name,
+            status=shop.user.status,
+            address=shop.address,
+            address_link=shop.address_link,
+            phone_numbers=shop.phone_number,
+        )
+        for shop in shops
+    ]
+
+    return PaginatedResponse(total=total, items=response_items)

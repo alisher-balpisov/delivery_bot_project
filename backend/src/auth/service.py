@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
 from backend.src.auth import exceptions
-from backend.src.common.constants import MAX_CODE_LENGTH
 from backend.src.common.enums import UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
@@ -61,7 +60,7 @@ class AuthService:
     def _validate_input_data(telegram_id: int, code: str) -> None:
         """Валидирует входные данные."""
         AuthService._validate_telegram_id(telegram_id)
-        if not isinstance(code, str) or not code.strip() or len(code) > MAX_CODE_LENGTH:
+        if not isinstance(code, str) or not code.strip() or len(code) > settings.auth.code_length:
             raise ValueError("Некорректный код регистрации")
 
     @staticmethod

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from backend.src.admin import service
 from backend.src.auth.dependencies import RequireAdmin
@@ -6,6 +6,8 @@ from backend.src.common.enums import UserRole
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.schemas.admin import RegistrationCodeResponse
+from backend.src.schemas.courier import CourierCardResponse
+from backend.src.schemas.shop import ShopCardResponse
 
 logger = get_logger(__name__)
 
@@ -109,3 +111,35 @@ async def get_system_stats(current_user: RequireAdmin, db: DbSession):
     except Exception as e:
         logger.error(f"Ошибка при получении системной статистики: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Не удалось получить статистику: {e!s}")
+
+
+@router.get("/couriers", response_model=service.PaginatedResponse[CourierCardResponse])
+async def get_all_couriers(
+    db: DbSession,
+    current_user: RequireAdmin,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    status: str | None = Query(None, description="active или inactive"),
+    search: str | None = Query(None),
+):
+    """
+    Просмотреть всех курьеров.
+    """
+    return await service.get_all_couriers(
+        db=db, page=page, limit=limit, status=status, search=search
+    )
+
+
+@router.get("/shops", response_model=service.PaginatedResponse[ShopCardResponse])
+async def get_all_shops(
+    db: DbSession,
+    current_user: RequireAdmin,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    status: str | None = Query(None, description="active, inactive или blocked"),
+    search: str | None = Query(None),
+):
+    """
+    Просмотреть все магазины.
+    """
+    return await service.get_all_shops(db=db, page=page, limit=limit, status=status, search=search)

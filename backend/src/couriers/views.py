@@ -23,7 +23,7 @@ async def get_avg_rating(db, courier_id: int) -> float | None:
     return result
 
 
-@router.get("/couriers/{courier_id}", response_model=CourierCardResponse)
+@router.get("/{courier_id}", response_model=CourierCardResponse)
 async def get_courier_card(
     courier_id: int,
     current_user: RequireAllRoles,

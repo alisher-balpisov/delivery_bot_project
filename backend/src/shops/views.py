@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/shops/{shop_id}", response_model=ShopCardResponse)
+@router.get("/{shop_id}", response_model=ShopCardResponse)
 async def get_shop_card(
     shop_id: int,
     current_user: RequireAllRoles,
