@@ -46,45 +46,36 @@ async def create_registration_code(
 
 
 @router.get("/registration-codes", response_model=list[RegistrationCodeResponse])
-async def get_all_registration_codes(current_user: RequireAdmin, db: DbSession):
-    """
-    Получить все коды регистрации.
-    Доступно только администраторам.
-    """
-    logger.info(f"Администратор ID {current_user.id} запрашивает все коды регистрации")
-    try:
-        codes = await service.get_all_registration_codes(db=db)
-        return codes
-    except Exception as e:
-        logger.error(f"Ошибка при получении всех кодов регистрации: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Не удалось получить коды: {e!s}")
-
-
-@router.get("/registration-codes/{role}", response_model=list[RegistrationCodeResponse])
-async def get_registration_codes_by_role(
-    role: UserRole,
+async def get_registration_codes(
     current_user: RequireAdmin,
     db: DbSession,
+    role: UserRole | None = None,
 ):
     """
-    Получить все коды регистрации для определенной роли.
+    Получить все коды регистрации или коды для конкретной роли.
+    Если параметр `role` не указан — возвращаются все коды.
     Доступно только администраторам.
     """
-    logger.info(
-        f"Администратор ID {current_user.id} запрашивает коды регистрации для роли {role.value}"
-    )
     try:
-        codes = await service.get_registration_codes_by_role(db=db, role=role)
+        if role:
+            logger.info(
+                f"Администратор ID {current_user.id} запрашивает коды регистрации для роли {role.value}"
+            )
+            codes = await service.get_registration_codes_by_role(db=db, role=role)
+        else:
+            logger.info(f"Администратор ID {current_user.id} запрашивает все коды регистрации")
+            codes = await service.get_all_registration_codes(db=db)
+
         return codes
+
     except Exception as e:
-        logger.error(
-            f"Ошибка при получении кодов регистрации для роли {role.value}: {e}", exc_info=True
-        )
+        message = f"Ошибка при получении кодов регистрации для роли {role.value if role else 'всех ролей'}: {e}"
+        logger.error(message, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Не удалось получить коды: {e!s}")
 
 
 @router.get("/registration-codes/stats", response_model=dict)
-async def get_registration_codes_stats(current_user: RequireAdmin, db: DbSession):
+async def get_registration_codes_stats(current_user: RequireAdmin, db: DbSession) -> dict:
     """
     Получить статистику кодов регистрации.
     Доступно только администраторам.
