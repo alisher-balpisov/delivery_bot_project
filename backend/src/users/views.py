@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/me", response_model=UserBase)
-async def get_user_profile(
+async def get_my_profile(
     current_user: RequireAllRoles,
 ):
     """
@@ -22,7 +22,7 @@ async def get_user_profile(
 
 
 @router.put("/me", response_model=UserBase)
-async def edit_user_profile(
+async def update_my_profile(
     profile_data: UserUpdate,
     current_user: RequireShopOrCourier,
     db: DbSession,
@@ -38,7 +38,7 @@ async def edit_user_profile(
             detail="Роль в запросе не соответствует роли пользователя.",
         )
 
-    updated_user = await service.edit_user_profile(
+    updated_user = await service.update_my_profile(
         db=db, user_id=current_user.id, profile_data=profile_data
     )
     if not updated_user:

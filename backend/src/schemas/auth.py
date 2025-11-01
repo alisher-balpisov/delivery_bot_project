@@ -44,3 +44,9 @@ class AuthSuccessResponse(BaseModel):
     already_registered: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class LoginRequest(BaseModel):
+    """Схема запроса для входа существующего пользователя."""
+
+    telegram_id: int

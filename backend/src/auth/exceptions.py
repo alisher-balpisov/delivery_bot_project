@@ -41,7 +41,7 @@ class UserAlreadyRegisteredError(AuthError):
         base = super().to_dict()
         base.update(
             {
-                "user_data": self.user_data,
+                "user_data": self.data,
                 "access_token": self.access_token,
             }
         )

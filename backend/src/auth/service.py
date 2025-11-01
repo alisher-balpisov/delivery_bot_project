@@ -7,255 +7,293 @@ from backend.src.core.logging import get_logger
 from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.user import User
 from backend.src.schemas.auth import AuthSuccessResponse, UserInfo
+from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
 
-class AuthService:
-    """Сервис для работы с аутентификацией и авторизацией."""
+def create_access_token(user: User) -> str:
+    """
+    Создает новый JWT токен для пользователя.
 
-    @staticmethod
-    def create_access_token(user: User) -> str:
-        """
-        Создает новый JWT токен для пользователя.
+    Args:
+        user: Пользователь, для которого создается токен
 
-        Args:
-            user: Пользователь, для которого создается токен
+    Returns:
+        JWT токен в виде строки
 
-        Returns:
-            JWT токен в виде строки
+    Raises:
+        ValueError: Если у пользователя нет ID.
+        HTTPException: Если у пользователя нет роли.
+        JWTError: Если произошла ошибка при создании токена.
+    """
+    if not user or not user.id:
+        raise ValueError("Пользователь должен иметь валидный ID")
 
-        Raises:
-            JWTError: Если произошла ошибка при создании токена
-        """
-        if not user or not user.id:
-            raise ValueError("Пользователь должен иметь валидный ID")
+    if not user.role:
+        logger.warning(f"У пользователя {user} нет роли — доступ запрещён")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав доступа.",
+        )
 
-        to_encode = {
-            "sub": str(user.id),
-            "role": user.role.value,
-            "iat": datetime.now(UTC),
-        }
-        if getattr(user, "telegram_id", None) is not None:
-            to_encode["tid"] = str(user.telegram_id)
+    to_encode = {
+        "sub": str(user.id),
+        "role": user.role.value,
+        "iat": datetime.now(UTC),
+    }
+    if user.telegram_id is not None:
+        to_encode["tid"] = str(user.telegram_id)
 
-        expire = datetime.now(UTC) + timedelta(minutes=settings.jwt.access_token_expire_minutes)
-        to_encode["exp"] = expire
+    expire = datetime.now(UTC) + timedelta(minutes=settings.jwt.access_token_expire_minutes)
+    to_encode["exp"] = expire
 
-        try:
-            return jwt.encode(
-                to_encode,
-                settings.jwt.secret_key.get_secret_value(),
-                algorithm=settings.jwt.algorithm,
-            )
-        except Exception as e:
-            logger.exception(f"Ошибка при создании JWT токена для пользователя {user}")
-            raise JWTError(f"Не удалось создать токен: {e}")
+    try:
+        return jwt.encode(
+            to_encode,
+            settings.jwt.secret_key.get_secret_value(),
+            algorithm=settings.jwt.algorithm,
+        )
+    except Exception as e:
+        logger.exception(f"Ошибка при создании JWT токена для пользователя {user}")
+        raise JWTError(f"Не удалось создать токен: {e}")
 
-    @staticmethod
-    def _validate_input_data(telegram_id: int, code: str) -> None:
-        """Валидирует входные данные."""
-        AuthService._validate_telegram_id(telegram_id)
-        if not isinstance(code, str) or not code.strip() or len(code) > settings.auth.code_length:
-            raise ValueError("Некорректный код регистрации")
 
-    @staticmethod
-    def _mask_sensitive_data(code: str) -> str:
-        """Маскирует чувствительные данные для логирования."""
-        if len(code) <= 2:
-            return "*" * len(code)
-        return code[0] + "*" * (len(code) - 2) + code[-1]
+def _validate_input_data(telegram_id: int, code: str) -> None:
+    """Валидирует входные данные."""
+    _validate_telegram_id(telegram_id)
+    ic(
+        telegram_id,
+        code,
+        not isinstance(code, str),
+        not code.strip(),
+        len(code) != settings.auth.code_length,
+    )
+    if not isinstance(code, str) or not code.strip() or len(code) != settings.auth.code_length:
+        raise ValueError("Некорректный код регистрации")
 
-    @staticmethod
-    def _is_user_locked(user: User) -> bool:
-        """Проверяет, заблокирован ли пользователь."""
-        return user.status == UserStatus.BLOCKED
 
-    @staticmethod
-    async def _handle_failed_attempt(db: AsyncSession, user: User) -> None:
-        """
-        Обрабатывает неудачную попытку входа, увеличивая счетчик в БД и блокируя при необходимости.
-        Эта функция самостоятельно коммитит изменения и выбрасывает исключение.
-        """
-        # begin_nested защищает от ошибок, если функция вызывается внутри другой транзакции.
-        async with db.begin_nested():
-            user.registration_attempts += 1
-            attempts_left = settings.auth.registration_max_attempts - user.registration_attempts
+def _mask_sensitive_data(code: str) -> str:
+    """Маскирует чувствительные данные для логирования."""
+    if len(code) <= 2:
+        return "*" * len(code)
+    return code[0] + "*" * (len(code) - 2) + code[-1]
 
-            if attempts_left <= 0:
-                user.status = UserStatus.BLOCKED
-                user.registration_attempts = 0
+
+def _is_user_locked(user: User) -> bool:
+    """Проверяет, заблокирован ли пользователь."""
+    return user.status == UserStatus.BLOCKED
+
+
+async def _handle_failed_attempt(db: AsyncSession, user: User) -> None:
+    """
+    Обрабатывает неудачную попытку входа, увеличивая счетчик в БД и блокируя при необходимости.
+    Эта функция самостоятельно коммитит изменения и всегда выбрасывает исключение.
+    """
+    async with db.begin_nested():
+        user.registration_attempts += 1
+        attempts_left = settings.auth.registration_max_attempts - user.registration_attempts
 
         if attempts_left <= 0:
-            logger.warning(f"Пользователь {user} заблокирован из-за превышения попыток входа.")
-            raise exceptions.AttemptsLimitExceededError(
-                "Превышено количество попыток. Ваша учетная запись заблокирована."
-            )
+            user.status = UserStatus.BLOCKED
+            user.registration_attempts = 0  # Сбрасываем счетчик после блокировки
 
-        logger.info(f"Неудачная попытка входа для {user}. Осталось попыток: {attempts_left}")
-        raise exceptions.InvalidCredentialsError(f"Неверный код. Осталось попыток: {attempts_left}")
-
-    @staticmethod
-    async def _clear_login_attempts(user: User) -> None:
-        """
-        Очищает счетчик попыток входа и блокировку для пользователя.
-        Эта функция только изменяет состояние объекта, коммит должен быть снаружи.
-        """
-        user.registration_attempts = 0
-
-    @staticmethod
-    async def _find_existing_user(db: AsyncSession, telegram_id: int) -> User | None:
-        """Ищет существующего пользователя по telegram_id."""
-        return await db.scalar(select(User).where(User.telegram_id == telegram_id))
-
-    @staticmethod
-    def _validate_telegram_id(telegram_id: int) -> None:
-        """Валидирует Telegram ID."""
-        if not isinstance(telegram_id, int):
-            raise ValueError("Некорректный Telegram ID")
-
-    @staticmethod
-    async def _create_guest_user(db: AsyncSession, telegram_id: int) -> User:
-        """
-        Создает нового пользователя с ролью GUEST.
-        Использует SAVEPOINT для безопасной обработки гонки потоков при создании.
-        """
-        async with db.begin_nested():
-            new_guest_user = User(telegram_id=telegram_id, role=UserRole.GUEST)
-            db.add(new_guest_user)
-            try:
-                await db.flush()
-                await db.refresh(new_guest_user)
-                logger.info(
-                    f"Создан новый ГОСТЬ с ID={new_guest_user.id} для telegram_id={telegram_id}"
-                )
-                return new_guest_user
-            except IntegrityError:
-                await db.rollback()
-                logger.warning(
-                    f"Гонка при создании гостя для telegram_id={telegram_id}. Повторный поиск."
-                )
-                user = await AuthService._find_existing_user(db, telegram_id)
-                if user:
-                    return user
-                logger.error(
-                    f"Не удалось получить или создать пользователя для telegram_id={telegram_id}"
-                )
-                raise
-
-    @staticmethod
-    async def _consume_registration_code(
-        db: AsyncSession, code: str, user_id: int
-    ) -> UserRole | None:
-        """
-        Помечает код регистрации как использованный и возвращает роль.
-        Возвращает None, если код не найден или уже использован.
-        """
-        res = await db.execute(
-            update(RegistrationCode)
-            .where(RegistrationCode.code == code, RegistrationCode.is_used.is_(False))
-            .values(is_used=True, used_by_user_id=user_id)
-            .returning(RegistrationCode.role)
+    if attempts_left <= 0:
+        logger.warning(f"Пользователь {user} заблокирован из-за превышения попыток входа.")
+        raise exceptions.AttemptsLimitExceededError(
+            "Превышено количество попыток. Ваша учетная запись заблокирована."
         )
-        row = res.first()
-        return row[0] if row else None
 
-    @staticmethod
-    async def auth_by_code(
-        db: AsyncSession,
-        telegram_id: int,
-        username: str,
-        code: str,
-    ) -> AuthSuccessResponse:
-        """Регистрация/аутентификация пользователя по коду приглашения."""
-        AuthService._validate_input_data(telegram_id, code)
-        masked_code = AuthService._mask_sensitive_data(code)
-        logger.info(f"Попытка аутентификации {telegram_id} с кодом {masked_code}")
+    logger.info(f"Неудачная попытка входа для {user}. Осталось попыток: {attempts_left}")
+    raise exceptions.InvalidCredentialsError(f"Неверный код. Осталось попыток: {attempts_left}")
 
-        try:
-            async with db.begin():
-                """Проверяем существование пользователя"""
-                user = await AuthService._get_or_create_user(db, telegram_id)
 
-                """Проверяем, не зарегистрирован ли уже"""
-                if AuthService._is_already_registered(user):
-                    return await AuthService._handle_already_registered(user)
+async def _clear_login_attempts(user: User) -> None:
+    """
+    Очищает счетчик попыток входа для пользователя.
+    Эта функция только изменяет состояние объекта, коммит должен быть снаружи.
+    """
+    user.registration_attempts = 0
 
-                """Пробуем применить код"""
-                role = await AuthService._try_consume_code(db, user, code, masked_code)
 
-                """Успешное присвоение роли"""
-                await AuthService._activate_user(user, username, role)
+async def _find_existing_user(db: AsyncSession, telegram_id: int) -> User | None:
+    """Ищет существующего пользователя по telegram_id."""
+    return await db.scalar(select(User).where(User.telegram_id == telegram_id))
 
-            """После транзакции: обновляем и возвращаем токен"""
-            await db.refresh(user)
-            return await AuthService._finalize_auth(user)
 
-        except (
-            exceptions.InvalidCredentialsError,
-            exceptions.AttemptsLimitExceededError,
-            exceptions.AccountLockedError,
-            exceptions.UserAlreadyRegisteredError,
-        ):
-            raise
-        except Exception:
-            logger.exception(f"Непредвиденная ошибка при аутентификации {telegram_id}")
-            raise exceptions.AuthError("Произошла внутренняя ошибка при аутентификации.")
+def _validate_telegram_id(telegram_id: int) -> None:
+    """Валидирует Telegram ID."""
+    if not isinstance(telegram_id, int):
+        raise ValueError("Некорректный Telegram ID")
 
-    @staticmethod
-    async def _get_or_create_user(db: AsyncSession, telegram_id: int) -> User:
-        user = await AuthService._find_existing_user(db, telegram_id)
+
+async def _consume_registration_code(db: AsyncSession, code: str, user_id: int) -> UserRole | None:
+    """
+    Помечает код регистрации как использованный и возвращает роль.
+    Возвращает None, если код не найден или уже использован.
+    """
+    res = await db.execute(
+        update(RegistrationCode)
+        .where(RegistrationCode.code == code, RegistrationCode.is_used.is_(False))
+        .values(is_used=True, used_by_user_id=user_id)
+        .returning(RegistrationCode.role)
+    )
+    row = res.first()
+    return row.role if row else None
+
+
+async def _get_or_create_user(db: AsyncSession, telegram_id: int) -> User:
+    """Находит существующего пользователя или создает нового."""
+    user = await _find_existing_user(db, telegram_id)
+    if not user:
+        user = User(telegram_id=telegram_id, status=UserStatus.PENDING_REGISTRATION)
+        db.add(user)
+        await db.flush()  # Получаем ID пользователя до коммита транзакции
+        logger.info(f"Создан новый пользователь с telegram_id={telegram_id}")
+    return user
+
+
+def _is_already_registered(user: User) -> bool:
+    """Проверяет, была ли пользователю уже присвоена роль."""
+    return user.role is not None
+
+
+async def _handle_already_registered(user: User) -> AuthSuccessResponse:
+    """Обрабатывает случай, когда пользователь уже зарегистрирован."""
+    # ДОБАВЛЕНО: Утверждение для помощи статическому анализатору и для надежности
+    assert user.role is not None, (
+        "Эта функция должна быть доступна только зарегистрированным пользователям."
+    )
+
+    if _is_user_locked(user):
+        raise exceptions.AccountLockedError("Учетная запись заблокирована.")
+
+    token = create_access_token(user)
+    logger.info(f"Пользователь {user} уже зарегистрирован. Выдан новый токен.")
+    return AuthSuccessResponse(
+        user=UserInfo(id=user.id, role=user.role.value),
+        access_token=token,
+        already_registered=True,
+    )
+
+
+async def _try_consume_code(db: AsyncSession, user: User, code: str, masked_code: str) -> UserRole:
+    """Пытается применить код регистрации. В случае неудачи выбрасывает исключение."""
+    role = await _consume_registration_code(db, code, user.id)
+    if not role:
+        logger.warning(f"Пользователь {user} ввел неверный код {masked_code}")
+        await _handle_failed_attempt(db, user)
+        raise exceptions.InvalidCredentialsError("Неверный код регистрации.")
+
+    return role
+
+
+async def _activate_user(user: User, username: str | None, role: UserRole) -> None:
+    """Активирует пользователя, присваивая ему роль, имя и сбрасывая счетчики попыток."""
+    user.username = username
+    user.role = role
+    user.status = UserStatus.ACTIVE
+    await _clear_login_attempts(user)
+
+
+async def _finalize_auth(user: User) -> AuthSuccessResponse:
+    """Завершает процесс аутентификации, создавая токен и ответ."""
+    role_name = getattr(user.role, "value", str(user.role))
+    logger.info(f"Пользователь {user} успешно аутентифицирован с ролью {role_name}")
+    token = create_access_token(user)
+    return AuthSuccessResponse(
+        user=UserInfo(id=user.id, role=role_name),
+        access_token=token,
+        already_registered=False,
+    )
+
+
+async def auth_by_code(
+    db: AsyncSession,
+    telegram_id: int,
+    username: str | None,
+    code: str,
+) -> AuthSuccessResponse:
+    """
+    Регистрация/аутентификация пользователя по коду приглашения.
+    Основная оркестрирующая функция.
+    """
+    _validate_input_data(telegram_id, code)
+    masked_code = _mask_sensitive_data(code)
+    logger.info(f"Попытка аутентификации telegram_id={telegram_id} с кодом {masked_code}")
+
+    try:
+        async with db.begin():
+            user = await _get_or_create_user(db, telegram_id)
+
+            if _is_already_registered(user):
+                return await _handle_already_registered(user)
+
+            role = await _try_consume_code(db, user, code, masked_code)
+
+            await _activate_user(user, username, role)
+
+        await db.refresh(user)
+        return await _finalize_auth(user)
+
+    except (
+        exceptions.InvalidCredentialsError,
+        exceptions.AttemptsLimitExceededError,
+        exceptions.AccountLockedError,
+    ):
+        raise
+    except Exception as e:
+        logger.exception(f"Непредвиденная ошибка при аутентификации telegram_id={telegram_id}")
+        raise exceptions.AuthError("Произошла внутренняя ошибка при аутентификации.") from e
+
+
+async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
+    """
+    Аутентификация существующего пользователя по telegram_id.
+
+    Args:
+        db: Сессия базы данных.
+        telegram_id: ID пользователя в Telegram.
+
+    Returns:
+        Ответ с токеном доступа и информацией о пользователе.
+
+    Raises:
+        exceptions.InvalidCredentialsError: Если пользователь не найден или не зарегистрирован.
+        exceptions.AccountLockedError: Если учетная запись пользователя заблокирована.
+        exceptions.AuthError: При других ошибках аутентификации.
+    """
+    logger.info(f"Попытка входа для telegram_id={telegram_id}")
+    _validate_telegram_id(telegram_id)  # Используем существующий валидатор
+
+    try:
+        user = await _find_existing_user(db, telegram_id)
+
+        # 1. Проверяем, что пользователь вообще существует
         if not user:
-            user = User(telegram_id=telegram_id)
-            db.add(user)
-            await db.flush()
-            logger.info(f"Создан новый пользователь с telegram_id={telegram_id}")
-        return user
+            logger.warning(f"Попытка входа для несуществующего telegram_id={telegram_id}")
+            raise exceptions.InvalidCredentialsError("Пользователь не найден.")
 
-    @staticmethod
-    def _is_already_registered(user: User) -> bool:
-        return user.role is not None
+        # 3. Проверяем, что пользователь уже прошел регистрацию (имеет роль)
+        if not _is_already_registered(user):
+            logger.warning(f"Попытка входа для незарегистрированного пользователя {user}")
+            raise exceptions.InvalidCredentialsError("Пользователь не завершил регистрацию.")
 
-    @staticmethod
-    async def _handle_already_registered(user: User) -> AuthSuccessResponse:
-        if AuthService._is_user_locked(user):
-            raise exceptions.AccountLockedError("Превышено количество попыток.")
-        token = AuthService.create_access_token(user)
-        logger.info(f"Пользователь {user.telegram_id} уже зарегистрирован.")
-        return AuthSuccessResponse(
-            user=UserInfo(id=user.id, role=user.role.value),
-            access_token=token,
-            already_registered=True,
-        )
+        # Если все проверки пройдены, создаем и возвращаем токен
+        await _clear_login_attempts(user)  # На всякий случай сбросим счетчик неудачных попыток
+        await db.commit()
 
-    @staticmethod
-    async def _try_consume_code(
-        db: AsyncSession, user: User, code: str, masked_code: str
-    ) -> UserRole:
-        role = await AuthService._consume_registration_code(db, code, user.id)
-        if not role:
-            logger.warning(f"Пользователь {user.telegram_id} ввел неверный код {masked_code}")
-            await AuthService._handle_failed_attempt(db, user)
-        return role
+        logger.info(f"Пользователь {user} успешно вошел в систему.")
 
-    @staticmethod
-    async def _activate_user(user: User, username: str, role: UserRole) -> None:
-        user.username = username
-        user.role = role
-        user.status = UserStatus.ACTIVE
-        await AuthService._clear_login_attempts(user)
+        return await _handle_already_registered(user)
 
-    @staticmethod
-    async def _finalize_auth(user: User) -> AuthSuccessResponse:
-        role_name = getattr(user.role, "value", str(user.role))
-        logger.info(f"Пользователь {user.telegram_id} успешно аутентифицирован с ролью {role_name}")
-        token = AuthService.create_access_token(user)
-        return AuthSuccessResponse(
-            user=UserInfo(id=user.id, role=role_name),
-            access_token=token,
-            already_registered=False,
-        )
+    except (exceptions.InvalidCredentialsError, exceptions.AccountLockedError):
+        # Пробрасываем ожидаемые исключения выше
+        raise
+    except Exception as e:
+        logger.exception(f"Непредвиденная ошибка при входе telegram_id={telegram_id}")
+        # Оборачиваем непредвиденные ошибки в наше общее исключение AuthError
+        raise exceptions.AuthError("Произошла внутренняя ошибка при аутентификации.") from e

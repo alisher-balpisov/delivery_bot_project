@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from backend.src.auth.dependencies import RequireAllRoles
+from backend.src.auth.dependencies import RequireAdminOrCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.models.shop import Shop
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/{shop_id}", response_model=ShopCardResponse)
 async def get_shop_card(
     shop_id: int,
-    current_user: RequireAllRoles,
+    current_user: RequireAdminOrCourier,
     db: DbSession,
 ):
     """

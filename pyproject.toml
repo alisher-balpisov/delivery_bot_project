@@ -25,6 +25,7 @@ dependencies = [
     "pytest>=8.4.2",
     "python-jose>=3.5.0",
     "python-jwt>=4.1.0",
+    "python-multipart>=0.0.20",
     "redis>=6.4.0",
     "slowapi>=0.1.9",
     "sqlalchemy>=2.0.43",
@@ -52,6 +53,7 @@ dev = [
 target-version = "py311"
 src = ["src"]
 line-length = 100
+builtins = ["ic"]
 
 # Список файлов и папок, которые Ruff должен игнорировать.
 exclude = [

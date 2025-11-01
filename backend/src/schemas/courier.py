@@ -57,10 +57,10 @@ class CourierCardResponse(BaseModel):
     """
 
     id: int
-    telegram_id: int
-    username: str
+    telegram_id: int | None
+    username: str | None
     full_name: str
-    status: UserStatus
+    status: UserStatus | None
     phone_numbers: list[str]
     photo_id: str | None = None
     is_active: bool

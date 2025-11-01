@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from icecream.builtins import install
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -19,6 +20,8 @@ from backend.src.api.routes import api_router
 from backend.src.core.config import ensure_upload_dir_exists, get_upload_path, settings
 from backend.src.core.database import close_db, init_db
 from backend.src.core.logging import get_logger, setup_logging
+
+install()
 
 # from backend.src.notifications.service import initialize_notification_service
 

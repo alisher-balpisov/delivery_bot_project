@@ -3,6 +3,9 @@
     "[python]": {
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportUndefinedVariable": "none"
+    },
     "editor.codeActionsOnSave": {
         "source.fixAll.ruff": "explicit"
     },
@@ -26,5 +29,5 @@
     "files.associations": {
         "*.dbclient-js": "javascript",
         "iostream": "cpp"
-    }
+    },
 }
