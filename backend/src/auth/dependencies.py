@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from backend.src.auth import exceptions
-from backend.src.common.enums import UserRole
+from backend.src.common.enums import UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
@@ -56,11 +56,12 @@ async def _get_current_user(db: DbSession, token: str = Depends(oauth2_scheme)) 
         logger.warning(f"Пользователь с ID {user_id} из токена не найден в БД")
         raise exceptions.CREDENTIALS_EXCEPTION
 
-    if user.is_deleted:
+    # Проверяем статус пользователя
+    if user.status == UserStatus.INACTIVE:
         logger.warning(f"Неактивный пользователь {user.id} попытался получить доступ")
         raise exceptions.ACCOUNT_INACTIVE_EXCEPTION
 
-    if user.is_blocked:
+    if user.status == UserStatus.BLOCKED:
         logger.warning(f"Заблокированный пользователь {user.id} попытался получить доступ")
         raise exceptions.ACCOUNT_BLOCKED_EXCEPTION
 
