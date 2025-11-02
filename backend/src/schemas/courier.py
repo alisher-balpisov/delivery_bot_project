@@ -61,13 +61,15 @@ class CourierCardResponse(BaseModel):
     username: str | None
     full_name: str
     status: UserStatus | None
-    phone_numbers: list[str]
+    phone_numbers: list
     photo_id: str | None = None
     is_active: bool
     rating: float | None = None
 
+
 class CourierShiftResponse(BaseModel):
     """Схема для ответа о статусе смены курьера."""
+
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)

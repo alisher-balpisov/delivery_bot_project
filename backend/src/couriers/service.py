@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,11 +12,6 @@ from backend.src.schemas.courier import CourierCardResponse
 
 logger = get_logger(__name__)
 
-async def get_shift_status(current_user: User) -> Courier:
-    """
-    Получает статус смены текущего аутентифицированного курьера.
-    """
-    return current_user.courier
 
 async def toggle_courier_shift(
     db: AsyncSession,
@@ -26,15 +22,15 @@ async def toggle_courier_shift(
     """
     courier = current_user.courier
     if not courier:
-        return None
+        raise HTTPException(status_code=404, detail="Профиль курьера не найден.")
 
     courier.is_active = not courier.is_active
 
-    db.add(courier)
     await db.commit()
     await db.refresh(courier)
 
     return courier
+
 
 async def get_avg_rating(db: DbSession, courier_id: int) -> float | None:
     """
@@ -58,33 +54,26 @@ async def get_courier_card(db: DbSession, courier_id: int) -> CourierCardRespons
     Сервисная функция: собирает и возвращает CourierCardResponse для указанного courier_id.
     Бросает ValueError, если курьер не найден, или SQLAlchemyError при проблемах с БД.
     """
-    try:
-        courier = await db.get(Courier, courier_id)
-    except SQLAlchemyError as e:
-        logger.exception(f"Ошибка базы данных при выборке courier_id={courier_id}: {e}")
-        raise
+    courier = await db.get(Courier, courier_id)
 
     if courier is None:
-        logger.warning("Курьер с ID %s не найден в БД", courier_id)
+        logger.warning(f"Курьер с id={courier_id} не найден в БД")
         raise ValueError("Courier not found")
 
     avg_rating = await get_avg_rating(db, courier_id)
 
-    phone_numbers = list(courier.phone_number)
+    phone_numbers = [courier.phone_number] if courier.phone_number else []
 
     card = CourierCardResponse(
-        id=int(courier.id),
-        telegram_id=int(courier.user.telegram_id)
-        if courier.user and courier.user.telegram_id
-        else None,
-        username=courier.user.username if courier.user and courier.user.username else None,
+        id=courier.id,
+        telegram_id=courier.user.telegram_id,
+        username=courier.user.username,
         full_name=courier.full_name,
-        status=courier.user.status if courier.user else None,
+        status=courier.user.status,
         phone_numbers=phone_numbers,
         photo_id=courier.photo_id,
-        is_active=bool(courier.is_active),
+        is_active=courier.is_active,
         rating=avg_rating,
     )
 
     return card
-
