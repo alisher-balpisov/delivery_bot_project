@@ -1,6 +1,6 @@
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
@@ -145,7 +145,7 @@ async def get_unused_registration_codes_count(db: AsyncSession) -> dict:
         .group_by(RegistrationCode.role)
     )
 
-    counts = dict(result.all())
+    counts: dict[UserRole, int] = {UserRole(role): count for role, count in result.all()}
     return {
         UserRole.SHOP: counts.get(UserRole.SHOP, 0),
         UserRole.COURIER: counts.get(UserRole.COURIER, 0),

@@ -45,7 +45,7 @@ async def _update_profile(db: AsyncSession, user: User, data: dict, model: type)
     return True
 
 
-async def edit_user_profile(
+async def update_my_profile(
     db: AsyncSession, user_id: int, profile_data: UserUpdate
 ) -> User | None:
     """Обновление профиля пользователя (магазина или курьера)."""
@@ -135,6 +135,8 @@ async def complete_user_registration(
             if not courier:
                 logger.info(f"Создание сущности Courier для пользователя {user.id}")
                 db.add(Courier(user_id=user.id))
+        else:
+            raise ValueError("роль пользователя не корректна")
 
     await db.refresh(user)
     logger.info(f"Пользователь с ID {user_id} успешно завершил регистрацию как {user.role.value}.")
