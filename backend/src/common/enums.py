@@ -7,6 +7,7 @@ class TokenType(StrEnum):
 
 
 class UserRole(StrEnum):
+    GUEST = "guest"
     ADMIN = "admin"
     SHOP = "shop"
     COURIER = "courier"

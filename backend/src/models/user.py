@@ -37,10 +37,11 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(
         String(255), nullable=True, comment="Username пользователя в Telegram"
     )
-    role: Mapped[UserRole | None] = mapped_column(
+    role: Mapped[UserRole] = mapped_column(
         ENUM(UserRole, name="userrole", create_type=True),
-        nullable=True,
-        default=None,
+        nullable=False,
+        default=UserRole.GUEST,
+        server_default=UserRole.GUEST.value,
         index=True,
         comment="Роль пользователя в системе",
     )
@@ -83,8 +84,8 @@ class User(Base):
         ),
         CheckConstraint(
             or_(
-                and_(role.is_(None), status == UserStatus.PENDING_REGISTRATION),
-                and_(role.is_not(None), status != UserStatus.PENDING_REGISTRATION),
+                and_(role == UserRole.GUEST, status == UserStatus.PENDING_REGISTRATION),
+                and_(role != UserRole.GUEST, status != UserStatus.PENDING_REGISTRATION),
             ),
             name="check_user_role_and_status_logic",
         ),

@@ -102,7 +102,7 @@ async def get_dispute_by_id(db: AsyncSession, dispute_id: int) -> DisputeRespons
         return None
 
     # Получаем роль создателя спора
-    created_by_role = dispute.opened_by_user.role if dispute.opened_by_user else None
+    created_by_role = dispute.opened_by_user.role if dispute.opened_by_user else UserRole.GUEST
 
     return DisputeResponse(
         id=dispute.id,
@@ -156,7 +156,7 @@ async def update_dispute(
         await db.commit()
         await db.refresh(dispute)
 
-        created_by_role = dispute.opened_by_user.role if dispute.opened_by_user else None
+        created_by_role = dispute.opened_by_user.role if dispute.opened_by_user else UserRole.GUEST
 
         return DisputeResponse(
             id=dispute.id,

@@ -451,7 +451,7 @@ async def get_all_disputes(
             courier_id=dispute.order.courier_id,
             courier_name=dispute.order.courier.full_name if dispute.order.courier else None,
             status=dispute.status,
-            created_by_role=dispute.opened_by_user.role if dispute.opened_by_user else None,
+            created_by_role=dispute.opened_by_user.role if dispute.opened_by_user else UserRole.GUEST,
             description=dispute.description,
             created_at=dispute.created_at,
             resolved_at=dispute.resolved_at,

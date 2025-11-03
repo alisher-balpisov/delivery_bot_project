@@ -33,8 +33,8 @@ def create_access_token(user: User) -> str:
     if not user or not user.id:
         raise ValueError("Пользователь должен иметь валидный ID")
 
-    if not user.role:
-        logger.warning(f"У пользователя {user} нет роли — доступ запрещён")
+    if user.role == UserRole.GUEST:
+        logger.warning(f"Пользователю {user} с ролью GUEST был отказано в доступе")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Недостаточно прав доступа.",
@@ -44,9 +44,8 @@ def create_access_token(user: User) -> str:
         "sub": str(user.id),
         "role": user.role.value,
         "iat": datetime.now(UTC),
+        "tid": str(user.telegram_id),
     }
-    if user.telegram_id is not None:
-        to_encode["tid"] = str(user.telegram_id)
 
     expire = datetime.now(UTC) + timedelta(minutes=settings.jwt.access_token_expire_minutes)
     to_encode["exp"] = expire
@@ -158,13 +157,13 @@ async def _get_or_create_user(db: AsyncSession, telegram_id: int) -> User:
 
 def _is_already_registered(user: User) -> bool:
     """Проверяет, была ли пользователю уже присвоена роль."""
-    return user.role is not None
+    return user.role != UserRole.GUEST
 
 
 async def _handle_already_registered(user: User) -> AuthSuccessResponse:
     """Обрабатывает случай, когда пользователь уже зарегистрирован."""
     # ДОБАВЛЕНО: Утверждение для помощи статическому анализатору и для надежности
-    assert user.role is not None, (
+    assert user.role != UserRole.GUEST, (
         "Эта функция должна быть доступна только зарегистрированным пользователям."
     )
 

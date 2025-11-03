@@ -127,7 +127,7 @@ async def get_user_stats_text(token: str | None, users_client: UsersClient) -> s
                 user_id=user_info.get("id"),
                 telegram_id=user_info.get("telegram_id"),
                 name=user_info.get("name"),
-                role=parse_user_role(user_info.get("role", "guest")),
+                role=parse_user_role(user_info.get("role", UserRole.GUEST.value)),
             )
             status = (
                 AuthServiceMessages.DEACTIVATED

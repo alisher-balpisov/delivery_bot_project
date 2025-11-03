@@ -47,7 +47,7 @@ class BaseAuthFilter(BaseFilter, abc.ABC):
         """Централизованно логирует отказы в доступе."""
         event_type = type(event).__name__
         event_details = self._get_event_details(event)
-        user_role_value = user.role.value if user.role else "Не указана"
+        user_role_value = user.role.value
         message = self.get_denial_message()
         required_roles = self.get_required_roles()
 

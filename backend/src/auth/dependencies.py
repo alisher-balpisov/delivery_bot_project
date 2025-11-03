@@ -55,7 +55,7 @@ async def _get_current_user(db: DbSession, token: str = Depends(oauth2_scheme)) 
 
     logger.debug(
         f"Пользователь {user} аутентифицирован через JWT, "
-        f"роль: {user.role.value if user.role else 'Роль отсутствует'}"
+        f"роль: {user.role.value}"
     )
     return user
 
@@ -68,8 +68,8 @@ def _require_role(allowed_roles: UserRole | list[UserRole] | tuple[UserRole, ...
         allowed_roles = [allowed_roles]
 
     async def _role_dependency(user: User = Depends(_get_current_user)) -> User:
-        if not user.role:
-            logger.warning(f"У пользователя {user} нет роли — доступ запрещён")
+        if user.role == UserRole.GUEST:
+            logger.warning(f"У пользователя {user} роль GUEST — доступ запрещён")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Недостаточно прав доступа.",
