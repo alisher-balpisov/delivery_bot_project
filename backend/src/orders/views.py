@@ -12,6 +12,7 @@ from backend.src.schemas.order import (
     OrderCreateRequest,
     OrderResponse,
     OrderResponseForAdmin,
+    OrderResponseForCourier,
     OrderResponseForShop,
     OrderUpdate,
 )
@@ -130,7 +131,7 @@ async def get_order_details(
 #     return updated_order
 
 
-@router.get("/{order_id}", response_model=OrderResponseForAdmin | OrderResponseForShop)
+@router.get("/{order_id}", response_model=OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier)
 async def get_order(
     db: DbSession,
     current_user: RequireAllRoles,

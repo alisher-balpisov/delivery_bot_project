@@ -1,13 +1,28 @@
+import select
 from datetime import UTC, datetime
+from tkinter import NO
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from backend.src.common.enums import OrderStatus, OrderType, UserRole
 from backend.src.core.logging import get_logger
+from backend.src.models import Order
+from backend.src.models.courier import Courier
 from backend.src.models.order import Order
+from backend.src.models.shop import Shop
 from backend.src.models.user import User
-from backend.src.schemas.order import OrderCreate, OrderResponse, OrderUpdate
+from backend.src.orders.exceptions import NO_ACCESS_EXCEPTION
+from backend.src.schemas.order import (
+    OrderCreate,
+    OrderResponse,
+    OrderResponseForAdmin,
+    OrderResponseForCourier,
+    OrderResponseForShop,
+    OrderUpdate,
+)
 
 logger = get_logger(__name__)
 
@@ -146,8 +161,60 @@ async def update_order(
     return OrderResponse.model_validate(order)
 
 
+async def get_order(
+    db: AsyncSession, user_id: int, order_id: int, user_role: UserRole
+) -> OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier:
+    """
+    Возвращает информацию о заказе order_id, разную в зависимости от роли user_role пользователя user_id.
 
+    Args:
+        db: Сессия базы данных
+        order_id: ID заказа
+        user_id: ID пользователя
+        user_role: Роль пользователя
 
+    Returns:
+        OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier: Информация о заказе в зависимости от роли пользователя
 
-async def get_order(db: AsyncSession, user_id: int, order_id: int, user_role: UserRole):
-    
+    Raises:
+        HTTPException: Если заказ не найден или нет прав доступа
+    """
+    logger.info(
+        f"Получение заказа order_id={order_id} для пользователя user_id={user_id} "
+        f"с ролью user_role={user_role}"
+    )
+
+    stmt = (
+        select(Order)
+        .where(Order.id == order_id)
+        .options(
+            joinedload(Order.shop).joinedload(Shop.user),
+            joinedload(Order.courier).joinedload(Courier.user),
+            joinedload(Order.history),
+        )
+    )
+
+    result = await db.execute(stmt)
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+
+    if user_role == UserRole.ADMIN:
+        logger.debug(f"Админ {user_id} получает заказ {order_id}")
+        return OrderResponseForAdmin.model_validate(order)
+
+    elif user_role == UserRole.SHOP:
+        if order.shop.user_id != user_id:
+            raise HTTPException(NO_ACCESS_EXCEPTION)
+        return OrderResponseForShop.model_validate(order)
+
+    elif user_role == UserRole.COURIER:
+        if order.courier.user_id != user_id:
+            raise HTTPException(NO_ACCESS_EXCEPTION)
+        return OrderResponseForCourier.model_validate(order)
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Недостаточно прав доступа",
+    )
