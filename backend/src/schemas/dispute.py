@@ -6,8 +6,6 @@ from datetime import datetime
 from backend.src.common.enums import DisputeStatus, UserRole
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .order import OrderRead
-
 
 class DisputeBase(BaseModel):
     """Базовая схема для спора."""

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
 from backend.src.common.utils import PhoneFlexible
+from backend.src.models.order import OrderHistory
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -53,6 +54,19 @@ class OrderCreateRequest(OrderBase):
 
         return self
 
+    @model_validator(mode="after")
+    def validate_delivery_time_logic(self) -> "OrderCreateRequest":
+        """Валидация логики времени доставки для специальных заказов"""
+        # Для заказов типа TIME время доставки обязательно
+        if self.special_type == SpecialOrderType.TIME and self.delivery_time is None:
+            raise ValueError("Для заказа типа TIME необходимо указать время доставки")
+
+        # Опционально: проверить, что время доставки в будущем (если указано)
+        if self.delivery_time is not None and self.delivery_time <= datetime.now():
+            raise ValueError("Время доставки должно быть в будущем")
+
+        return self
+
 
 class OrderCreate(OrderCreateRequest):
     """Схема для создания нового заказа (внутреннее использование в сервисах)."""
@@ -70,57 +84,60 @@ class OrderUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class OrderRead(OrderBase):
-    """Схема для чтения данных заказа (ответ API)."""
+class ShopInfoForCourier(BaseModel):
+    """Информация о магазине для курьера."""
 
     id: int
-    shop_id: int
-    courier_id: int | None = None
-    status: OrderStatus
-    order_type: OrderType
-    special_type: SpecialOrderType | None = None
-    price: Decimal
-    client_phone: str
-    photo_report_id: str | None = None
-    completed_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    name: str
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+
+class CourierInfoForShop(BaseModel):
+    """Информация о магазине для магазина."""
+
+    id: int
+    name: str
+
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class OrderResponse(OrderBase):
     """Схема для полного представления заказа, включая все поля."""
 
     id: int
-    shop_id: int
-    courier_id: int | None = None
     status: OrderStatus
     order_type: OrderType
     special_type: SpecialOrderType | None = None
-    price: Decimal
+
     client_phone: str
     photo_report_id: str | None = None
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
+    order_history: list[OrderHistory]
+
     model_config = ConfigDict(from_attributes=True)
 
 
-class OrderCardResponse(BaseModel):
-    """Схема для отображения заказа в списке (карточка заказа для админа)."""
-
-    id: int
-    shop_id: int
-    shop_name: str | None = None
-    courier_id: int | None = None
-    courier_name: str | None = None
-    status: OrderStatus
-    order_type: OrderType
-    special_type: SpecialOrderType | None = None
+class OrderResponseForShop(OrderResponse):
+    courier: CourierInfoForShop
     price: Decimal
-    recipient_address: str
-    created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+
+class OrderResponseForCourier(OrderResponse):
+    shop: ShopInfoForCourier
+
+
+class OrderResponseForAdmin(OrderResponseForShop, OrderResponseForCourier): ...
+
+
+# нахуя магазу свое имя
+
+# description: str | None = Field(None, max_length=1000)
+#     recipient_address: str = Field(..., max_length=500)
+#     recipient_phone: PhoneFlexible
+#     delivery_time: datetime | None = None
+
+#     model_config = ConfigDict(from_attributes=True)

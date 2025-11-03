@@ -12,7 +12,7 @@ from backend.src.schemas.order import OrderCreate, OrderResponse, OrderUpdate
 logger = get_logger(__name__)
 
 
-async def create_order(db: AsyncSession, order_data: OrderCreate) -> OrderResponse:
+async def create_order(db: AsyncSession, order_data: OrderCreate) -> Order:
     """
     Создание нового заказа.
 
@@ -27,17 +27,9 @@ async def create_order(db: AsyncSession, order_data: OrderCreate) -> OrderRespon
         ValueError: Если данные невалидны
     """
     logger.debug(
-        f"Создание заказа для магазина {order_data.shop_id}, тип: {order_data.order_type}"
+        f"Создание заказа для магазина shop_id={order_data.shop_id}, order_type={order_data.order_type}"
     )
 
-    # Для special заказов проверяем, что указан курьер
-    if order_data.order_type == OrderType.SPECIAL and not order_data.courier_id:
-        logger.warning("Попытка создать специальный заказ без указания курьера")
-        # Для специального заказа courier_id может быть опциональным
-        # в зависимости от бизнес-логики
-        pass
-
-    # Создаем заказ с начальным статусом PENDING
     order = Order(
         shop_id=order_data.shop_id,
         courier_id=order_data.courier_id,
@@ -57,8 +49,8 @@ async def create_order(db: AsyncSession, order_data: OrderCreate) -> OrderRespon
         await db.flush()
         await db.refresh(order)
 
-    logger.info(f"Заказ создан успешно: id={order.id}, магазин={order.shop_id}")
-    return OrderResponse.model_validate(order)
+    logger.info(f"Заказ создан успешно: id={order.id}, магазин={order.shop}")
+    return order
 
 
 async def get_order_by_id(db: AsyncSession, order_id: int) -> OrderResponse | None:
@@ -97,9 +89,7 @@ async def update_order(
     async with db.begin():
         order = await db.get(Order, order_id)
         if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
 
         # Проверка прав доступа
         user_role = current_user.role
@@ -133,9 +123,7 @@ async def update_order(
                     detail="Вы можете изменять только статус и заметки",
                 )
         else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
 
         # Обновление полей
         old_status = order.status
@@ -156,3 +144,10 @@ async def update_order(
 
     await db.refresh(order)
     return OrderResponse.model_validate(order)
+
+
+
+
+
+async def get_order(db: AsyncSession, user_id: int, order_id: int, user_role: UserRole):
+    

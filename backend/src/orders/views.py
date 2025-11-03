@@ -1,3 +1,5 @@
+from urllib import response
+
 from fastapi import APIRouter, HTTPException, status
 
 from backend.src.auth.dependencies import RequireAllRoles, RequireShop
@@ -5,14 +7,21 @@ from backend.src.common.enums import UserRole
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.orders import service
-from backend.src.schemas.order import OrderCreate, OrderCreateRequest, OrderRead, OrderUpdate
+from backend.src.schemas.order import (
+    OrderCreate,
+    OrderCreateRequest,
+    OrderResponse,
+    OrderResponseForAdmin,
+    OrderResponseForShop,
+    OrderUpdate,
+)
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
 
-@router.post("/", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_order(
     order_in: OrderCreateRequest,
     current_user: RequireShop,
@@ -34,15 +43,6 @@ async def create_new_order(
     - **description**: Описание/комментарии к заказу (опционально)
     """
     logger.info(f"Попытка создания заказа пользователем ID: {current_user.id}")
-
-    if not current_user.shop:
-        logger.error(
-            f"Пользователь {current_user.id} с ролью SHOP не имеет связанного профиля магазина."
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Профиль магазина не найден для вашего аккаунта",
-        )
 
     # shop_id берется из аутентифицированного пользователя, а не из тела запроса
     order_data = OrderCreate(**order_in.model_dump(), shop_id=current_user.shop.id)
@@ -107,24 +107,40 @@ async def get_order_details(
     return order
 
 
-@router.patch("/{order_id}", response_model=OrderRead)
-async def update_existing_order(
-    order_id: int,
-    order_in: OrderUpdate,
-    current_user: RequireAllRoles,
+# @router.patch("/{order_id}", response_model=OrderRead)
+# async def update_existing_order(
+#     order_id: int,
+#     order_in: OrderUpdate,
+#     current_user: RequireAllRoles,
+#     db: DbSession,
+# ):
+#     """
+#     Обновление существующего заказа.
+#     Разные роли имеют разные права на изменение:
+#     - Админ: может изменять все
+#     - Магазин: может только отменить заказ
+#     - Курьер: может изменять статус и заметки
+#     """
+#     updated_order = await service.update_order(db, order_id, order_in, current_user)
+#     if not updated_order:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Не удалось обновить заказ",
+#         )
+#     return updated_order
+
+
+@router.get("/{order_id}", response_model=OrderResponseForAdmin | OrderResponseForShop)
+async def get_order(
     db: DbSession,
+    current_user: RequireAllRoles,
+    order_id: int,
 ):
-    """
-    Обновление существующего заказа.
-    Разные роли имеют разные права на изменение:
-    - Админ: может изменять все
-    - Магазин: может только отменить заказ
-    - Курьер: может изменять статус и заметки
-    """
-    updated_order = await service.update_order(db, order_id, order_in, current_user)
-    if not updated_order:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось обновить заказ",
-        )
-    return updated_order
+    logger.info(f"Пользователь {current_user} получает информацию по заказу order_id={order_id}")
+    response = await service.get_order(
+        db=db,
+        user_id=current_user.id,
+        user_role=current_user.role,
+        order_id=order_id,
+    )
+    return response

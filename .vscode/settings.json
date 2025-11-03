@@ -27,5 +27,5 @@
         "*.dbclient-js": "javascript",
         "iostream": "cpp"
     },
-    "python.languageServer": "None",
+    "python.languageServer": "Pylance",
 }

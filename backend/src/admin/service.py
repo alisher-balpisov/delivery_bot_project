@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     total: int = Field(..., description="Общее количество элементов")
     items: list[T] = Field(..., description="Список элементов на текущей странице")
 

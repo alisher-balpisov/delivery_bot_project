@@ -21,13 +21,16 @@ class UserStatus(StrEnum):
 
 class OrderStatus(StrEnum):
     PENDING = "pending"  # Заказ создан и ожидает назначения свободного курьера
-    COURIER_EN_ROUTE = "courier_en_route"  # Курьер назначен и едет за заказом в магазин
-    DELIVERING = "delivering"  # Курьер забрал заказ и доставляет его клиенту
+    COURIER_EN_ROUTE = "courier_en_route"  # Курьер назначен и едет за заказом
+    DELIVERING = "delivering"  # Курьер доставляет заказ
     SEMI_COMPLETED = "semi_completed"  # Заказ доставлен, но ожидает подтверждения
-    COMPLETED = "completed"  # Заказ успешно завершён и подтверждён
+    COMPLETED = "completed"  # Заказ завершён
 
-    DISPUTED = "disputed"  # Возник спор по заказу (например, клиент недоволен)
-    CANCELED = "canceled"  # Заказ был отменён
+    PENDING_COURIER = (
+        "pending_courier"  # (только для special_type), заказ ждёт подтверждения курьера
+    )
+    DISPUTED = "disputed"  # Возник спор
+    CANCELED = "canceled"  # Заказ отменён
 
 
 class OrderType(StrEnum):

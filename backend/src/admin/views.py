@@ -145,7 +145,9 @@ async def get_all_orders(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status: OrderStatus | None = Query(None, description="Статус заказа"),
-    search: str | None = Query(None, description="Поиск по адресу получателя, описанию или телефону клиента"),
+    search: str | None = Query(
+        None, description="Поиск по адресу получателя, описанию или телефону клиента"
+    ),
 ):
     """
     Просмотреть все текущие заказы.
@@ -179,4 +181,6 @@ async def get_all_disputes(
     - **status**: Фильтр по статусу спора (опционально)
     - **search**: Поиск по описанию спора (опционально)
     """
-    return await service.get_all_disputes(db=db, page=page, limit=limit, status=status, search=search)
+    return await service.get_all_disputes(
+        db=db, page=page, limit=limit, status=status, search=search
+    )
