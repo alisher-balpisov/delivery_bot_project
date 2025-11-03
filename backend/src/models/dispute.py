@@ -85,14 +85,14 @@ class Dispute(Base):
         CheckConstraint(
             or_(
                 status != DisputeStatus.RESOLVED,
-                and_(resolved_at is not None, resolution_type is not None),
+                and_(resolved_at.is_not(None), resolution_type.is_not(None)),
             ),
             name="check_resolution_details_if_resolved",
         ),
         CheckConstraint(
             or_(
-                fine_amount is None,
-                and_(status == DisputeStatus.RESOLVED, fined_user_id is not None),
+                fine_amount.is_(None),
+                and_(status == DisputeStatus.RESOLVED, fined_user_id.is_not(None)),
             ),
             name="check_fine_logic",
         ),

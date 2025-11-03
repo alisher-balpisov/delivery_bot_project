@@ -35,7 +35,6 @@ class DisputeCreate(DisputeBase):
     """Схема для создания нового спора."""
 
     order_id: int = Field(..., gt=0, description="ID заказа")
-    created_by_role: UserRole
 
     @field_validator("order_id")
     @classmethod
@@ -126,5 +125,23 @@ class DisputeList(BaseModel):
     def pages(self) -> int:
         """Общее количество страниц."""
         return (self.total + self.per_page - 1) // self.per_page if self.per_page > 0 else 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DisputeCardResponse(BaseModel):
+    """Схема для отображения спора в списке (карточка спора для админа)."""
+
+    id: int
+    order_id: int
+    shop_id: int
+    shop_name: str | None = None
+    courier_id: int | None = None
+    courier_name: str | None = None
+    status: DisputeStatus
+    created_by_role: UserRole
+    description: str
+    created_at: datetime
+    resolved_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

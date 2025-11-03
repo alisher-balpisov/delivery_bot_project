@@ -2,11 +2,13 @@ from fastapi import APIRouter, HTTPException, Query
 
 from backend.src.admin import service
 from backend.src.auth.dependencies import RequireAdmin
-from backend.src.common.enums import UserRole
+from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.schemas.admin import RegistrationCodeResponse
 from backend.src.schemas.courier import CourierCardResponse
+from backend.src.schemas.dispute import DisputeCardResponse
+from backend.src.schemas.order import OrderCardResponse
 from backend.src.schemas.shop import ShopCardResponse
 
 logger = get_logger(__name__)
@@ -134,3 +136,47 @@ async def get_all_shops(
     Просмотреть все магазины.
     """
     return await service.get_all_shops(db=db, page=page, limit=limit, status=status, search=search)
+
+
+@router.get("/orders", response_model=service.PaginatedResponse[OrderCardResponse])
+async def get_all_orders(
+    db: DbSession,
+    current_user: RequireAdmin,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    status: OrderStatus | None = Query(None, description="Статус заказа"),
+    search: str | None = Query(None, description="Поиск по адресу получателя, описанию или телефону клиента"),
+):
+    """
+    Просмотреть все текущие заказы.
+    Доступно только администраторам.
+
+    Параметры:
+    - **page**: Номер страницы (по умолчанию: 1)
+    - **limit**: Количество элементов на странице (по умолчанию: 10, макс: 100)
+    - **status**: Фильтр по статусу заказа (опционально)
+    - **search**: Поиск по адресу получателя, описанию или телефону клиента (опционально)
+    """
+    return await service.get_all_orders(db=db, page=page, limit=limit, status=status, search=search)
+
+
+@router.get("/disputes", response_model=service.PaginatedResponse[DisputeCardResponse])
+async def get_all_disputes(
+    db: DbSession,
+    current_user: RequireAdmin,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    status: DisputeStatus | None = Query(None, description="Статус спора"),
+    search: str | None = Query(None, description="Поиск по описанию спора"),
+):
+    """
+    Просмотреть все текущие споры.
+    Доступно только администраторам.
+
+    Параметры:
+    - **page**: Номер страницы (по умолчанию: 1)
+    - **limit**: Количество элементов на странице (по умолчанию: 10, макс: 100)
+    - **status**: Фильтр по статусу спора (опционально)
+    - **search**: Поиск по описанию спора (опционально)
+    """
+    return await service.get_all_disputes(db=db, page=page, limit=limit, status=status, search=search)

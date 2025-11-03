@@ -1,13 +1,13 @@
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Generic, TypeVar, cast
+from typing import Generic, TypeVar
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import contains_eager
+from sqlalchemy.orm import contains_eager, selectinload
 
 from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole, UserStatus
 from backend.src.core.config import settings
@@ -20,6 +20,8 @@ from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from backend.src.schemas.admin import RegistrationCodeResponse
 from backend.src.schemas.courier import CourierCardResponse
+from backend.src.schemas.dispute import DisputeCardResponse
+from backend.src.schemas.order import OrderCardResponse
 from backend.src.schemas.shop import ShopCardResponse
 
 logger = get_logger(__name__)
@@ -203,7 +205,7 @@ async def get_system_stats(db: AsyncSession) -> dict:
 ModelType = TypeVar("ModelType")
 
 
-async def _get_paginated_list(
+async def _get_paginated_list[ModelType](
     db: AsyncSession,
     model: type[ModelType],
     page: int,
@@ -317,6 +319,144 @@ async def get_all_shops(
             phone_numbers=shop.phone_number,
         )
         for shop in shops
+    ]
+
+    return PaginatedResponse(total=total, items=response_items)
+
+
+async def get_all_orders(
+    db: AsyncSession,
+    page: int,
+    limit: int,
+    status: OrderStatus | None,
+    search: str | None,
+) -> PaginatedResponse[OrderCardResponse]:
+    """
+    Получить все заказы с пагинацией и фильтрацией.
+    Доступно только администраторам.
+    """
+    # Формируем фильтры
+    filters = []
+    if status:
+        filters.append(Order.status == status)
+
+    if search:
+        search_term = f"%{search.lower()}%"
+        # Поиск по адресу получателя, описанию или телефону клиента
+        filters.append(
+            or_(
+                func.lower(Order.recipient_address).like(search_term),
+                func.lower(Order.description).like(search_term),
+                func.lower(Order.client_phone).like(search_term),
+            )
+        )
+
+    # Подсчет общего количества
+    total_query = select(func.count(Order.id))
+    if filters:
+        total_query = total_query.where(*filters)
+
+    total = await db.scalar(total_query)
+    if not total:
+        return PaginatedResponse(total=0, items=[])
+
+    # Получение данных с пагинацией
+    data_query = (
+        select(Order)
+        .options(selectinload(Order.shop), selectinload(Order.courier))
+        .order_by(Order.created_at.desc())
+    )
+    if filters:
+        data_query = data_query.where(*filters)
+
+    data_query = data_query.offset((page - 1) * limit).limit(limit)
+
+    result = await db.execute(data_query)
+    orders = result.scalars().all()
+
+    response_items = [
+        OrderCardResponse(
+            id=order.id,
+            shop_id=order.shop_id,
+            shop_name=order.shop.name if order.shop else None,
+            courier_id=order.courier_id,
+            courier_name=order.courier.full_name if order.courier else None,
+            status=order.status,
+            order_type=order.order_type,
+            special_type=order.special_type,
+            price=order.price,
+            recipient_address=order.recipient_address,
+            created_at=order.created_at,
+        )
+        for order in orders
+    ]
+
+    return PaginatedResponse(total=total, items=response_items)
+
+
+async def get_all_disputes(
+    db: AsyncSession,
+    page: int,
+    limit: int,
+    status: DisputeStatus | None,
+    search: str | None,
+) -> PaginatedResponse[DisputeCardResponse]:
+    """
+    Получить все споры с пагинацией и фильтрацией.
+    Доступно только администраторам.
+    """
+    # Формируем фильтры
+    filters = []
+    if status:
+        filters.append(Dispute.status == status)
+
+    if search:
+        search_term = f"%{search.lower()}%"
+        # Поиск по описанию спора
+        filters.append(func.lower(Dispute.description).like(search_term))
+
+    # Подсчет общего количества
+    total_query = select(func.count(Dispute.id))
+    if filters:
+        total_query = total_query.where(*filters)
+
+    total = await db.scalar(total_query)
+    if not total:
+        return PaginatedResponse(total=0, items=[])
+
+    # Получение данных с пагинацией
+    data_query = (
+        select(Dispute)
+        .options(
+            selectinload(Dispute.order).selectinload(Order.shop),
+            selectinload(Dispute.order).selectinload(Order.courier),
+            selectinload(Dispute.opened_by_user),
+        )
+        .order_by(Dispute.created_at.desc())
+    )
+    if filters:
+        data_query = data_query.where(*filters)
+
+    data_query = data_query.offset((page - 1) * limit).limit(limit)
+
+    result = await db.execute(data_query)
+    disputes = result.scalars().all()
+
+    response_items = [
+        DisputeCardResponse(
+            id=dispute.id,
+            order_id=dispute.order_id,
+            shop_id=dispute.order.shop_id,
+            shop_name=dispute.order.shop.name if dispute.order.shop else None,
+            courier_id=dispute.order.courier_id,
+            courier_name=dispute.order.courier.full_name if dispute.order.courier else None,
+            status=dispute.status,
+            created_by_role=dispute.opened_by_user.role if dispute.opened_by_user else None,
+            description=dispute.description,
+            created_at=dispute.created_at,
+            resolved_at=dispute.resolved_at,
+        )
+        for dispute in disputes
     ]
 
     return PaginatedResponse(total=total, items=response_items)

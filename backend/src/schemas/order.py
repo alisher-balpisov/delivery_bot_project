@@ -1,36 +1,23 @@
 import re
 from datetime import datetime
+from decimal import Decimal
 
-from backend.src.common.enums import OrderStatus, OrderType
-from backend.src.common.utils import Phone
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from .shop import ShopRead
+from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
+from backend.src.common.utils import PhoneFlexible
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class OrderBase(BaseModel):
     """Базовая схема для заказа."""
 
-    description: str | None = None
-    recipient_name: str | None = Field(None, max_length=100)
-    recipient_phone: Phone
-    recipient_address: str = Field(..., max_length=255)
-    pickup_address: str = Field(..., max_length=255)
+    description: str | None = Field(None, max_length=1000)
+    recipient_address: str = Field(..., max_length=500)
+    recipient_phone: PhoneFlexible
     delivery_time: datetime | None = None
-    is_fragile: bool = False
-    is_bulky: bool = False
-    special_reason: str | None = Field(None, max_length=500)
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator(
-        "description",
-        "recipient_name",
-        "recipient_address",
-        "pickup_address",
-        "special_reason",
-        mode="before",
-    )
+    @field_validator("description", "recipient_address", mode="before")
     @classmethod
     def sanitize_strings(cls, v):
         if isinstance(v, str):
@@ -41,10 +28,30 @@ class OrderBase(BaseModel):
 class OrderCreateRequest(OrderBase):
     """Схема для создания нового заказа магазином (входные данные API)."""
 
-    zone_id: int
-    order_type: OrderType = OrderType.NORMAL
-    zone_addon: float = 0.0
-    rush_hour_addon: float = 0.0
+    courier_id: int | None = Field(None, description="ID курьера (только для special заказов)")
+    order_type: OrderType = Field(OrderType.REGULAR, description="Тип заказа: regular или special")
+    special_type: SpecialOrderType | None = Field(
+        None, description="Тип специального заказа (только если order_type=special)"
+    )
+    price: Decimal = Field(..., gt=0, description="Цена доставки, устанавливаемая магазином")
+    client_phone: PhoneFlexible = Field(..., description="Телефон клиента")
+
+    @model_validator(mode="after")
+    def validate_order_type_logic(self):
+        """Валидация логики типов заказов"""
+        # Проверка: если order_type == regular, то special_type должен быть None
+        if self.order_type == OrderType.REGULAR and self.special_type is not None:
+            raise ValueError("Для обычного заказа (regular) special_type должен быть None")
+
+        # Проверка: если order_type == special, то special_type должен быть указан
+        if self.order_type == OrderType.SPECIAL and self.special_type is None:
+            raise ValueError("Для специального заказа (special) необходимо указать special_type")
+
+        # Проверка: courier_id должен быть указан только для special заказов
+        if self.order_type == OrderType.REGULAR and self.courier_id is not None:
+            raise ValueError("Для обычного заказа (regular) нельзя указывать courier_id")
+
+        return self
 
 
 class OrderCreate(OrderCreateRequest):
@@ -59,8 +66,6 @@ class OrderUpdate(BaseModel):
     status: OrderStatus | None = None
     courier_notes: str | None = Field(None, max_length=1000)
     completion_notes: str | None = Field(None, max_length=1000)
-    courier_rating: int | None = Field(None, ge=1, le=5)
-    courier_feedback: str | None = Field(None, max_length=1000)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -69,11 +74,15 @@ class OrderRead(OrderBase):
     """Схема для чтения данных заказа (ответ API)."""
 
     id: int
+    shop_id: int
+    courier_id: int | None = None
     status: OrderStatus
     order_type: OrderType
-    price: float
-    shop: ShopRead  # Используем вложенную схему для данных о магазине
-    courier_id: int | None = None
+    special_type: SpecialOrderType | None = None
+    price: Decimal
+    client_phone: str
+    photo_report_id: str | None = None
+    completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -85,20 +94,33 @@ class OrderResponse(OrderBase):
 
     id: int
     shop_id: int
-    zone_id: int
     courier_id: int | None = None
     status: OrderStatus
     order_type: OrderType
-    price: float
-    zone_addon: float
-    rush_hour_addon: float
-    confirmed_at: datetime | None = None
-    autoconfirmed_at: datetime | None = None
-    accepted_at: datetime | None = None
-    delivered_at: datetime | None = None
-    courier_rating: int | None = None
-    courier_feedback: str | None = None
+    special_type: SpecialOrderType | None = None
+    price: Decimal
+    client_phone: str
+    photo_report_id: str | None = None
+    completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderCardResponse(BaseModel):
+    """Схема для отображения заказа в списке (карточка заказа для админа)."""
+
+    id: int
+    shop_id: int
+    shop_name: str | None = None
+    courier_id: int | None = None
+    courier_name: str | None = None
+    status: OrderStatus
+    order_type: OrderType
+    special_type: SpecialOrderType | None = None
+    price: Decimal
+    recipient_address: str
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
