@@ -19,11 +19,11 @@ from backend.src.models.order import Order
 from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
-from backend.src.schemas.admin import RegistrationCodeResponse
-from backend.src.schemas.courier import CourierCardResponse
-from backend.src.schemas.dispute import DisputeCardResponse
-from backend.src.schemas.order import OrderCardResponse
-from backend.src.schemas.shop import ShopCardResponse
+from backend.src.admin.schemas import RegistrationCodeResponse
+from backend.src.couriers.courier import CourierCardResponse
+from backend.src.disputes.schemas import DisputeCardResponse
+from backend.src.orders.schemas import OrderCardResponse
+from backend.src.shops.schemas import ShopCardResponse
 
 logger = get_logger(__name__)
 

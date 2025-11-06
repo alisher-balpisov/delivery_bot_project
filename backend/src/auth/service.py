@@ -8,7 +8,7 @@ from backend.src.models.courier import Courier
 from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
-from backend.src.schemas.auth import AuthSuccessResponse, UserInfo
+from backend.src.auth.schemas import AuthSuccessResponse, UserInfo
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from sqlalchemy import exists, select, update

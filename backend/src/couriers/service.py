@@ -8,7 +8,7 @@ from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
 from backend.src.models.courier_rating import CourierRating
 from backend.src.models.user import User
-from backend.src.schemas.courier import CourierCardResponse
+from backend.src.couriers.courier import CourierCardResponse
 
 logger = get_logger(__name__)
 

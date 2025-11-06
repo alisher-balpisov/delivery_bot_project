@@ -4,7 +4,7 @@ from icecream import ic
 from backend.src.auth.dependencies import RequireAdminOrShop, RequireCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.schemas.courier import CourierCardResponse, CourierShiftResponse
+from backend.src.couriers.courier import CourierCardResponse, CourierShiftResponse
 
 from . import service
 

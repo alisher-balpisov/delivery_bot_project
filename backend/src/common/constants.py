@@ -4,7 +4,7 @@ from typing import Any, Literal
 from backend.src.auth.dependencies import User
 from backend.src.common.enums import OrderStatus, UserRole
 from backend.src.models.order import Order
-from backend.src.schemas.order import (
+from backend.src.orders.schemas import (
     OrderResponseForAdmin,
     OrderResponseForCourier,
     OrderResponseForShop,

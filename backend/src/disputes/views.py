@@ -5,7 +5,7 @@ from backend.src.common.enums import UserRole
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.disputes import service
-from backend.src.schemas.dispute import DisputeCreate, DisputeResponse, DisputeUpdate
+from backend.src.disputes.schemas import DisputeCreate, DisputeResponse, DisputeUpdate
 
 logger = get_logger(__name__)
 router = APIRouter()

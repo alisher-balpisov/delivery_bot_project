@@ -24,7 +24,7 @@ from backend.src.orders.exceptions import (
     OrderNotFoundException,
     OrderUpdateForbiddenException,
 )
-from backend.src.schemas.order import (
+from backend.src.orders.schemas import (
     OrderCreate,
     OrderCreateRequest,
     OrderResponse,

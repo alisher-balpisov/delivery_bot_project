@@ -5,7 +5,7 @@ from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.orders import service
 from backend.src.orders.exceptions import OrderException
-from backend.src.schemas.order import (
+from backend.src.orders.schemas import (
     OrderCreateRequest,
     OrderResponse,
     OrderResponseForAdmin,

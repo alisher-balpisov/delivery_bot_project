@@ -2,10 +2,10 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
 from backend.src.common.utils.validaters import PhoneFlexible
-from backend.src.schemas.order_history import OrderHistoryResponse
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class OrderBase(BaseModel):
@@ -62,6 +62,15 @@ class OrderCreateRequest(OrderBase):
             raise ValueError("Время доставки должно быть в будущем")
 
         return self
+
+
+class OrderHistoryResponse(BaseModel):
+    id: int
+    order_id: int
+    status: str
+    changed_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderCreate(OrderCreateRequest):

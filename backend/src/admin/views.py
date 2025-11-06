@@ -9,10 +9,10 @@ from backend.src.common.constants import AllowedRoles, PaginatedResponse
 from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole, UserStatus
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.schemas.admin import RegistrationCodeResponse
-from backend.src.schemas.courier import CourierCardResponse
-from backend.src.schemas.dispute import DisputeCardResponse
-from backend.src.schemas.shop import ShopCardResponse
+from backend.src.admin.schemas import RegistrationCodeResponse
+from backend.src.couriers.courier import CourierCardResponse
+from backend.src.disputes.schemas import DisputeCardResponse
+from backend.src.shops.schemas import ShopCardResponse
 
 logger = get_logger(__name__)
 

@@ -1,7 +1,7 @@
 from backend.src.auth.dependencies import RequireAllRoles, RequireShopOrCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.schemas.user import UserBase, UserCreateWithoutPassword, UserRead, UserUpdate
+from backend.src.users.schemas import UserBase, UserCreateWithoutPassword, UserRead, UserUpdate
 from backend.src.users import service
 from fastapi import APIRouter, HTTPException
 

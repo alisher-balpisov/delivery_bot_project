@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from backend.src.common.enums import UserRole
 from pydantic import BaseModel, ConfigDict, Field
+
+from backend.src.common.enums import UserRole
 
 
 class RegistrationCodeBase(BaseModel):

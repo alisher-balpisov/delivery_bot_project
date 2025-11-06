@@ -1,10 +1,10 @@
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+from backend.src.couriers.schemas import CourierResponse
 from backend.src.models.courier import Courier
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
-from backend.src.schemas.courier import CourierResponse
-from backend.src.schemas.user import (
+from backend.src.users.schemas import (
     CourierUserUpdate,
     ShopUserUpdate,
     UserCreateWithoutPassword,
