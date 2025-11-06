@@ -1,8 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-from backend.src.auth import exceptions
 from backend.src.common.constants import MAX_TELEGRAM_ID, MIN_TELEGRAM_ID
-from backend.src.common.enums import UserRole, UserStatus
+from backend.src.common.enums import TokenType, UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
@@ -14,6 +13,8 @@ from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from . import exceptions
 
 logger = get_logger(__name__)
 
@@ -36,7 +37,7 @@ def create_access_token(user: User) -> str:
     to_encode: dict[str, str | int] = {
         "sub": str(user.id),
         "role": user.role.value,
-        "type": "access",  # ДОБАВЛЕНО: тип токена
+        "type": TokenType.ACCESS,
         "iat": int(datetime.now(UTC).timestamp()),
         "tid": str(user.telegram_id),
     }
@@ -67,9 +68,8 @@ def create_refresh_token(user: User) -> str:
 
     to_encode: dict[str, str | int] = {
         "sub": str(user.id),
-        "type": "refresh",  # ВАЖНО: маркер типа токена
+        "type": TokenType.REFRESH,
         "iat": int(datetime.now(UTC).timestamp()),
-        # Не включаем роль и другие данные для безопасности
     }
 
     expire = datetime.now(UTC) + timedelta(days=settings.jwt.refresh_token_expire_days)
@@ -132,7 +132,7 @@ async def refresh_access_token(
 
         # 2. Проверяем тип токена
         token_type = payload.get("type")
-        if token_type != "refresh":
+        if token_type != TokenType.REFRESH:
             logger.warning("Попытка использовать не-refresh токен для обновления")
             raise exceptions.InvalidRefreshTokenError(
                 "Невалидный тип токена. Ожидается refresh token."
@@ -289,7 +289,7 @@ async def _get_or_create_user(db: AsyncSession, telegram_id: int) -> User:
     if not user:
         user = User(telegram_id=telegram_id, status=UserStatus.PENDING_REGISTRATION)
         db.add(user)
-        await db.flush()  # Получаем ID пользователя до коммита транзакции
+        await db.flush()
         logger.info(f"Создан новый пользователь с telegram_id={telegram_id}")
     return user
 
@@ -358,7 +358,6 @@ async def _finalize_auth(user: User) -> AuthSuccessResponse:
     role_name = getattr(user.role, "value", str(user.role))
     logger.info(f"Пользователь {user} успешно аутентифицирован с ролью {role_name}")
 
-    # Создаём пару токенов
     access_token, refresh_token = create_token_pair(user)
 
     return AuthSuccessResponse(
@@ -432,7 +431,6 @@ async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
         # 2. НОВАЯ ЛОГИКА: Проверка статуса регистрации
         if user.status == UserStatus.PENDING_REGISTRATION:
             logger.info(f"Пользователь {user} не завершил регистрацию")
-            # Возвращаем специальный ответ, указывающий что нужно завершить регистрацию
             raise exceptions.RegistrationIncompleteError(
                 "Регистрация не завершена. Пожалуйста, введите код приглашения."
             )

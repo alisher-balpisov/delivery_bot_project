@@ -1,5 +1,5 @@
 from backend.src.common.enums import TokenType
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Token(BaseModel):
@@ -49,10 +49,10 @@ class AuthSuccessResponse(BaseModel):
 
     user: UserInfo
     access_token: str
-    refresh_token: str  # ДОБАВЛЕНО
-    token_type: str = "bearer"
-    expires_in: int  # Время жизни access токена в секундах
-    refresh_expires_in: int  # ДОБАВЛЕНО: время жизни refresh токена
+    refresh_token: str
+    token_type: TokenType = TokenType.BEARER
+    expires_in: int
+    refresh_expires_in: int
     already_registered: bool = False
 
 
@@ -67,6 +67,6 @@ class RefreshTokenResponse(BaseModel):
 
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
+    token_type: TokenType = TokenType.BEARER
     expires_in: int
     refresh_expires_in: int

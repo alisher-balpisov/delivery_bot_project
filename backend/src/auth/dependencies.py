@@ -2,7 +2,7 @@ from collections.abc import Callable, Coroutine
 from typing import Annotated, Any
 
 from backend.src.auth import exceptions
-from backend.src.common.enums import UserRole, UserStatus
+from backend.src.common.enums import TokenType, UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
@@ -29,7 +29,7 @@ async def _get_current_user(db: DbSession, token: str = Depends(oauth2_scheme)) 
 
         # Проверяем тип токена
         token_type = payload.get("type")
-        if token_type != "access":
+        if token_type != TokenType.ACCESS:
             logger.warning("Попытка использовать не-access токен для API запроса")
             raise exceptions.CREDENTIALS_EXCEPTION
 
