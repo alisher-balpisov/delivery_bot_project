@@ -38,15 +38,35 @@ class UserInfo(BaseModel):
     role: str
 
 
-class AuthSuccessResponse(BaseModel):
-    user: UserInfo
-    access_token: str
-    already_registered: bool = False
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class LoginRequest(BaseModel):
     """Схема запроса для входа существующего пользователя."""
 
     telegram_id: int
+
+
+class AuthSuccessResponse(BaseModel):
+    """Ответ при успешной аутентификации"""
+
+    user: UserInfo
+    access_token: str
+    refresh_token: str  # ДОБАВЛЕНО
+    token_type: str = "bearer"
+    expires_in: int  # Время жизни access токена в секундах
+    refresh_expires_in: int  # ДОБАВЛЕНО: время жизни refresh токена
+    already_registered: bool = False
+
+
+class RefreshTokenRequest(BaseModel):
+    """Запрос на обновление токена"""
+
+    refresh_token: str = Field(..., description="Refresh токен")
+
+
+class RefreshTokenResponse(BaseModel):
+    """Ответ с новой парой токенов"""
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    refresh_expires_in: int

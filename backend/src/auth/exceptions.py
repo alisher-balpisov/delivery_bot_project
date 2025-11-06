@@ -84,3 +84,24 @@ ACCOUNT_BLOCKED_EXCEPTION = HTTPException(
     status_code=status.HTTP_403_FORBIDDEN,
     detail="Аккаунт заблокирован",
 )
+
+
+@dataclass
+class RegistrationIncompleteError(AuthError):
+    """Пользователь не завершил процесс регистрации."""
+
+    status_code: int = 403
+
+
+@dataclass
+class InvalidRefreshTokenError(AuthError):
+    """Refresh token невалиден или истёк."""
+
+    status_code: int = 401
+
+
+@dataclass
+class AccountInactiveError(AuthError):
+    """Аккаунт неактивен."""
+
+    status_code: int = 403

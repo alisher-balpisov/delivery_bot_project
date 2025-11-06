@@ -1,5 +1,5 @@
 from collections.abc import Callable, Coroutine
-from typing import Annotated, Any, cast
+from typing import Annotated, Any
 
 from backend.src.auth import exceptions
 from backend.src.common.enums import UserRole, UserStatus
@@ -18,7 +18,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
 async def _get_current_user(db: DbSession, token: str = Depends(oauth2_scheme)) -> User:
     """
-    Декодирует JWT токен, извлекает ID пользователя и возвращает активный объект User из БД.
+    Декодирует JWT токен, проверяет чёрный список и возвращает пользователя.
     """
     try:
         payload = jwt.decode(
@@ -26,6 +26,13 @@ async def _get_current_user(db: DbSession, token: str = Depends(oauth2_scheme)) 
             settings.jwt.secret_key.get_secret_value(),
             algorithms=[settings.jwt.algorithm],
         )
+
+        # Проверяем тип токена
+        token_type = payload.get("type")
+        if token_type != "access":
+            logger.warning("Попытка использовать не-access токен для API запроса")
+            raise exceptions.CREDENTIALS_EXCEPTION
+
         sub = payload.get("sub")
         if sub is None:
             logger.warning("В токене отсутствует 'sub' (ID пользователя)")
@@ -92,7 +99,6 @@ def _require_role(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Недостаточно прав доступа: отсутствует связанный магазин.",
                 )
-            user.shop = cast(Any, user.shop)
 
         if UserRole.COURIER in allowed_roles and user.role == UserRole.COURIER:
             if not user.courier:
@@ -101,7 +107,6 @@ def _require_role(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Недостаточно прав доступа: отсутствует связанный курьер.",
                 )
-            user.courier = cast(Any, user.courier)
 
         logger.debug(f"Проверка роли пройдена для пользователь {user}")
         return user

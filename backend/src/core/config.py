@@ -240,12 +240,21 @@ class AdminConfig(BaseModel):
 class JwtConfig(BaseModel):
     """Конфигурация для работы с JWT (JSON Web Tokens)."""
 
-    # Секретный ключ для подписи и верификации токенов.
-    secret_key: SecretStr = Field(..., description="Секретный ключ для подписи JWT токенов")
-    # Алгоритм шифрования, используемый для JWT.
+    secret_key: SecretStr
     algorithm: str = "HS256"
-    # Время жизни access-токена в минутах.
-    access_token_expire_minutes: int = 60 * 24  # 1 день
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
+
+    refresh_secret_key: SecretStr | None = None  # Если None, используем secret_key
+
+    @property
+    def refresh_secret(self) -> str:
+        """Возвращает секрет для refresh токена"""
+        return (
+            self.refresh_secret_key.get_secret_value()
+            if self.refresh_secret_key
+            else self.secret_key.get_secret_value()
+        )
 
 
 class Settings(BaseSettings):

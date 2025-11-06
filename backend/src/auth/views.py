@@ -1,13 +1,20 @@
 from backend.src.auth import exceptions
-from backend.src.core.database import DbSession
+from backend.src.core.database import DbSession, settings
 from backend.src.core.logging import get_logger
-from backend.src.schemas.auth import AuthByCodeRequest, AuthSuccessResponse, LoginRequest
+from backend.src.schemas.auth import (
+    AuthByCodeRequest,
+    AuthSuccessResponse,
+    LoginRequest,
+    RefreshTokenRequest,
+    RefreshTokenResponse,
+)
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from . import service
 
 router = APIRouter()
+
 logger = get_logger(__name__)
 
 
@@ -74,23 +81,71 @@ async def login(
 
     except exceptions.InvalidCredentialsError as e:
         logger.warning(f"Неудачный вход для telegram_id={form_data.telegram_id}: {e.detail}")
-        # Для входа более корректно использовать 401 Unauthorized
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.detail)
     except exceptions.AccountLockedError as e:
         logger.warning(
             f"Блокировка аккаунта при входе для telegram_id={form_data.telegram_id}: {e.detail}"
         )
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=e.detail)
+    except exceptions.RegistrationIncompleteError as e:
+        logger.warning(
+            f"Пользователь telegram_id={form_data.telegram_id} не завершил процесс регистрации."
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=e.detail)
     except exceptions.AuthError as e:
         logger.warning(
             f"Общая ошибка аутентификации при входе для telegram_id={form_data.telegram_id}: {e.detail}"
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.detail)
+
     except Exception:
         logger.error(
             f"Непредвиденная ошибка в эндпоинте login для telegram_id={form_data.telegram_id}",
             exc_info=True,
         )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера"
+        )
+
+
+@router.post("/refresh", response_model=RefreshTokenResponse)
+async def refresh_token(
+    request: RefreshTokenRequest,
+    db: DbSession,
+):
+    """
+    Обновление access токена с помощью refresh токена.
+
+    - Получает валидный refresh token (JWT)
+    - Проверяет его подлинность и срок действия
+    - Возвращает новую пару токенов
+    """
+    logger.info("Запрос на обновление токена")
+
+    try:
+        new_access_token, new_refresh_token = await service.refresh_access_token(
+            db=db,
+            refresh_token=request.refresh_token,
+        )
+
+        return RefreshTokenResponse(
+            access_token=new_access_token,
+            refresh_token=new_refresh_token,
+            token_type="bearer",
+            expires_in=settings.jwt.access_token_expire_minutes * 60,
+            refresh_expires_in=settings.jwt.refresh_token_expire_days * 24 * 60 * 60,
+        )
+
+    except exceptions.InvalidRefreshTokenError as e:
+        logger.warning(f"Невалидный refresh token: {e.detail}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.detail)
+
+    except (exceptions.AccountLockedError, exceptions.AccountInactiveError) as e:
+        logger.warning(f"Проблема с аккаунтом при обновлении токена: {e.detail}")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=e.detail)
+
+    except Exception:
+        logger.error("Непредвиденная ошибка при обновлении токена", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Внутренняя ошибка сервера"
         )

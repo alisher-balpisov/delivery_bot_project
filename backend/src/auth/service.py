@@ -12,7 +12,7 @@ from backend.src.models.user import User
 from backend.src.schemas.auth import AuthSuccessResponse, UserInfo
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
@@ -20,18 +20,8 @@ logger = get_logger(__name__)
 
 def create_access_token(user: User) -> str:
     """
-    Создает новый JWT токен для пользователя.
-
-    Args:
-        user: Пользователь, для которого создается токен
-
-    Returns:
-        JWT токен в виде строки
-
-    Raises:
-        ValueError: Если у пользователя нет ID.
-        HTTPException: Если у пользователя нет роли.
-        JWTError: Если произошла ошибка при создании токена.
+    Создаёт access JWT токен для пользователя.
+    Короткий срок действия (15 минут).
     """
     if not user or not user.id:
         raise ValueError("Пользователь должен иметь валидный ID")
@@ -46,12 +36,14 @@ def create_access_token(user: User) -> str:
     to_encode: dict[str, str | int] = {
         "sub": str(user.id),
         "role": user.role.value,
+        "type": "access",  # ДОБАВЛЕНО: тип токена
         "iat": int(datetime.now(UTC).timestamp()),
         "tid": str(user.telegram_id),
     }
 
     expire = datetime.now(UTC) + timedelta(minutes=settings.jwt.access_token_expire_minutes)
     to_encode["exp"] = int(expire.timestamp())
+
     try:
         return jwt.encode(
             to_encode,
@@ -63,9 +55,137 @@ def create_access_token(user: User) -> str:
         raise JWTError(f"Не удалось создать токен: {e}")
 
 
-def _validate_input_data(telegram_id: int, code: str) -> None:
+def create_refresh_token(user: User) -> str:
+    """
+    Создаёт refresh JWT токен для пользователя.
+    Длительный срок действия (30 дней).
+
+    Содержит минимум информации для безопасности.
+    """
+    if not user or not user.id:
+        raise ValueError("Пользователь должен иметь валидный ID")
+
+    to_encode: dict[str, str | int] = {
+        "sub": str(user.id),
+        "type": "refresh",  # ВАЖНО: маркер типа токена
+        "iat": int(datetime.now(UTC).timestamp()),
+        # Не включаем роль и другие данные для безопасности
+    }
+
+    expire = datetime.now(UTC) + timedelta(days=settings.jwt.refresh_token_expire_days)
+    to_encode["exp"] = int(expire.timestamp())
+
+    try:
+        # Используем отдельный секрет для refresh токенов (если настроен)
+        secret = settings.jwt.refresh_secret
+
+        return jwt.encode(
+            to_encode,
+            secret,
+            algorithm=settings.jwt.algorithm,
+        )
+    except Exception as e:
+        logger.exception(f"Ошибка при создании refresh токена для пользователя {user}")
+        raise JWTError(f"Не удалось создать refresh токен: {e}")
+
+
+def create_token_pair(user: User) -> tuple[str, str]:
+    """
+    Создаёт пару токенов: access + refresh.
+
+    Returns:
+        (access_token, refresh_token)
+    """
+    access_token = create_access_token(user)
+    refresh_token = create_refresh_token(user)
+
+    logger.info(f"Создана пара токенов для пользователя {user.id}")
+
+    return access_token, refresh_token
+
+
+async def refresh_access_token(
+    db: AsyncSession,
+    refresh_token: str,
+) -> tuple[str, str]:
+    """
+    Обновляет access token используя refresh token.
+
+    Args:
+        db: Сессия БД
+        refresh_token: Существующий refresh token (JWT)
+
+    Returns:
+        (new_access_token, new_refresh_token)
+
+    Raises:
+        exceptions.InvalidRefreshTokenError: Если токен невалиден
+    """
+    try:
+        # 1. Декодируем refresh token
+        secret = settings.jwt.refresh_secret
+        payload = jwt.decode(
+            refresh_token,
+            secret,
+            algorithms=[settings.jwt.algorithm],
+        )
+
+        # 2. Проверяем тип токена
+        token_type = payload.get("type")
+        if token_type != "refresh":
+            logger.warning("Попытка использовать не-refresh токен для обновления")
+            raise exceptions.InvalidRefreshTokenError(
+                "Невалидный тип токена. Ожидается refresh token."
+            )
+
+        # 3. Извлекаем user_id
+        sub = payload.get("sub")
+        if sub is None:
+            logger.warning("В refresh токене отсутствует 'sub'")
+            raise exceptions.InvalidRefreshTokenError("Невалидный refresh token")
+
+        try:
+            user_id = int(sub)
+        except (TypeError, ValueError):
+            raise exceptions.InvalidRefreshTokenError("Невалидный ID пользователя в токене")
+
+    except JWTError as e:
+        logger.warning(f"Ошибка декодирования refresh токена: {e}")
+        raise exceptions.InvalidRefreshTokenError("Refresh token невалиден или истёк")
+
+    # 4. Загружаем пользователя из БД
+    user = await db.get(User, user_id)
+    if not user:
+        logger.warning(f"Пользователь {user_id} из refresh токена не найден в БД")
+        raise exceptions.InvalidRefreshTokenError("Пользователь не найден")
+
+    # 5. Проверяем статус пользователя
+    if user.status == UserStatus.BLOCKED:
+        logger.warning(f"Заблокированный пользователь {user.id} попытался обновить токен")
+        raise exceptions.AccountLockedError("Учетная запись заблокирована")
+
+    if user.status == UserStatus.INACTIVE:
+        logger.warning(f"Неактивный пользователь {user.id} попытался обновить токен")
+        raise exceptions.AccountInactiveError("Учетная запись неактивна")
+
+    if user.role == UserRole.GUEST:
+        logger.warning(f"Пользователь {user.id} с ролью GUEST попытался обновить токен")
+        raise exceptions.InvalidRefreshTokenError("Недостаточно прав доступа")
+
+    # 6. Создаём новую пару токенов
+    new_access_token, new_refresh_token = create_token_pair(user)
+
+    logger.info(f"Токены обновлены для пользователя {user.id}")
+
+    return new_access_token, new_refresh_token
+
+
+def _validate_input_data(username: str | None, telegram_id: int, code: str) -> None:
     """Валидирует входные данные."""
+
+    _validate_username(username)
     _validate_telegram_id(telegram_id)
+
     if not code.strip() or len(code) != settings.auth.code_length:
         raise ValueError("Некорректный код регистрации")
 
@@ -89,11 +209,14 @@ async def _handle_failed_attempt(db: AsyncSession, user: User) -> None:
     """
     async with db.begin_nested():
         user.registration_attempts += 1
+        await db.flush()
+
         attempts_left = settings.auth.registration_max_attempts - user.registration_attempts
 
         if attempts_left <= 0:
             user.status = UserStatus.BLOCKED
-            user.registration_attempts = 0  # Сбрасываем счетчик после блокировки
+            user.registration_attempts = 0
+            await db.flush()
 
     if attempts_left <= 0:
         logger.warning(f"Пользователь {user} заблокирован из-за превышения попыток входа.")
@@ -126,6 +249,21 @@ def _validate_telegram_id(telegram_id: int) -> None:
         )
 
 
+def _validate_username(username: str | None) -> str | None:
+    if username is None:
+        return None
+
+    username = username.strip()
+
+    if len(username) > 64:
+        raise ValueError("Username слишком длинный")
+
+    if not username.replace("_", "").replace("-", "").isalnum():
+        raise ValueError("Username содержит недопустимые символы")
+
+    return username
+
+
 async def _consume_registration_code(db: AsyncSession, code: str, user_id: int) -> UserRole | None:
     """
     Помечает код регистрации как использованный и возвращает роль.
@@ -133,7 +271,11 @@ async def _consume_registration_code(db: AsyncSession, code: str, user_id: int) 
     """
     res = await db.execute(
         update(RegistrationCode)
-        .where(RegistrationCode.code == code, RegistrationCode.is_used.is_(False))
+        .where(
+            RegistrationCode.code == code,
+            RegistrationCode.is_used.is_(False),
+            RegistrationCode.expires_at > datetime.now(UTC),
+        )
         .values(is_used=True, used_by_user_id=user_id)
         .returning(RegistrationCode.role)
     )
@@ -159,19 +301,21 @@ def _is_already_registered(user: User) -> bool:
 
 async def _handle_already_registered(user: User) -> AuthSuccessResponse:
     """Обрабатывает случай, когда пользователь уже зарегистрирован."""
-    # ДОБАВЛЕНО: Утверждение для помощи статическому анализатору и для надежности
-    assert user.role != UserRole.GUEST, (
-        "Эта функция должна быть доступна только зарегистрированным пользователям."
-    )
 
+    if user.role == UserRole.GUEST:
+        raise exceptions.AuthError("Недопустимый статус пользователя")
     if _is_user_locked(user):
         raise exceptions.AccountLockedError("Учетная запись заблокирована.")
 
-    token = create_access_token(user)
-    logger.info(f"Пользователь {user} уже зарегистрирован. Выдан новый токен.")
+    access_token, refresh_token = create_token_pair(user)
+
+    logger.info(f"Пользователь {user} уже зарегистрирован. Выдана новая пара токенов.")
     return AuthSuccessResponse(
         user=UserInfo(id=user.id, role=user.role.value),
-        access_token=token,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=settings.jwt.access_token_expire_minutes * 60,
+        refresh_expires_in=settings.jwt.refresh_token_expire_days * 24 * 60 * 60,
         already_registered=True,
     )
 
@@ -198,7 +342,7 @@ async def _activate_user(user: User, username: str | None, role: UserRole) -> No
 async def _create_profile_if_needed(db: AsyncSession, user: User) -> None:
     """Создает профиль магазина или курьера, если он отсутствует."""
     if user.role == UserRole.SHOP:
-        has_shop = await db.scalar(select(Shop).where(Shop.user_id == user.id))
+        has_shop = await db.scalar(select(exists().where(Shop.user_id == user.id)))
         if not has_shop:
             db.add(Shop(user_id=user.id))
             logger.info("Создан профиль магазина для пользователя %s", user.id)
@@ -210,13 +354,19 @@ async def _create_profile_if_needed(db: AsyncSession, user: User) -> None:
 
 
 async def _finalize_auth(user: User) -> AuthSuccessResponse:
-    """Завершает процесс аутентификации, создавая токен и ответ."""
+    """Завершает процесс аутентификации, создавая пару токенов и ответ."""
     role_name = getattr(user.role, "value", str(user.role))
     logger.info(f"Пользователь {user} успешно аутентифицирован с ролью {role_name}")
-    token = create_access_token(user)
+
+    # Создаём пару токенов
+    access_token, refresh_token = create_token_pair(user)
+
     return AuthSuccessResponse(
         user=UserInfo(id=user.id, role=role_name),
-        access_token=token,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=settings.jwt.access_token_expire_minutes * 60,  # в секундах
+        refresh_expires_in=settings.jwt.refresh_token_expire_days * 24 * 60 * 60,  # в секундах
         already_registered=False,
     )
 
@@ -231,7 +381,7 @@ async def auth_by_code(
     Регистрация/аутентификация пользователя по коду приглашения.
     Основная оркестрирующая функция.
     """
-    _validate_input_data(telegram_id, code)
+    _validate_input_data(username, telegram_id, code)
     masked_code = mask_sensitive_data(code)
     logger.info(f"Попытка аутентификации telegram_id={telegram_id} с кодом {masked_code}")
 
@@ -240,14 +390,17 @@ async def auth_by_code(
             user = await _get_or_create_user(db, telegram_id)
 
             if _is_already_registered(user):
+                if _is_user_locked(user):
+                    raise exceptions.AccountLockedError("Учетная запись заблокирована.")
                 return await _handle_already_registered(user)
 
             role = await _try_consume_code(db, user, code, masked_code)
 
             await _activate_user(user, username, role)
             await _create_profile_if_needed(db, user)
+            await db.flush()
+            await db.refresh(user)
 
-        await db.refresh(user)
         return await _finalize_auth(user)
 
     except (
@@ -264,21 +417,9 @@ async def auth_by_code(
 async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
     """
     Аутентификация существующего пользователя по telegram_id.
-
-    Args:
-        db: Сессия базы данных.
-        telegram_id: ID пользователя в Telegram.
-
-    Returns:
-        Ответ с токеном доступа и информацией о пользователе.
-
-    Raises:
-        exceptions.InvalidCredentialsError: Если пользователь не найден или не зарегистрирован.
-        exceptions.AccountLockedError: Если учетная запись пользователя заблокирована.
-        exceptions.AuthError: При других ошибках аутентификации.
     """
     logger.info(f"Попытка входа для telegram_id={telegram_id}")
-    _validate_telegram_id(telegram_id)  # Используем существующий валидатор
+    _validate_telegram_id(telegram_id)
 
     try:
         user = await _find_existing_user(db, telegram_id)
@@ -288,23 +429,39 @@ async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
             logger.warning(f"Попытка входа для несуществующего telegram_id={telegram_id}")
             raise exceptions.InvalidCredentialsError("Пользователь не найден.")
 
-        # 3. Проверяем, что пользователь уже прошел регистрацию (имеет роль)
-        if not _is_already_registered(user):
-            logger.warning(f"Попытка входа для незарегистрированного пользователя {user}")
-            raise exceptions.InvalidCredentialsError("Пользователь не завершил регистрацию.")
+        # 2. НОВАЯ ЛОГИКА: Проверка статуса регистрации
+        if user.status == UserStatus.PENDING_REGISTRATION:
+            logger.info(f"Пользователь {user} не завершил регистрацию")
+            # Возвращаем специальный ответ, указывающий что нужно завершить регистрацию
+            raise exceptions.RegistrationIncompleteError(
+                "Регистрация не завершена. Пожалуйста, введите код приглашения."
+            )
 
-        # Если все проверки пройдены, создаем и возвращаем токен
-        await _clear_login_attempts(user)  # На всякий случай сбросим счетчик неудачных попыток
+        # 3. Проверяем блокировку
+        if _is_user_locked(user):
+            logger.warning(f"Заблокированный пользователь {user} попытался войти")
+            raise exceptions.AccountLockedError("Учетная запись заблокирована.")
+
+        # 4. Проверяем, что у пользователя есть роль (дополнительная проверка)
+        if not _is_already_registered(user):
+            logger.error(f"Пользователь {user} имеет статус {user.status}, но роль GUEST")
+            raise exceptions.InvalidCredentialsError(
+                "Данные пользователя повреждены. Обратитесь в поддержку."
+            )
+
+        # 5. Если все проверки пройдены, создаём и возвращаем токен
+        await _clear_login_attempts(user)
         await db.commit()
 
-        logger.info(f"Пользователь {user} успешно вошел в систему.")
-
+        logger.info(f"Пользователь {user} успешно вошёл в систему.")
         return await _handle_already_registered(user)
 
-    except (exceptions.InvalidCredentialsError, exceptions.AccountLockedError):
-        # Пробрасываем ожидаемые исключения выше
+    except (
+        exceptions.InvalidCredentialsError,
+        exceptions.AccountLockedError,
+        exceptions.RegistrationIncompleteError,
+    ):
         raise
     except Exception as e:
         logger.exception(f"Непредвиденная ошибка при входе telegram_id={telegram_id}")
-        # Оборачиваем непредвиденные ошибки в наше общее исключение AuthError
         raise exceptions.AuthError("Произошла внутренняя ошибка при аутентификации.") from e
