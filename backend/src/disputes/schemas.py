@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import dis
 import html
 from datetime import datetime
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
 from backend.src.common.enums import DisputeStatus, UserRole
 from backend.src.models.dispute import Dispute
-from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from backend.src.orders.schemas import OrderResponse
 
 
 class DisputeBase(BaseModel):
@@ -69,7 +69,7 @@ class DisputeRead(DisputeBase):
     id: int
     status: DisputeStatus
     created_by_role: UserRole
-    order: OrderRead
+    order: OrderResponse
     admin_notes: str | None = None
     resolution_notes: str | None = None
     created_at: datetime

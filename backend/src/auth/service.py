@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from backend.src.auth.schemas import AuthSuccessResponse, UserInfo
 from backend.src.common.constants import MAX_TELEGRAM_ID, MIN_TELEGRAM_ID
 from backend.src.common.enums import TokenType, UserRole, UserStatus
 from backend.src.core.config import settings
@@ -8,7 +9,6 @@ from backend.src.models.courier import Courier
 from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
-from backend.src.auth.schemas import AuthSuccessResponse, UserInfo
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from sqlalchemy import exists, select, update

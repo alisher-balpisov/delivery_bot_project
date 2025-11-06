@@ -5,10 +5,10 @@ from sqlalchemy.orm import selectinload
 
 from backend.src.common.enums import DisputeStatus, UserRole
 from backend.src.core.logging import get_logger
+from backend.src.disputes.schemas import DisputeCreate, DisputeResponse, DisputeUpdate
 from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
 from backend.src.models.user import User
-from backend.src.disputes.schemas import DisputeCreate, DisputeResponse, DisputeUpdate
 
 logger = get_logger(__name__)
 

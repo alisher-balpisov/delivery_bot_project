@@ -1,8 +1,5 @@
 from backend.src.auth import exceptions
 from backend.src.auth.auth_error_handlers import *
-from backend.src.common.enums import TokenType
-from backend.src.core.database import DbSession, settings
-from backend.src.core.logging import get_logger
 from backend.src.auth.schemas import (
     AuthByCodeRequest,
     AuthSuccessResponse,
@@ -10,6 +7,9 @@ from backend.src.auth.schemas import (
     RefreshTokenRequest,
     RefreshTokenResponse,
 )
+from backend.src.common.enums import TokenType
+from backend.src.core.database import DbSession, settings
+from backend.src.core.logging import get_logger
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 

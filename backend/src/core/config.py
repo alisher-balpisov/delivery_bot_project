@@ -192,24 +192,24 @@ class BusinessConfig(BaseModel):
     """Настройки, определяющие бизнес-логику и правила приложения."""
 
     # Максимальное количество активных заказов на одного курьера.
-    max_orders_per_courier: int = None
+    max_orders_per_courier: int | None = None
     # Время бездействия курьера в секундах, после которого он считается оффлайн.
-    courier_inactive_timeout: int = None
+    courier_inactive_timeout: int | None = None
     # Время в секундах для автоматической отмены нового заказа, если его никто не взял.
-    order_auto_cancel_timeout: int = None
+    order_auto_cancel_timeout: int | None = None
     # Максимальное время на выполнение заказа в секундах.
-    order_completion_timeout: int = None
-    min_order_price: float = None  # Минимальная стоимость заказа.
-    max_order_price: float = None  # Максимальная стоимость заказа.
-    default_delivery_price: float = None  # Базовая стоимость доставки.
+    order_completion_timeout: int | None = None
+    min_order_price: float | None = None  # Минимальная стоимость заказа.
+    max_order_price: float | None = None  # Максимальная стоимость заказа.
+    default_delivery_price: float | None = None  # Базовая стоимость доставки.
     # Множитель стоимости доставки в ночное время.
-    night_delivery_multiplier: float = None
-    work_start_hour: int = None  # Начало рабочего дня.
-    work_end_hour: int = None  # Конец рабочего дня.
+    night_delivery_multiplier: float | None = None
+    work_start_hour: int | None = None  # Начало рабочего дня.
+    work_end_hour: int | None = None  # Конец рабочего дня.
     # Количество повторных попыток отправки уведомлений в случае сбоя.
-    notification_retry_attempts: int = None
+    notification_retry_attempts: int | None = None
     # Задержка между повторными попытками в секундах.
-    notification_retry_delay: int = None
+    notification_retry_delay: int | None = None
 
 
 class AdminConfig(BaseModel):

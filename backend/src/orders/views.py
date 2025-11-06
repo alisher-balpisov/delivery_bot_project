@@ -32,7 +32,7 @@ async def create_order(
         f"Создание заказа для магазина {current_user.shop}, order_type={order_in.order_type}"
     )
     try:
-        result = await service.create_order(db=db, order_in=order_in, shop_id=current_user.shop.id)
+        result = await service.create_order(db=db, order_in=order_in, shop_id=current_user.shop.id)  # type: ignore
         logger.info(f"Заказ успешно создан: order_id={result.id} для магазина {current_user.shop}")
         return result
     except ValueError as e:
