@@ -28,7 +28,7 @@ class Order(Base):
     """
 
     __tablename__ = "orders"
-    __repr_attrs__ = ("shop_id", "status", "price")
+    __repr_attrs__ = ("shop_id", "courier_id", "status", "price")
 
     shop_id: Mapped[int] = mapped_column(
         ForeignKey("shops.id"), nullable=False, index=True, comment="ID магазина, создавшего заказ"

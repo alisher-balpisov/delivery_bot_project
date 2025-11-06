@@ -1,5 +1,5 @@
 from backend.src.common.enums import UserStatus
-from backend.src.common.utils import Phone
+from backend.src.common.utils.validaters import Phone
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -59,12 +59,14 @@ class CourierCardResponse(BaseModel):
     id: int
     telegram_id: int | None
     username: str | None
-    full_name: str
+    full_name: str | None
     status: UserStatus | None
-    phone_numbers: list
+    phone_numbers: list[str] | None
     photo_id: str | None = None
     is_active: bool
     rating: float | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CourierShiftResponse(BaseModel):

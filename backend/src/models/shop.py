@@ -31,15 +31,15 @@ class Shop(Base):
         nullable=False,
         comment="ID пользователя, связанного с профилем магазина",
     )
-    name: Mapped[str] = mapped_column(
-        String(255), index=True, nullable=False, comment="Название магазина"
+    name: Mapped[str | None] = mapped_column(
+        String(255), index=True, nullable=True, comment="Название магазина"
     )
-    address: Mapped[str] = mapped_column(String(512), nullable=False, comment="Адрес магазина")
-    address_link: Mapped[str] = mapped_column(
-        String(512), nullable=False, comment="Ссылка на адрес магазина (например, Google Maps)"
+    address: Mapped[str | None] = mapped_column(String(512), nullable=True, comment="Адрес магазина")
+    address_link: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, comment="Ссылка на адрес магазина (например, Google Maps)"
     )
-    phone_number: Mapped[list[str]] = mapped_column(
-        ARRAY(String(30)), nullable=False, comment="Контактные номера телефонов магазина"
+    phone_number: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String(30)), nullable=True, comment="Контактные номера телефонов магазина"
     )
 
     # Связи
@@ -50,8 +50,8 @@ class Shop(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("length(trim(name)) > 0", name="check_shop_name_not_empty"),
-        CheckConstraint("length(trim(address)) > 0", name="check_shop_address_not_empty"),
-        CheckConstraint("length(trim(address_link)) > 0", name="check_shop_address_link_not_empty"),
-        CheckConstraint("cardinality(phone_number) > 0", name="check_shop_phone_number_not_empty"),
+        CheckConstraint("name IS NULL OR length(trim(name)) > 0", name="check_shop_name_not_empty"),
+        CheckConstraint("address IS NULL OR length(trim(address)) > 0", name="check_shop_address_not_empty"),
+        CheckConstraint("address_link IS NULL OR length(trim(address_link)) > 0", name="check_shop_address_link_not_empty"),
+        CheckConstraint("phone_number IS NULL OR cardinality(phone_number) > 0", name="check_shop_phone_number_not_empty"),
     )

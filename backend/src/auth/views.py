@@ -31,7 +31,6 @@ async def auth_by_code(
             code=form_data.code,
         )
         logger.info(f"Успешная аутентификация для telegram_id={form_data.telegram_id}")
-        ic(result)
         return result
 
     except exceptions.InvalidCredentialsError as e:

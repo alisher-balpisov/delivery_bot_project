@@ -1,5 +1,5 @@
 from backend.src.common.enums import UserStatus
-from backend.src.common.utils import Phone
+from backend.src.common.utils.validaters import Phone
 from pydantic import BaseModel, ConfigDict, Field
 
 from .user import UserRead
@@ -71,10 +71,10 @@ class ShopCardResponse(BaseModel):
     id: int
     telegram_id: int
     username: str | None
-    name: str
+    name: str | None
     status: UserStatus
-    address: str
-    address_link: str
-    phone_numbers: list[str]
+    address: str | None
+    address_link: str | None
+    phone_numbers: list[str] | None
 
     model_config = ConfigDict(from_attributes=True)

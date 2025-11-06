@@ -129,7 +129,7 @@ async def complete_user_registration(
             shop = await db.scalar(select(Shop).where(Shop.user_id == user.id))
             if not shop:
                 logger.info(f"Создание сущности Shop для пользователя {user.id}")
-                db.add(Shop(user_id=user.id, name="Default Shop", address=""))
+                db.add(Shop(user_id=user.id))
         elif user.role == UserRole.COURIER:
             courier = await db.scalar(select(Courier).where(Courier.user_id == user.id))
             if not courier:

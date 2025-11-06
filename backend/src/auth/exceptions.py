@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -11,7 +11,7 @@ class AuthError(Exception):
 
     detail: str
     status_code: int = 400
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         """Валидация после инициализации."""
@@ -33,7 +33,7 @@ class AuthError(Exception):
 class UserAlreadyRegisteredError(AuthError):
     """Выбрасывается, когда пользователь уже зарегистрирован."""
 
-    data: dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict[str, Any])
     access_token: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

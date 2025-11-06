@@ -23,7 +23,7 @@ class Courier(Base):
     """
 
     __tablename__ = "couriers"
-    __repr_attrs__ = ("user_id", "full_name", "is_active")
+    __repr_attrs__ = ("full_name", "is_active")
 
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -31,15 +31,18 @@ class Courier(Base):
         nullable=False,
         comment="ID пользователя, связанного с профилем курьера",
     )
-    full_name: Mapped[str] = mapped_column(String(255), nullable=False, comment="ФИО курьера")
-    phone_number: Mapped[list[str]] = mapped_column(
-        ARRAY(String(30)), nullable=False, comment="Контактные номера телефонов курьера"
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="ФИО курьера")
+    phone_number: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String(30)), nullable=True, comment="Контактные номера телефонов курьера"
     )
     photo_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, comment="ID фотографии курьера в Telegram"
     )
     is_active: Mapped[bool] = mapped_column(
-        default=False, index=True, comment="Активен ли курьер (может ли принимать заказы)"
+        default=False,
+        nullable=False,
+        index=True,
+        comment="Активен ли курьер (может ли принимать заказы)",
     )
 
     # Связь обратно к пользователю
@@ -51,8 +54,12 @@ class Courier(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("length(trim(full_name)) > 0", name="check_courier_full_name_not_empty"),
         CheckConstraint(
-            "cardinality(phone_number) > 0", name="check_courier_phone_number_not_empty"
+            "full_name IS NULL OR length(trim(full_name)) > 0",
+            name="check_courier_full_name_not_empty",
+        ),
+        CheckConstraint(
+            "phone_number IS NULL OR cardinality(phone_number) > 0",
+            name="check_courier_phone_number_not_empty",
         ),
     )

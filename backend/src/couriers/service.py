@@ -62,7 +62,7 @@ async def get_courier_card(db: DbSession, courier_id: int) -> CourierCardRespons
 
     avg_rating = await get_avg_rating(db, courier_id)
 
-    phone_numbers = [courier.phone_number] if courier.phone_number else []
+    phone_numbers = courier.phone_number if courier.phone_number else []
 
     card = CourierCardResponse(
         id=courier.id,

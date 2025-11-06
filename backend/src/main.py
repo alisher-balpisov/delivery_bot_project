@@ -156,8 +156,8 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix=settings.api_prefix)
 
     # Статические файлы (для загруженных фото)
-    upload_dir = get_upload_path()
-    app.mount("/static", StaticFiles(directory=str(upload_dir)), name="static")
+    # upload_dir = get_upload_path()
+    # app.mount("/static", StaticFiles(directory=str(upload_dir)), name="static")
 
     # Root endpoint
     @app.get("/")

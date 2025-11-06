@@ -41,7 +41,7 @@ class User(Base):
         ENUM(UserRole, name="userrole", create_type=True),
         nullable=False,
         default=UserRole.GUEST,
-        server_default=UserRole.GUEST.value,
+        server_default="GUEST",
         index=True,
         comment="Роль пользователя в системе",
     )

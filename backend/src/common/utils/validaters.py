@@ -17,10 +17,8 @@ def validate_phone(v):
     return v
 
 
-def validate_phone_flexible(v):
+def validate_phone_flexible(v: str) -> str:
     """Валидация телефона, принимающая любой формат"""
-    if not isinstance(v, str):
-        raise ValueError("Телефон должен быть строкой")
     # Удаляем все пробелы для базовой проверки
     cleaned = v.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
     # Должен содержать хотя бы 7 цифр

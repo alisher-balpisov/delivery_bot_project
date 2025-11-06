@@ -1,15 +1,16 @@
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Generic, TypeVar
+from typing import Any, TypeVar
 
-from fastapi import HTTPException
-from pydantic import BaseModel, Field
-from sqlalchemy import Column, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import contains_eager, selectinload
+from sqlalchemy.orm import contains_eager, load_only, selectinload
 
+from backend.src.auth.service import mask_sensitive_data
+from backend.src.common.constants import PaginatedResponse
 from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole, UserStatus
+from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
@@ -29,9 +30,90 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class PaginatedResponse[T](BaseModel):
-    total: int = Field(..., description="Общее количество элементов")
-    items: list[T] = Field(..., description="Список элементов на текущей странице")
+# Константы для улучшения читаемости и поддерживаемости
+MAX_GENERATION_ATTEMPTS = 10
+
+
+def _generate_registration_code() -> str:
+    """
+    Генерирует случайный код регистрации.
+    """
+    _validate_code_settings()
+    code_characters = settings.auth.code_characters
+    code_length = settings.auth.code_length
+    return "".join(secrets.choice(code_characters) for _ in range(code_length))
+
+
+def _validate_code_settings() -> None:
+    """
+    Проверяет корректность настроек для генерации кода.
+
+    Raises:
+        ValueError: если настройки некорректны.
+    """
+    if not settings.auth.code_characters:
+        raise ValueError("Набор символов для генерации кода не может быть пустым.")
+    if settings.auth.code_length <= 0:
+        raise ValueError("Длина кода должна быть положительной.")
+
+
+def _create_code_object(
+    code: str, role: UserRole, created_by_admin_id: int, now: datetime, expires_at: datetime
+) -> RegistrationCode:
+    """
+    Создает объект RegistrationCode с заданными параметрами.
+    """
+    return RegistrationCode(
+        code=code,
+        role=role,
+        is_used=False,
+        created_by_admin_id=created_by_admin_id,
+        created_at=now,
+        expires_at=expires_at,
+    )
+
+
+async def _try_save_code(db: AsyncSession, reg_code: RegistrationCode, attempt: int) -> bool:
+    """
+    Пытается сохранить код в БД.
+
+    Args:
+        db: Сессия базы данных.
+        reg_code: Объект кода для сохранения.
+        attempt: Номер текущей попытки.
+
+    Returns:
+        True, если код успешно сохранен, False при коллизии.
+    """
+    db.add(reg_code)
+    try:
+        await db.flush()
+        await db.refresh(reg_code)
+        logger.info(
+            f"Сгенерирован уникальный код регистрации '{reg_code.code}' "
+            f"для роли '{reg_code.role.value}' на попытке {attempt}."
+        )
+        return True
+    except IntegrityError:
+        masked_code = mask_sensitive_data(reg_code.code)
+        logger.warning(
+            f"Коллизия при генерации кода '{masked_code}' на попытке {attempt}. "
+            f"Генерируем новый код."
+        )
+        await db.rollback()
+        return False
+
+
+def _calculate_expiration_time() -> tuple[datetime, datetime]:
+    """
+    Вычисляет время создания и истечения кода.
+
+    Returns:
+        Кортеж (created_at, expires_at).
+    """
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(hours=settings.auth.registration_code_lifetime_hours)
+    return now, expires_at
 
 
 async def create_registration_code(
@@ -39,57 +121,32 @@ async def create_registration_code(
 ) -> RegistrationCode:
     """
     Генерирует и сохраняет в БД одноразовый код регистрации для пользователя.
-
-    Args:
-        db: Сессия базы данных.
-        role: Роль, для которой генерируется код (shop или courier).
-        created_by_admin_id: ID админа, который создал код.
-
-    Returns:
-        Объект RegistrationCode, добавленный в сессию.
-
-    Raises:
-        HTTPException: если указана недопустимая роль.
-        RuntimeError: если не удалось сгенерировать уникальный код после нескольких попыток.
     """
-    logger.info(f"Генерация кода регистрации для роли: {role.value}")
+    now, expires_at = _calculate_expiration_time()
 
-    if role not in [UserRole.SHOP, UserRole.COURIER]:
-        raise HTTPException(
-            status_code=400, detail="Недопустимая роль. Используйте 'courier' или 'shop'"
-        )
+    try:
+        new_code = _generate_registration_code()
+    except ValueError as e:
+        logger.error(f"Некорректные настройки генерации кода: {e}")
+        raise
 
-    now = datetime.now(UTC)
-    expires_at = now + timedelta(hours=settings.auth.registration_code_lifetime_hours)
+    for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
+        reg_code = _create_code_object(new_code, role, created_by_admin_id, now, expires_at)
 
-    # Пытаемся сгенерировать уникальный код несколько раз
-    for _ in range(10):
-        code = "".join(
-            secrets.choice(settings.auth.code_characters) for _ in range(settings.auth.code_length)
-        )
-
-        reg_code = RegistrationCode(
-            code=code,
-            role=role,
-            is_used=False,
-            created_by_admin_id=created_by_admin_id,
-            created_at=now,
-            expires_at=expires_at,
-        )
-        db.add(reg_code)
-
-        try:
-            await db.flush()
-            await db.refresh(reg_code)
-
-            logger.info(f"Сгенерирован код регистрации '{reg_code.code}' для роли: {role.value}")
+        if await _try_save_code(db, reg_code, attempt):
             return reg_code
-        except IntegrityError:
-            logger.warning(f"Коллизия при генерации кода: '{code}'. Повторная попытка.")
-            await db.rollback()
-            continue
 
-    logger.error("Не удалось сгенерировать уникальный код регистрации после 10 попыток.")
+        if attempt < MAX_GENERATION_ATTEMPTS:
+            try:
+                new_code = _generate_registration_code()
+            except ValueError as e:
+                logger.error(f"Некорректные настройки генерации кода: {e}")
+                raise
+
+    logger.error(
+        f"Не удалось сгенерировать уникальный код регистрации после "
+        f"{MAX_GENERATION_ATTEMPTS} попыток."
+    )
     raise RuntimeError("Не удалось сгенерировать уникальный код регистрации.")
 
 
@@ -137,7 +194,7 @@ async def get_registration_codes_by_role(
     return [RegistrationCodeResponse.model_validate(code) for code in codes]
 
 
-async def get_unused_registration_codes_count(db: AsyncSession) -> dict:
+async def get_unused_registration_codes_count(db: AsyncSession) -> dict[Any, int]:
     """
     Получить количество неиспользованных кодов по ролям.
     """
@@ -156,99 +213,53 @@ async def get_unused_registration_codes_count(db: AsyncSession) -> dict:
     }
 
 
-async def get_system_stats(db: AsyncSession) -> dict:
-    """
-    Получить системную статистику для администраторов.
-    Включает счетчики пользователей, заказов и споров.
-    """
-    # Статистика пользователей по ролям
-    user_counts = await db.execute(select(User.role, func.count(User.id)).group_by(User.role))
-    users = {role.value: count for role, count in user_counts.all()}
-    total_users = sum(users.values())
+# async def get_system_stats(db: AsyncSession) -> dict:
+#     """
+#     Получить системную статистику для администраторов.
+#     Включает счетчики пользователей, заказов и споров.
+#     """
+#     # Статистика пользователей по ролям
+#     user_counts = await db.execute(select(User.role, func.count(User.id)).group_by(User.role))
+#     users = {role.value: count for role, count in user_counts.all()}
+#     total_users = sum(users.values())
 
-    # Статистика заказов по статусам
-    order_counts = await db.execute(
-        select(Order.status, func.count(Order.id)).group_by(Order.status)
-    )
-    orders = {status.value: count for status, count in order_counts.all()}
-    total_orders = sum(orders.values())
-    completed_orders = orders.get(OrderStatus.COMPLETED.value, 0)
-    cancelled_orders = orders.get(OrderStatus.CANCELLED.value, 0)
-    active_orders = total_orders - completed_orders - cancelled_orders
+#     # Статистика заказов по статусам
+#     order_counts = await db.execute(
+#         select(Order.status, func.count(Order.id)).group_by(Order.status)
+#     )
+#     orders = {status.value: count for status, count in order_counts.all()}
+#     total_orders = sum(orders.values())
+#     completed_orders = orders.get(OrderStatus.COMPLETED.value, 0)
+#     cancelled_orders = orders.get(OrderStatus.CANCELLED.value, 0)
+#     active_orders = total_orders - completed_orders - cancelled_orders
 
-    # Статистика споров
-    dispute_counts = await db.execute(
-        select(Dispute.status, func.count(Dispute.id)).group_by(Dispute.status)
-    )
-    disputes = {status.value: count for status, count in dispute_counts.all()}
-    total_disputes = sum(disputes.values())
-    unresolved_disputes = (
-        total_disputes
-        # - disputes.get(DisputeStatus.CLOSED.value, 0)
-        - disputes.get(DisputeStatus.RESOLVED.value, 0)
-    )
+#     # Статистика споров
+#     dispute_counts = await db.execute(
+#         select(Dispute.status, func.count(Dispute.id)).group_by(Dispute.status)
+#     )
+#     disputes = {status.value: count for status, count in dispute_counts.all()}
+#     total_disputes = sum(disputes.values())
+#     unresolved_disputes = (
+#         total_disputes
+#         # - disputes.get(DisputeStatus.CLOSED.value, 0)
+#         - disputes.get(DisputeStatus.RESOLVED.value, 0)
+#     )
 
-    return {
-        "total_users": total_users,
-        "total_admins": users.get(UserRole.ADMIN.value, 0),
-        "total_shops": users.get(UserRole.SHOP.value, 0),
-        "total_couriers": users.get(UserRole.COURIER.value, 0),
-        "total_orders": total_orders,
-        "active_orders": active_orders,
-        "completed_orders": completed_orders,
-        "cancelled_orders": cancelled_orders,
-        "total_disputes": total_disputes,
-        "unresolved_disputes": unresolved_disputes,
-    }
+#     return {
+#         "total_users": total_users,
+#         "total_admins": users.get(UserRole.ADMIN.value, 0),
+#         "total_shops": users.get(UserRole.SHOP.value, 0),
+#         "total_couriers": users.get(UserRole.COURIER.value, 0),
+#         "total_orders": total_orders,
+#         "active_orders": active_orders,
+#         "completed_orders": completed_orders,
+#         "cancelled_orders": cancelled_orders,
+#         "total_disputes": total_disputes,
+#         "unresolved_disputes": unresolved_disputes,
+#     }
 
 
 ModelType = TypeVar("ModelType")
-
-
-async def _get_paginated_list[ModelType](
-    db: AsyncSession,
-    model: type[ModelType],
-    page: int,
-    limit: int,
-    join_model: type,
-    join_on: Column,
-    search_fields: list[Column],
-    status: UserStatus | None = None,
-    search: str | None = None,
-) -> tuple[int, list[ModelType]]:
-    """
-    Обобщенная функция для получения пагинированного списка сущностей.
-    """
-    # 1. Формируем список фильтров
-    filters = []
-    if status:
-        filters.append(join_model.status == status)
-
-    if search:
-        search_term = f"%{search.lower()}%"
-        search_conditions = [func.lower(field).like(search_term) for field in search_fields]
-        filters.append(or_(*search_conditions))
-
-    # 2. Запрос для подсчета общего количества записей с фильтрами
-    total_query = select(func.count(model.id)).join(join_model, join_on)
-    if filters:
-        total_query = total_query.where(*filters)
-
-    total = await db.scalar(total_query)
-    if not total:
-        return 0, []
-
-    # 3. Запрос для получения данных с фильтрами и пагинацией
-    data_query = select(model).join(join_model, join_on).options(contains_eager(model.user))
-    if filters:
-        data_query = data_query.where(*filters)
-
-    data_query = data_query.offset((page - 1) * limit).limit(limit)
-
-    result = await db.execute(data_query)
-    items = result.scalars().all()
-
-    return total, items
 
 
 async def get_all_couriers(
@@ -258,33 +269,26 @@ async def get_all_couriers(
     status: UserStatus | None,
     search: str | None,
 ) -> PaginatedResponse[CourierCardResponse]:
-    total, couriers = await _get_paginated_list(
+    """
+    Получает пагинированный список курьеров с возможностью фильтрации и поиска.
+    """
+    total, couriers = await get_paginated_list(
         db=db,
         model=Courier,
         page=page,
         limit=limit,
-        join_model=User,
-        join_on=(Courier.user_id == User.id),
-        search_fields=[Courier.full_name, User.username],
         status=status,
+        status_field="status",
+        status_model=User,
         search=search,
+        search_fields=[Courier.full_name, User.username],
+        joins=[(User, Courier.user_id == User.id)],
+        eager_load_options=[contains_eager(Courier.user)],
+        sort_by_field="id",
+        sort_desc=False,
     )
 
-    response_items = [
-        CourierCardResponse(
-            id=courier.id,
-            telegram_id=courier.user.telegram_id,
-            username=courier.user.username,
-            full_name=courier.full_name,
-            status=courier.user.status,
-            phone_numbers=courier.phone_number,
-            photo_id=courier.photo_id,
-            is_active=courier.is_active,
-            rating=None,
-        )
-        for courier in couriers
-    ]
-
+    response_items = [CourierCardResponse.model_validate(courier) for courier in couriers]
     return PaginatedResponse(total=total, items=response_items)
 
 
@@ -295,32 +299,26 @@ async def get_all_shops(
     status: UserStatus | None,
     search: str | None,
 ) -> PaginatedResponse[ShopCardResponse]:
-    total, shops = await _get_paginated_list(
+    """
+    Получает пагинированный список магазинов с возможностью фильтрации и поиска.
+    """
+    total, shops = await get_paginated_list(
         db=db,
         model=Shop,
         page=page,
         limit=limit,
-        join_model=User,
-        join_on=(Shop.user_id == User.id),
-        search_fields=[Shop.name, User.username],
         status=status,
+        status_field="status",
+        status_model=User,
         search=search,
+        search_fields=[Shop.name, User.username],
+        joins=[(User, Shop.user_id == User.id)],
+        eager_load_options=[contains_eager(Shop.user)],
+        sort_by_field="id",
+        sort_desc=False,
     )
 
-    response_items = [
-        ShopCardResponse(
-            id=shop.id,
-            telegram_id=shop.user.telegram_id,
-            username=shop.user.username,
-            name=shop.name,
-            status=shop.user.status,
-            address=shop.address,
-            address_link=shop.address_link,
-            phone_numbers=shop.phone_number,
-        )
-        for shop in shops
-    ]
-
+    response_items = [ShopCardResponse.model_validate(shop) for shop in shops]
     return PaginatedResponse(total=total, items=response_items)
 
 
@@ -332,65 +330,32 @@ async def get_all_orders(
     search: str | None,
 ) -> PaginatedResponse[OrderCardResponse]:
     """
-    Получить все заказы с пагинацией и фильтрацией.
-    Доступно только администраторам.
+    Получает пагинированный список заказов с возможностью фильтрации и поиска.
     """
-    # Формируем фильтры
-    filters = []
-    if status:
-        filters.append(Order.status == status)
-
-    if search:
-        search_term = f"%{search.lower()}%"
-        # Поиск по адресу получателя, описанию или телефону клиента
-        filters.append(
-            or_(
-                func.lower(Order.recipient_address).like(search_term),
-                func.lower(Order.description).like(search_term),
-                func.lower(Order.client_phone).like(search_term),
-            )
-        )
-
-    # Подсчет общего количества
-    total_query = select(func.count(Order.id))
-    if filters:
-        total_query = total_query.where(*filters)
-
-    total = await db.scalar(total_query)
-    if not total:
-        return PaginatedResponse(total=0, items=[])
-
-    # Получение данных с пагинацией
-    data_query = (
-        select(Order)
-        .options(selectinload(Order.shop), selectinload(Order.courier))
-        .order_by(Order.created_at.desc())
-    )
-    if filters:
-        data_query = data_query.where(*filters)
-
-    data_query = data_query.offset((page - 1) * limit).limit(limit)
-
-    result = await db.execute(data_query)
-    orders = result.scalars().all()
-
-    response_items = [
-        OrderCardResponse(
-            id=order.id,
-            shop_id=order.shop_id,
-            shop_name=order.shop.name if order.shop else None,
-            courier_id=order.courier_id,
-            courier_name=order.courier.full_name if order.courier else None,
-            status=order.status,
-            order_type=order.order_type,
-            special_type=order.special_type,
-            price=order.price,
-            recipient_address=order.recipient_address,
-            created_at=order.created_at,
-        )
-        for order in orders
+    search_fields = [
+        Order.shop.name,
+        Order.courier.full_name,
+        Order.description,
     ]
 
+    total, orders = await get_paginated_list(
+        db=db,
+        model=Order,
+        page=page,
+        limit=limit,
+        status=status,
+        status_field="status",
+        search=search,
+        search_fields=search_fields,
+        eager_load_options=[
+            selectinload(Order.shop).options(load_only(Shop.name)),
+            selectinload(Order.courier).options(load_only(Courier.full_name)),
+        ],
+        sort_by_field="created_at",
+        sort_desc=True,
+    )
+
+    response_items = [OrderCardResponse.model_validate(order) for order in orders]
     return PaginatedResponse(total=total, items=response_items)
 
 
@@ -405,58 +370,36 @@ async def get_all_disputes(
     Получить все споры с пагинацией и фильтрацией.
     Доступно только администраторам.
     """
-    # Формируем фильтры
-    filters = []
-    if status:
-        filters.append(Dispute.status == status)
+    search_fields = [
+        Dispute.description,
+        Dispute.order.shop.name,
+        Dispute.order.courier.full_name,
+        Dispute.opened_by_user.username,
+    ]
 
-    if search:
-        search_term = f"%{search.lower()}%"
-        # Поиск по описанию спора
-        filters.append(func.lower(Dispute.description).like(search_term))
-
-    # Подсчет общего количества
-    total_query = select(func.count(Dispute.id))
-    if filters:
-        total_query = total_query.where(*filters)
-
-    total = await db.scalar(total_query)
-    if not total:
-        return PaginatedResponse(total=0, items=[])
-
-    # Получение данных с пагинацией
-    data_query = (
-        select(Dispute)
-        .options(
+    total, disputes = await get_paginated_list(
+        db=db,
+        model=Dispute,
+        page=page,
+        limit=limit,
+        status=status,
+        status_field="status",
+        search=search,
+        search_fields=search_fields,
+        joins=[
+            (Order, Dispute.order_id == Order.id),
+            (Shop, Order.shop_id == Shop.id),
+            (Courier, Order.courier_id == Courier.id),
+        ],
+        eager_load_options=[
             selectinload(Dispute.order).selectinload(Order.shop),
             selectinload(Dispute.order).selectinload(Order.courier),
             selectinload(Dispute.opened_by_user),
-        )
-        .order_by(Dispute.created_at.desc())
+        ],
+        sort_by_field="created_at",
+        sort_desc=True,
     )
-    if filters:
-        data_query = data_query.where(*filters)
 
-    data_query = data_query.offset((page - 1) * limit).limit(limit)
-
-    result = await db.execute(data_query)
-    disputes = result.scalars().all()
-
-    response_items = [
-        DisputeCardResponse(
-            id=dispute.id,
-            order_id=dispute.order_id,
-            shop_id=dispute.order.shop_id,
-            shop_name=dispute.order.shop.name if dispute.order.shop else None,
-            courier_id=dispute.order.courier_id,
-            courier_name=dispute.order.courier.full_name if dispute.order.courier else None,
-            status=dispute.status,
-            created_by_role=dispute.opened_by_user.role if dispute.opened_by_user else UserRole.GUEST,
-            description=dispute.description,
-            created_at=dispute.created_at,
-            resolved_at=dispute.resolved_at,
-        )
-        for dispute in disputes
-    ]
+    response_items = [DisputeCardResponse.from_dispute(d) for d in disputes]
 
     return PaginatedResponse(total=total, items=response_items)

@@ -1,5 +1,15 @@
-# Настройки валидации
-from backend.src.common.enums import UserRole
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
+
+from backend.src.auth.dependencies import User
+from backend.src.common.enums import OrderStatus, UserRole
+from backend.src.models.order import Order
+from backend.src.schemas.order import (
+    OrderResponseForAdmin,
+    OrderResponseForCourier,
+    OrderResponseForShop,
+)
+from pydantic import BaseModel, Field
 
 VALIDATION = {
     "min_order_price": 100,  # минимальная цена заказа в тенге
@@ -10,16 +20,41 @@ VALIDATION = {
 }
 
 # Комиссии и платежи
-COMMISSION = {
+COMMISSION: dict[str, Any] = {
     "platform_fee_percent": 10,  # комиссия платформы в процентах
     "min_commission": 50,  # минимальная комиссия в тенге
     "payment_methods": ["cash", "card", "kaspi"],
 }
 
 
-ALL_ROLES_LIST = [UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER]
+AllowedRoles = Literal[UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER]
 
 
 MIN_TELEGRAM_ID = 1
 MAX_TELEGRAM_ID = 2147483647
 SECONDS_IN_MINUTE = 60
+
+
+type OrderResponseSchema = OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier
+
+type UpdatePayload = dict[str, Any]
+
+UpdatePermissionCheck = Callable[[User, Order, UpdatePayload], Awaitable[None]]
+RetrievePermissionCheck = Callable[[User, Order], Awaitable[None]]
+
+
+COURIER_ALLOWED_FIELDS = {"status", "courier_notes", "completion_notes"}
+
+FINAL_STATUSES = {OrderStatus.COMPLETED, OrderStatus.CANCELED}
+
+
+RESPONSE_SCHEMAS: dict[UserRole, type[OrderResponseSchema]] = {
+    UserRole.ADMIN: OrderResponseForAdmin,
+    UserRole.SHOP: OrderResponseForShop,
+    UserRole.COURIER: OrderResponseForCourier,
+}
+
+
+class PaginatedResponse[T](BaseModel):
+    total: int = Field(..., description="Общее количество элементов")
+    items: list[T] = Field(..., description="Список элементов на текущей странице")

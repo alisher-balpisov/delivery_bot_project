@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import dis
 import html
 from datetime import datetime
 
 from backend.src.common.enums import DisputeStatus, UserRole
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from backend.src.models.dispute import Dispute
+from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 
 class DisputeBase(BaseModel):
@@ -132,14 +135,37 @@ class DisputeCardResponse(BaseModel):
 
     id: int
     order_id: int
-    shop_id: int
-    shop_name: str | None = None
-    courier_id: int | None = None
-    courier_name: str | None = None
+    shop_id: int | None
+    shop_name: str | None
+    courier_id: int
+    courier_name: str | None
     status: DisputeStatus
-    created_by_role: UserRole
+    opened_by_role: UserRole
+    opened_by_user_id: int
     description: str
     created_at: datetime
     resolved_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_dispute(cls, dispute: Dispute) -> DisputeCardResponse:
+        """Создаёт объект ответа на основе модели Dispute."""
+
+        if not dispute.order.courier_id:
+            raise ValueError("Courier not found")
+
+        return cls(
+            id=dispute.id,
+            order_id=dispute.order_id,
+            shop_id=dispute.order.shop_id,
+            shop_name=getattr(dispute.order.shop, "name", None),
+            courier_id=dispute.order.courier_id,
+            courier_name=getattr(dispute.order.courier, "full_name", None),
+            status=dispute.status,
+            opened_by_role=dispute.opened_by_user.role,
+            opened_by_user_id=dispute.opened_by_user_id,
+            description=dispute.description,
+            created_at=dispute.created_at,
+            resolved_at=dispute.resolved_at,
+        )

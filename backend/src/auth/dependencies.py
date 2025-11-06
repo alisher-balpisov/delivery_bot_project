@@ -1,4 +1,5 @@
-from typing import Annotated
+from collections.abc import Callable, Coroutine
+from typing import Annotated, Any, cast
 
 from backend.src.auth import exceptions
 from backend.src.common.enums import UserRole, UserStatus
@@ -53,14 +54,13 @@ async def _get_current_user(db: DbSession, token: str = Depends(oauth2_scheme)) 
         logger.warning(f"Заблокированный пользователь {user.id} попытался получить доступ")
         raise exceptions.ACCOUNT_BLOCKED_EXCEPTION
 
-    logger.debug(
-        f"Пользователь {user} аутентифицирован через JWT, "
-        f"роль: {user.role.value}"
-    )
+    logger.debug(f"Пользователь {user} аутентифицирован через JWT")
     return user
 
 
-def _require_role(allowed_roles: UserRole | list[UserRole] | tuple[UserRole, ...]):
+def _require_role(
+    allowed_roles: UserRole | list[UserRole] | tuple[UserRole, ...],
+) -> Callable[..., Coroutine[Any, Any, User]]:
     """
     Проверяет, что роль пользователя соответствует одной из разрешённых.
     """
@@ -85,7 +85,25 @@ def _require_role(allowed_roles: UserRole | list[UserRole] | tuple[UserRole, ...
                 detail=f"Недостаточно прав доступа. Требуется одна из ролей: {[r.value for r in allowed_roles]}",
             )
 
-        logger.debug(f"Проверка роли пройдена: пользователь {user} имеет роль {user.role.value}")
+        if UserRole.SHOP in allowed_roles and user.role == UserRole.SHOP:
+            if not user.shop:
+                logger.warning(f"Пользователь {user} с ролью SHOP не имеет связанного магазина")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Недостаточно прав доступа: отсутствует связанный магазин.",
+                )
+            user.shop = cast(Any, user.shop)
+
+        if UserRole.COURIER in allowed_roles and user.role == UserRole.COURIER:
+            if not user.courier:
+                logger.warning(f"Пользователь {user} с ролью COURIER не имеет связанного курьера")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Недостаточно прав доступа: отсутствует связанный курьер.",
+                )
+            user.courier = cast(Any, user.courier)
+
+        logger.debug(f"Проверка роли пройдена для пользователь {user}")
         return user
 
     return _role_dependency

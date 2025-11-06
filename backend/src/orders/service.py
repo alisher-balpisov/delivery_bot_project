@@ -1,51 +1,64 @@
-import select
 from datetime import UTC, datetime
-from tkinter import NO
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from backend.src.common.enums import OrderStatus, OrderType, UserRole
+from backend.src.common.constants import (
+    COURIER_ALLOWED_FIELDS,
+    FINAL_STATUSES,
+    RESPONSE_SCHEMAS,
+    RetrievePermissionCheck,
+    UpdatePayload,
+    UpdatePermissionCheck,
+)
+from backend.src.common.enums import OrderStatus, UserRole
 from backend.src.core.logging import get_logger
-from backend.src.models import Order
 from backend.src.models.courier import Courier
 from backend.src.models.order import Order
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
-from backend.src.orders.exceptions import NO_ACCESS_EXCEPTION
+from backend.src.orders.exceptions import (
+    OrderAccessForbiddenException,
+    OrderNotFoundException,
+    OrderUpdateForbiddenException,
+)
 from backend.src.schemas.order import (
     OrderCreate,
+    OrderCreateRequest,
     OrderResponse,
     OrderResponseForAdmin,
     OrderResponseForCourier,
     OrderResponseForShop,
     OrderUpdate,
 )
+from backend.src.users.exceptions import UserNotFoundException
 
 logger = get_logger(__name__)
 
 
-async def create_order(db: AsyncSession, order_data: OrderCreate) -> Order:
-    """
-    Создание нового заказа.
+async def create_order(
+    db: AsyncSession, order_in: OrderCreateRequest, shop_id: int
+) -> OrderResponse:
+    """Создаёт заказ для магазина и возвращает Pydantic-схему ответа."""
 
-    Args:
-        db: Сессия базы данных
-        order_data: Данные заказа
+    order_data = OrderCreate(**order_in.model_dump(), shop_id=shop_id)
+    await _ensure_courier_exists(db, order_data.courier_id)
 
-    Returns:
-        OrderResponse: Созданный заказ
+    order = _build_order(order_data)
+    db.add(order)
+    await db.flush()
+    await db.refresh(order)
 
-    Raises:
-        ValueError: Если данные невалидны
-    """
-    logger.debug(
-        f"Создание заказа для магазина shop_id={order_data.shop_id}, order_type={order_data.order_type}"
-    )
+    logger.info(f"Заказ {order} создан для магазина {order.shop}")
+    return OrderResponse.model_validate(order)
 
-    order = Order(
+
+def _build_order(order_data: OrderCreate) -> Order:
+    """Создаёт ORM-объект заказа из входных данных."""
+
+    return Order(
         shop_id=order_data.shop_id,
         courier_id=order_data.courier_id,
         status=OrderStatus.PENDING,
@@ -59,131 +72,240 @@ async def create_order(db: AsyncSession, order_data: OrderCreate) -> Order:
         description=order_data.description,
     )
 
-    async with db.begin():
-        db.add(order)
-        await db.flush()
-        await db.refresh(order)
 
-    logger.info(f"Заказ создан успешно: id={order.id}, магазин={order.shop}")
-    return order
+async def _ensure_courier_exists(db: AsyncSession, courier_id: int | None) -> None:
+    """Проверяет существование курьера в базе данных."""
+    if courier_id is None:
+        return
+
+    courier = await db.get(Courier, courier_id)
+    if courier is None:
+        logger.error(f"Курьер {courier_id=} не найден при создании заказа")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Указанный курьер не найден: {courier_id=}",
+        )
 
 
-async def get_order_by_id(db: AsyncSession, order_id: int) -> OrderResponse | None:
-    """
-    Получение заказа по ID.
+async def _ensure_update_permissions(
+    user: User, order: Order, update_payload: UpdatePayload
+) -> None:
+    """Проверяет права пользователя на обновление заказа."""
+    check = UPDATE_PERMISSION_CHECKS.get(user.role)
+    if check is None:
+        raise OrderUpdateForbiddenException()
+    await check(user, order, update_payload)
 
-    Args:
-        db: Сессия базы данных
-        order_id: ID заказа
 
-    Returns:
-        OrderResponse или None если заказ не найден
-    """
-    order = await db.get(Order, order_id)
-    return OrderResponse.model_validate(order) if order else None
+async def _check_admin_update(_: User, order: Order, __: UpdatePayload) -> None:
+    """Админ может обновлять любые заказы без ограничений."""
+    logger.info(f"Админ обновляет заказ {order}")
+
+
+async def _check_shop_update(user: User, order: Order, update_payload: UpdatePayload) -> None:
+    """Проверяет права магазина на обновление заказа."""
+    if not user.shop:
+        logger.warning(f"Пользователь {user} без магазина обновляет заказ {order}")
+        raise OrderUpdateForbiddenException()
+
+    if order.shop_id != user.shop.id:
+        logger.warning(f"Магазин {user.shop} попытался обновить чужой заказ {order}")
+        raise OrderUpdateForbiddenException()
+
+    # Магазин может изменить статус только на CANCELED. Другие поля изменять нельзя.
+    update_keys = set(update_payload.keys())
+    allowed_keys = {"status"}
+
+    if not update_keys.issubset(allowed_keys):
+        disallowed_fields = list(update_keys - allowed_keys)
+        logger.warning(
+            f"Магазин {user.shop} попытался обновить запрещённые поля: {disallowed_fields}"
+        )
+        raise OrderUpdateForbiddenException("Магазин может изменять только статус заказа.")
+
+    status_value = update_payload.get("status")
+    if status_value and status_value != OrderStatus.CANCELED:
+        logger.warning(
+            f"Магазин {user.shop} попытался изменить статус заказа {order} на {status_value}"
+        )
+        raise OrderUpdateForbiddenException("Магазин может только отменить заказ.")
+
+
+async def _check_courier_update(user: User, order: Order, update_payload: UpdatePayload) -> None:
+    """Проверяет права курьера на обновление заказа."""
+    if not user.courier:
+        logger.warning(f"Пользователь {user} без профиля курьера обновляет заказ {order}")
+        raise OrderUpdateForbiddenException()
+
+    if order.courier_id != user.courier.id:
+        logger.warning(f"Курьер {user.courier} попытался обновить чужой заказ {order}")
+        raise OrderUpdateForbiddenException()
+
+    # Курьер может изменять только разрешённые поля
+    if not set(update_payload).issubset(COURIER_ALLOWED_FIELDS):
+        logger.warning(
+            f"Курьер {user.courier} попытался обновить запрещённые поля {list(update_payload)}"
+        )
+        raise OrderUpdateForbiddenException()
+
+
+def _apply_updates(order: Order, update_payload: UpdatePayload) -> None:
+    """Применяет обновления к заказу."""
+    for field, value in update_payload.items():
+        setattr(order, field, value)
+
+
+def _handle_status_side_effects(order: Order, previous_status: OrderStatus, user: User) -> None:
+    """Обрабатывает побочные эффекты при изменении статуса заказа."""
+    if order.status == previous_status:
+        return
+
+    if order.status == OrderStatus.COMPLETED:
+        order.completed_at = datetime.now(UTC)
+
+    logger.info(
+        f"Статус заказа {order} изменён с {previous_status.value} на {order.status.value} пользователем {user}"
+    )
+
+
+def _ensure_order_is_modifiable(order: Order) -> None:
+    """Проверяет, что заказ можно модифицировать (не в финальном статусе)."""
+    if order.status in FINAL_STATUSES:
+        logger.warning(f"Попытка изменить заказ {order} в финальном статусе {order.status.value}")
+        raise OrderUpdateForbiddenException(
+            f"Невозможно изменить заказ в статусе {order.status.value}"
+        )
 
 
 async def update_order(
     db: AsyncSession, order_id: int, update_data: OrderUpdate, current_user: User
 ) -> OrderResponse:
-    """
-    Обновление заказа с проверкой прав доступа.
+    """Обновляет заказ с учётом роли пользователя."""
 
-    Args:
-        db: Сессия базы данных
-        order_id: ID заказа
-        update_data: Данные для обновления
-        current_user: Текущий пользователь
+    order = await db.get(Order, order_id)
+    if order is None:
+        raise OrderNotFoundException(order_id)
 
-    Returns:
-        OrderResponse: Обновленный заказ
+    update_payload = update_data.model_dump(exclude_unset=True)
+    if not update_payload:
+        return OrderResponse.model_validate(order)
 
-    Raises:
-        HTTPException: Если заказ не найден или нет прав доступа
-    """
-    async with db.begin():
-        order = await db.get(Order, order_id)
-        if not order:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+    _ensure_order_is_modifiable(order)
 
-        # Проверка прав доступа
-        user_role = current_user.role
-        update_dict = update_data.model_dump(exclude_unset=True)
+    await _ensure_update_permissions(current_user, order, update_payload)
 
-        if user_role == UserRole.ADMIN:
-            logger.info(f"Админ {current_user.id} обновляет заказ {order_id}")
-        elif user_role == UserRole.SHOP:
-            if not current_user.shop or order.shop_id != current_user.shop.id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Нет доступа к этому заказу",
-                )
-            # Магазин может только отменить заказ
-            if "status" in update_dict and update_dict["status"] != OrderStatus.CANCELED:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Магазин может только отменить заказ",
-                )
-        elif user_role == UserRole.COURIER:
-            if not current_user.courier or order.courier_id != current_user.courier.id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Заказ не назначен вам",
-                )
-            # Курьер может изменять только статус и заметки
-            allowed_fields = {"status", "courier_notes", "completion_notes"}
-            if not set(update_dict.keys()).issubset(allowed_fields):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Вы можете изменять только статус и заметки",
-                )
-        else:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    new_courier_id = update_payload.get("courier_id")
+    if new_courier_id is not None:
+        await _ensure_courier_exists(db, new_courier_id)
 
-        # Обновление полей
-        old_status = order.status
-        for key, value in update_dict.items():
-            setattr(order, key, value)
+    previous_status = order.status
+    _apply_updates(order, update_payload)
+    _handle_status_side_effects(order, previous_status, current_user)
 
-        # Обновление временных меток при изменении статуса
-        now = datetime.now(UTC)
-        new_status = order.status
-
-        if new_status != old_status:
-            if new_status == OrderStatus.COMPLETED:
-                order.completed_at = now
-            logger.info(
-                f"Статус заказа {order_id} изменён с {old_status.value} на {new_status.value} "
-                f"пользователем {current_user.id}"
-            )
-
+    await db.flush()
     await db.refresh(order)
+
     return OrderResponse.model_validate(order)
 
 
+async def _check_shop_retrieve_permissions(user: User, order: Order) -> None:
+    """Проверяет права магазина на просмотр заказа."""
+    if not user.shop:
+        logger.warning(f"Пользователь {user} не имеет доступа к заказу {order}")
+        raise OrderAccessForbiddenException()
+
+    if order.shop_id != user.shop.id:
+        logger.warning(f"Магазин {user.shop} не имеет доступа к заказу {order}")
+        raise OrderAccessForbiddenException()
+
+
+async def _check_courier_retrieve_permissions(user: User, order: Order) -> None:
+    """Проверяет права курьера на просмотр заказа."""
+    if not user.courier:
+        logger.warning(f"Пользователь {user} без профиля курьера пытается получить заказ {order}")
+        raise OrderAccessForbiddenException()
+
+    if order.courier_id is None or order.courier_id != user.courier.id:
+        logger.warning(f"Курьер {user.courier} не имеет доступа к заказу {order}")
+        raise OrderAccessForbiddenException()
+
+
+async def _check_admin_retrieve_permissions(user: User, order: Order) -> None:
+    """Админ имеет доступ ко всем заказам."""
+    logger.debug(f"Админ {user} запрашивает заказ {order}")
+
+
+RETRIEVE_PERMISSION_CHECKS: dict[UserRole, RetrievePermissionCheck] = {
+    UserRole.ADMIN: _check_admin_retrieve_permissions,
+    UserRole.SHOP: _check_shop_retrieve_permissions,
+    UserRole.COURIER: _check_courier_retrieve_permissions,
+}
+
+
+UPDATE_PERMISSION_CHECKS: dict[UserRole, UpdatePermissionCheck] = {
+    UserRole.ADMIN: _check_admin_update,
+    UserRole.SHOP: _check_shop_update,
+    UserRole.COURIER: _check_courier_update,
+}
+
+
 async def get_order(
-    db: AsyncSession, user_id: int, order_id: int, user_role: UserRole
+    db: AsyncSession, user_id: int, order_id: int
 ) -> OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier:
     """
-    Возвращает информацию о заказе order_id, разную в зависимости от роли user_role пользователя user_id.
+    Возвращает информацию о заказе, адаптированную под роль пользователя.
 
-    Args:
-        db: Сессия базы данных
-        order_id: ID заказа
-        user_id: ID пользователя
-        user_role: Роль пользователя
-
-    Returns:
-        OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier: Информация о заказе в зависимости от роли пользователя
-
-    Raises:
-        HTTPException: Если заказ не найден или нет прав доступа
+    Оптимизирует запросы к БД, извлекает пользователя и заказ за один раз,
+    использует стратегию на основе словаря для проверки прав и выбора схемы ответа.
     """
-    logger.info(
-        f"Получение заказа order_id={order_id} для пользователя user_id={user_id} "
-        f"с ролью user_role={user_role}"
-    )
+    user = await _fetch_user(db, user_id)
+    order = await _fetch_order(db, order_id)
 
+    permission_check = RETRIEVE_PERMISSION_CHECKS.get(user.role)
+    response_schema = RESPONSE_SCHEMAS.get(user.role)
+
+    if not permission_check or not response_schema:
+        logger.warning(f"Пользователь {user} не имеет прав на просмотр заказов")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав доступа",
+        )
+
+    await permission_check(user, order)
+    return response_schema.model_validate(order)
+
+
+async def _fetch_user(db: AsyncSession, user_id: int) -> User:
+    """
+    Загружает пользователя с предзагрузкой связанных данных.
+
+    Предзагружает shop и courier, чтобы избежать N+1 запросов
+    и проблем с lazy loading в async контексте.
+    """
+    stmt = (
+        select(User)
+        .where(User.id == user_id)
+        .options(
+            joinedload(User.shop),
+            joinedload(User.courier),
+        )
+    )
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise UserNotFoundException(user_id)
+
+    return user
+
+
+async def _fetch_order(db: AsyncSession, order_id: int) -> Order:
+    """
+    Загружает заказ с предзагрузкой всех необходимых связанных данных.
+
+    Использует joinedload для оптимизации запросов и предотвращения
+    проблем с lazy loading в async контексте.
+    """
     stmt = (
         select(Order)
         .where(Order.id == order_id)
@@ -193,28 +315,10 @@ async def get_order(
             joinedload(Order.history),
         )
     )
-
     result = await db.execute(stmt)
     order = result.scalar_one_or_none()
 
-    if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+    if order is None:
+        raise OrderNotFoundException(order_id)
 
-    if user_role == UserRole.ADMIN:
-        logger.debug(f"Админ {user_id} получает заказ {order_id}")
-        return OrderResponseForAdmin.model_validate(order)
-
-    elif user_role == UserRole.SHOP:
-        if order.shop.user_id != user_id:
-            raise HTTPException(NO_ACCESS_EXCEPTION)
-        return OrderResponseForShop.model_validate(order)
-
-    elif user_role == UserRole.COURIER:
-        if order.courier.user_id != user_id:
-            raise HTTPException(NO_ACCESS_EXCEPTION)
-        return OrderResponseForCourier.model_validate(order)
-
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Недостаточно прав доступа",
-    )
+    return order

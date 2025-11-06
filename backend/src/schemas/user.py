@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 
 from backend.src.common.enums import UserRole, UserStatus
-from backend.src.common.utils import Phone
+from backend.src.common.utils.validaters import Phone
 from backend.src.core.validators import validate_no_malicious_content, validate_string_length
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 

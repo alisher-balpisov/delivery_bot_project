@@ -18,7 +18,7 @@ router = APIRouter()
     summary="Создать новый спор",
     description="Открывает новый спор по заказу. Доступно только магазинам и курьерам.",
 )
-async def create_new_dispute(
+async def create_dispute(
     dispute_in: DisputeCreate,
     current_user: RequireShopOrCourier,
     db: DbSession,
@@ -45,7 +45,7 @@ async def create_new_dispute(
     summary="Получить спор по ID",
     description="Возвращает детали спора. Доступ только у участников спора и админов.",
 )
-async def get_dispute_details(
+async def get_dispute(
     dispute_id: int,
     current_user: RequireAllRoles,
     db: DbSession,
@@ -60,7 +60,7 @@ async def get_dispute_details(
     """
     logger.debug(f"User {current_user.id} ({current_user.role}) requesting dispute {dispute_id}")
 
-    dispute = await service.get_dispute_by_id(db=db, dispute_id=dispute_id)
+    dispute = await service.get_dispute(db=db, dispute_id=dispute_id)
     if not dispute:
         logger.warning(f"Dispute {dispute_id} not found")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Спор не найден")

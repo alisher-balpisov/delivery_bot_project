@@ -48,6 +48,7 @@ uv.lock
 
 # файлы нейросетей
 GEMINI.md
+.roo
 
 # файлы ide
 .idea

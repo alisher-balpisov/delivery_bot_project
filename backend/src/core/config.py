@@ -1,6 +1,6 @@
 import string
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,14 +36,12 @@ class DatabaseConfig(BaseModel):
 
     # --- Настройки сессии SQLAlchemy ---
     # Не использовать, если работаете с `asyncio`. Управляется вручную.
-    auto_commit: bool = False
-    # Не использовать, если работаете с `asyncio`. Управляется вручную.
     auto_flush: bool = False
     # Объекты не становятся недействительными (expired) после коммита сессии.
     # Позволяет продолжать использовать объекты после того, как транзакция завершена.
     expire_on_commit: bool = False
 
-    def engine_kwargs(self) -> dict[str, any]:
+    def engine_kwargs(self) -> dict[str, Any]:
         """
         Собирает словарь аргументов для функции `create_async_engine()`.
 
@@ -60,7 +58,7 @@ class DatabaseConfig(BaseModel):
             "pool_timeout": self.pool_timeout,
         }
 
-    def session_kwargs(self) -> dict[str, any]:
+    def session_kwargs(self) -> dict[str, Any]:
         """
         Собирает словарь аргументов для `sessionmaker()` или `async_sessionmaker()`.
 
@@ -68,7 +66,6 @@ class DatabaseConfig(BaseModel):
             Словарь с параметрами для настройки сессии SQLAlchemy.
         """
         return {
-            "autocommit": self.auto_commit,
             "autoflush": self.auto_flush,
             "expire_on_commit": self.expire_on_commit,
         }
@@ -97,7 +94,7 @@ class MiddlewareConfig(BaseModel):
     # Разрешенные HTTP-заголовки.
     allow_headers: list[str] = ["*"]
 
-    def cors_kwargs(self) -> dict[str, any]:
+    def cors_kwargs(self) -> dict[str, Any]:
         """
         Собирает словарь аргументов для `CORSMiddleware`.
 
@@ -177,7 +174,7 @@ class LoggingConfig(BaseModel):
     # Уровень логирования для библиотеки aiogram.
     aiogram_level: str = "INFO"
 
-    def handler_kwargs(self) -> dict[str, any]:
+    def handler_kwargs(self) -> dict[str, Any]:
         """
         Собирает словарь аргументов для `RotatingFileHandler`.
 
@@ -229,7 +226,7 @@ class AdminConfig(BaseModel):
 
     @field_validator("super_admin_telegram_ids", mode="before")
     @classmethod
-    def parse_admin_ids(cls, v: any) -> list[int]:
+    def parse_admin_ids(cls, v: Any) -> list[int]:
         """
         Позволяет задавать список ID админов строкой через запятую
         (удобно для переменных окружения).
@@ -269,15 +266,15 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     # --- Вложенные конфигурационные блоки ---
-    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    auth: AuthConfig = Field(default_factory=AuthConfig)
-    middleware: MiddlewareConfig = Field(default_factory=MiddlewareConfig)
-    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)  # type: ignore
+    auth: AuthConfig = Field(default_factory=AuthConfig)  # type: ignore
+    middleware: MiddlewareConfig = Field(default_factory=MiddlewareConfig)  # type: ignore
+    telegram: TelegramConfig = Field(default_factory=TelegramConfig)  # type: ignore
     file_storage: FileStorageConfig = Field(default_factory=FileStorageConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    business: BusinessConfig = Field(default_factory=BusinessConfig)
+    business: BusinessConfig = Field(default_factory=BusinessConfig)  # type: ignore
     admin: AdminConfig = Field(default_factory=AdminConfig)
-    jwt: JwtConfig = Field(default_factory=JwtConfig)
+    jwt: JwtConfig = Field(default_factory=JwtConfig)  # type: ignore
 
     # --- Настройки API (FastAPI) ---
     api_host: str = "localhost"

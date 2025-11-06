@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.src.common.enums import DisputeStatus
+from backend.src.common.enums import DisputeStatus, UserRole
 from backend.src.core.logging import get_logger
 from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
@@ -26,8 +26,8 @@ async def create_dispute(
     """
     logger.info(f"User {initiator.id} creating dispute for order {dispute_data.order_id}")
 
-    # Получаем заказ
-    order = await db.get(Order, dispute_data.order_id)
+    result = await db.execute(select(Order).where(Order.id == dispute_data.order_id))
+    order = result.scalar_one_or_none()
     if not order:
         logger.warning(f"Order {dispute_data.order_id} not found.")
         raise ValueError("Заказ не найден")
@@ -40,9 +40,6 @@ async def create_dispute(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Вы можете открывать споры только по своим заказам",
         )
-
-    if not order.courier_id:
-        raise ValueError("Невозможно создать спор для заказа без курьера")
 
     # Проверка на существующий спор по этому заказу
     existing_dispute = await db.execute(
@@ -85,7 +82,7 @@ async def create_dispute(
         raise
 
 
-async def get_dispute_by_id(db: AsyncSession, dispute_id: int) -> DisputeResponse | None:
+async def get_dispute(db: AsyncSession, dispute_id: int) -> DisputeResponse | None:
     """Получает спор по его ID с полной информацией."""
     result = await db.execute(
         select(Dispute)
@@ -103,6 +100,11 @@ async def get_dispute_by_id(db: AsyncSession, dispute_id: int) -> DisputeRespons
 
     # Получаем роль создателя спора
     created_by_role = dispute.opened_by_user.role if dispute.opened_by_user else UserRole.GUEST
+
+    # Проверка целостности данных - спор должен иметь курьера
+    if not dispute.order.courier_id:
+        logger.error(f"Data integrity error: Dispute {dispute_id} has no courier_id")
+        raise ValueError("Ошибка данных: спор существует для заказа без курьера")
 
     return DisputeResponse(
         id=dispute.id,
@@ -144,7 +146,8 @@ async def update_dispute(
         # admin_notes не существует в модели, игнорируем его
     }
 
-    for key, value in update_data_dict.items():
+    for key in update_data_dict:
+        value = update_data_dict[key]
         if key == "admin_notes":
             continue  # Это поле не существует в модели
 
@@ -157,6 +160,11 @@ async def update_dispute(
         await db.refresh(dispute)
 
         created_by_role = dispute.opened_by_user.role if dispute.opened_by_user else UserRole.GUEST
+
+        # Проверка целостности данных - спор должен иметь курьера
+        if not dispute.order.courier_id:
+            logger.error(f"Data integrity error: Dispute {dispute_id} has no courier_id")
+            raise ValueError("Ошибка данных: спор существует для заказа без курьера")
 
         return DisputeResponse(
             id=dispute.id,

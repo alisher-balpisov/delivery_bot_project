@@ -1,10 +1,13 @@
 from datetime import UTC, datetime, timedelta
 
 from backend.src.auth import exceptions
+from backend.src.common.constants import MAX_TELEGRAM_ID, MIN_TELEGRAM_ID
 from backend.src.common.enums import UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
+from backend.src.models.courier import Courier
 from backend.src.models.registration_code import RegistrationCode
+from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from backend.src.schemas.auth import AuthSuccessResponse, UserInfo
 from fastapi import HTTPException, status
@@ -40,16 +43,15 @@ def create_access_token(user: User) -> str:
             detail="Недостаточно прав доступа.",
         )
 
-    to_encode = {
+    to_encode: dict[str, str | int] = {
         "sub": str(user.id),
         "role": user.role.value,
-        "iat": datetime.now(UTC),
+        "iat": int(datetime.now(UTC).timestamp()),
         "tid": str(user.telegram_id),
     }
 
     expire = datetime.now(UTC) + timedelta(minutes=settings.jwt.access_token_expire_minutes)
-    to_encode["exp"] = expire
-
+    to_encode["exp"] = int(expire.timestamp())
     try:
         return jwt.encode(
             to_encode,
@@ -64,18 +66,11 @@ def create_access_token(user: User) -> str:
 def _validate_input_data(telegram_id: int, code: str) -> None:
     """Валидирует входные данные."""
     _validate_telegram_id(telegram_id)
-    ic(
-        telegram_id,
-        code,
-        not isinstance(code, str),
-        not code.strip(),
-        len(code) != settings.auth.code_length,
-    )
-    if not isinstance(code, str) or not code.strip() or len(code) != settings.auth.code_length:
+    if not code.strip() or len(code) != settings.auth.code_length:
         raise ValueError("Некорректный код регистрации")
 
 
-def _mask_sensitive_data(code: str) -> str:
+def mask_sensitive_data(code: str) -> str:
     """Маскирует чувствительные данные для логирования."""
     if len(code) <= 2:
         return "*" * len(code)
@@ -125,8 +120,10 @@ async def _find_existing_user(db: AsyncSession, telegram_id: int) -> User | None
 
 def _validate_telegram_id(telegram_id: int) -> None:
     """Валидирует Telegram ID."""
-    if not isinstance(telegram_id, int):
-        raise ValueError("Некорректный Telegram ID")
+    if not (MIN_TELEGRAM_ID <= telegram_id <= MAX_TELEGRAM_ID):
+        raise exceptions.InvalidCredentialsError(
+            f"Telegram ID должен быть в диапазоне от {MIN_TELEGRAM_ID} до {MAX_TELEGRAM_ID}"
+        )
 
 
 async def _consume_registration_code(db: AsyncSession, code: str, user_id: int) -> UserRole | None:
@@ -198,6 +195,20 @@ async def _activate_user(user: User, username: str | None, role: UserRole) -> No
     await _clear_login_attempts(user)
 
 
+async def _create_profile_if_needed(db: AsyncSession, user: User) -> None:
+    """Создает профиль магазина или курьера, если он отсутствует."""
+    if user.role == UserRole.SHOP:
+        has_shop = await db.scalar(select(Shop).where(Shop.user_id == user.id))
+        if not has_shop:
+            db.add(Shop(user_id=user.id))
+            logger.info("Создан профиль магазина для пользователя %s", user.id)
+    elif user.role == UserRole.COURIER:
+        has_courier = await db.scalar(select(Courier).where(Courier.user_id == user.id))
+        if not has_courier:
+            db.add(Courier(user_id=user.id))
+            logger.info("Создан профиль курьера для пользователя %s", user.id)
+
+
 async def _finalize_auth(user: User) -> AuthSuccessResponse:
     """Завершает процесс аутентификации, создавая токен и ответ."""
     role_name = getattr(user.role, "value", str(user.role))
@@ -221,7 +232,7 @@ async def auth_by_code(
     Основная оркестрирующая функция.
     """
     _validate_input_data(telegram_id, code)
-    masked_code = _mask_sensitive_data(code)
+    masked_code = mask_sensitive_data(code)
     logger.info(f"Попытка аутентификации telegram_id={telegram_id} с кодом {masked_code}")
 
     try:
@@ -234,6 +245,7 @@ async def auth_by_code(
             role = await _try_consume_code(db, user, code, masked_code)
 
             await _activate_user(user, username, role)
+            await _create_profile_if_needed(db, user)
 
         await db.refresh(user)
         return await _finalize_auth(user)
