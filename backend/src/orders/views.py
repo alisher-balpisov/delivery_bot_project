@@ -1,6 +1,10 @@
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi import status as status_code
 
 from backend.src.auth.dependencies import RequireAllRoles, RequireCourier, RequireShop
+from backend.src.common.constants import PaginatedResponse
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 
@@ -9,10 +13,15 @@ from .exceptions import OrderException
 from .schemas import (
     OrderCompleteRequest,
     OrderCreateRequest,
+    OrderListFilters,
+    OrderListItemForAdmin,
+    OrderListItemForCourier,
+    OrderListItemForShop,
     OrderResponse,
     OrderResponseForAdmin,
     OrderResponseForCourier,
     OrderResponseForShop,
+    OrderStatus,
     OrderUpdate,
 )
 
@@ -21,7 +30,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=OrderResponse, status_code=status_code.HTTP_201_CREATED)
 async def create_order(
     order_in: OrderCreateRequest,
     current_user: RequireShop,
@@ -60,7 +69,8 @@ async def create_order(
     except ValueError as e:
         logger.warning(f"Ошибка валидации при создании заказа магазином {current_user.shop}: {e!s}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Некорректные данные заказа: {e!s}"
+            status_code=status_code.HTTP_400_BAD_REQUEST,
+            detail=f"Некорректные данные заказа: {e!s}",
         )
     except HTTPException:
         raise
@@ -70,7 +80,7 @@ async def create_order(
             exc_info=True,
         )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Внутренняя ошибка сервера при создании заказа",
         )
 
@@ -125,7 +135,7 @@ async def update_order(
             exc_info=True,
         )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Внутренняя ошибка сервера при обновлении заказа",
         )
 
@@ -187,7 +197,7 @@ async def complete_order(
             exc_info=True,
         )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Внутренняя ошибка сервера при завершении заказа",
         )
 
@@ -242,5 +252,108 @@ async def get_order_endpoint(
     except Exception as e:
         logger.error(f"Ошибка при получении заказа {order_id=}: {e!s}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось получить заказ"
+            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось получить заказ",
+        )
+
+
+@router.get(
+    "/history",
+    response_model=PaginatedResponse[
+        OrderListItemForAdmin | OrderListItemForShop | OrderListItemForCourier
+    ],
+)
+async def get_orders_history(
+    current_user: RequireAllRoles,
+    db: DbSession,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    status: OrderStatus | None = None,
+    shop_id: int | None = None,
+    courier_id: int | None = None,
+    current: bool | None = None,
+):
+    """
+    Получение истории заказов с пагинацией и фильтрами.
+
+    **Права доступа по ролям**:
+
+    **Магазин**:
+    - Видит только свои заказы
+    - Доступные фильтры: `status`, `current`
+    - Не может использовать `shop_id`, `courier_id`
+
+    **Курьер**:
+    - Видит только назначенные ему заказы
+    - Доступные фильтры: `status`, `current`
+    - Не может использовать `shop_id`, `courier_id`
+
+    **Администратор**:
+    - Видит все заказы
+    - Доступные фильтры: `status`, `shop_id`, `courier_id`, `current`
+
+    **Параметры запроса**:
+    - `page`: Номер страницы (по умолчанию 1)
+    - `limit`: Количество элементов на странице (1-100, по умолчанию 20)
+    - `status`: Фильтр по статусу заказа
+    - `shop_id`: Фильтр по ID магазина (только для админа)
+    - `courier_id`: Фильтр по ID курьера (только для админа)
+    - `current`: true - только активные заказы, false - только завершённые
+
+    **Примеры запросов**:
+    - `/orders/history` - первая страница всех доступных заказов
+    - `/orders/history?page=2&limit=50` - вторая страница по 50 заказов
+    - `/orders/history?status=completed` - только завершённые заказы
+    - `/orders/history?current=true` - только активные заказы
+    - `/orders/history?shop_id=7` - заказы конкретного магазина (только админ)
+    - `/orders/history?courier_id=12` - заказы конкретного курьера (только админ)
+
+    **Возвращаемые коды**:
+    - `200`: список заказов успешно получен
+    - `401`: пользователь не авторизован
+    - `403`: попытка использовать запрещённый фильтр
+    - `500`: внутренняя ошибка сервера
+    """
+    logger.info(
+        f"Запрос истории заказов от пользователя {current_user}: "
+        f"{page=}, {limit=}, {status=}, {shop_id=}, {courier_id=}, {current=}"
+    )
+
+    try:
+        filters = OrderListFilters(
+            page=page,
+            limit=limit,
+            status=status,
+            shop_id=shop_id,
+            courier_id=courier_id,
+            current=current,
+        )
+
+        orders = await service.get_orders_list(
+            db=db,
+            user=current_user,
+            filters=filters,
+        )
+
+        logger.info(
+            f"Успешно получена история заказов для пользователя {current_user}: "
+            f"всего={orders.total}, возвращено={len(orders.items)}"
+        )
+        return orders
+
+    except OrderException as e:
+        logger.warning(
+            f"Ошибка доступа при получении истории заказов пользователем {current_user}: {e.detail}"
+        )
+        raise
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Неожиданная ошибка при получении истории заказов пользователем {current_user}: {e!s}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось получить историю заказов",
         )

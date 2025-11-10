@@ -238,3 +238,11 @@ class OrderListItemForAdmin(BaseModel):
     courier: CourierInfoForShop | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class OrderCompleteRequest(BaseModel):
+    """Схема для завершения заказа с фото-отчетом."""
+
+    photo_report_id: str = Field(..., max_length=255, description="ID фото-отчета в Telegram")
+
+    model_config = ConfigDict(from_attributes=True)
