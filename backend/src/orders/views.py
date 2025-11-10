@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException, status
 
-from backend.src.auth.dependencies import RequireAllRoles, RequireShop
+from backend.src.auth.dependencies import RequireAllRoles, RequireCourier, RequireShop
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 
 from . import service
 from .exceptions import OrderException
 from .schemas import (
+    OrderCompleteRequest,
     OrderCreateRequest,
     OrderResponse,
     OrderResponseForAdmin,
@@ -126,6 +127,68 @@ async def update_order(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Внутренняя ошибка сервера при обновлении заказа",
+        )
+
+
+@router.put("/{order_id}/complete", response_model=OrderResponse)
+async def complete_order(
+    order_id: int,
+    request: OrderCompleteRequest,
+    current_user: RequireCourier,
+    db: DbSession,
+):
+    """
+    Завершение заказа с загрузкой фото-отчета.
+
+    **Права доступа**: только курьеры, назначенные на заказ
+
+    **Требования**:
+    - Заказ должен быть в статусе DELIVERING или SEMI_COMPLETED
+    - Курьер должен быть назначен на этот заказ
+    - Необходимо предоставить ID фото-отчета из Telegram
+
+    **Результат**:
+    - Статус заказа меняется на COMPLETED
+    - Сохраняется photo_report_id
+    - Устанавливается время завершения (completed_at)
+
+    **Возвращаемые коды**:
+    - `200`: заказ успешно завершён
+    - `400`: некорректные данные
+    - `401`: пользователь не авторизован
+    - `403`: недостаточно прав (не курьер или не назначен на заказ)
+    - `404`: заказ не найден
+    - `500`: внутренняя ошибка сервера
+    """
+    logger.info(
+        f"Попытка завершения заказа {order_id=} курьером {current_user.courier} "
+        f"с фото-отчетом photo_report_id={request.photo_report_id}"
+    )
+
+    try:
+        completed_order = await service.complete_order(
+            db=db,
+            order_id=order_id,
+            photo_report_id=request.photo_report_id,
+            current_user=current_user,
+        )
+        logger.info(f"Заказ {order_id=} успешно завершён курьером {current_user.courier}")
+        return completed_order
+
+    except OrderException as e:
+        logger.warning(
+            f"Ошибка завершения заказа {order_id=} курьером {current_user.courier}: {e.detail}"
+        )
+        raise
+    except Exception as e:
+        logger.error(
+            f"Неожиданная ошибка при завершении заказа {order_id=} "
+            f"курьером {current_user.courier}: {e!s}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Внутренняя ошибка сервера при завершении заказа",
         )
 
 

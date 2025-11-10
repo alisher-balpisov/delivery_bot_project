@@ -175,3 +175,66 @@ class OrderCardResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class OrderListFilters(BaseModel):
+    """Фильтры для списка заказов."""
+
+    page: int = Field(default=1, ge=1, description="Номер страницы")
+    limit: int = Field(default=20, ge=1, le=100, description="Количество элементов на странице")
+    status: OrderStatus | None = Field(None, description="Фильтр по статусу заказа")
+    shop_id: int | None = Field(None, description="Фильтр по ID магазина (только для админа)")
+    courier_id: int | None = Field(None, description="Фильтр по ID курьера (только для админа)")
+    current: bool | None = Field(None, description="Только текущие (не завершённые) заказы")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderListItemForShop(BaseModel):
+    """Краткая информация о заказе для магазина в списке."""
+
+    id: int
+    status: OrderStatus
+    order_type: OrderType
+    special_type: SpecialOrderType | None = None
+    price: Decimal
+    recipient_address: str
+    delivery_time: datetime | None = None
+    created_at: datetime
+    courier: CourierInfoForShop | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderListItemForCourier(BaseModel):
+    """Краткая информация о заказе для курьера в списке."""
+
+    id: int
+    status: OrderStatus
+    order_type: OrderType
+    special_type: SpecialOrderType | None = None
+    recipient_address: str
+    recipient_phone: str
+    delivery_time: datetime | None = None
+    created_at: datetime
+    shop: ShopInfoForCourier
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderListItemForAdmin(BaseModel):
+    """Краткая информация о заказе для администратора в списке."""
+
+    id: int
+    status: OrderStatus
+    order_type: OrderType
+    special_type: SpecialOrderType | None = None
+    price: Decimal
+    recipient_address: str
+    delivery_time: datetime | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+    shop: ShopInfoForCourier
+    courier: CourierInfoForShop | None = None
+
+    model_config = ConfigDict(from_attributes=True)

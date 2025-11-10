@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -9,6 +9,7 @@ from backend.src.common.constants import (
     COURIER_ALLOWED_FIELDS,
     FINAL_STATUSES,
     RESPONSE_SCHEMAS,
+    PaginatedResponse,
     RetrievePermissionCheck,
     UpdatePayload,
     UpdatePermissionCheck,
@@ -29,7 +30,10 @@ from .exceptions import (
 from .schemas import (
     OrderCreate,
     OrderCreateRequest,
-    OrderResponse,
+    OrderListFilters,
+    OrderListItemForAdmin,
+    OrderListItemForCourier,
+    OrderListItemForShop,
     OrderResponseForAdmin,
     OrderResponseForCourier,
     OrderResponseForShop,
@@ -556,3 +560,270 @@ UPDATE_PERMISSION_CHECKS: dict[UserRole, UpdatePermissionCheck] = {
     UserRole.SHOP: _check_shop_update_permissions,
     UserRole.COURIER: _check_courier_update_permissions,
 }
+
+
+async def get_orders_list(
+    db: AsyncSession,
+    user: User,
+    filters: OrderListFilters,
+) -> PaginatedResponse[OrderListItemForAdmin | OrderListItemForShop | OrderListItemForCourier]:
+    """
+    Получает список заказов с пагинацией и фильтрами в зависимости от роли.
+
+    Args:
+        db: Сессия базы данных
+        user: Текущий пользователь
+        filters: Фильтры и параметры пагинации
+
+    Returns:
+        Пагинированный список заказов, адаптированный под роль пользователя
+
+    Raises:
+        OrderAccessForbiddenException: Если роль не имеет доступа
+        HTTPException: При попытке использовать запрещённые фильтры
+    """
+    # Валидация фильтров в зависимости от роли
+    _validate_filters_for_role(user, filters)
+
+    # Построение базового запроса
+    stmt = _build_base_query(user, filters)
+
+    # Подсчёт общего количества
+    total = await _count_total_orders(db, stmt)
+
+    # Применение пагинации
+    stmt = _apply_pagination(stmt, filters)
+
+    # Получение заказов
+    result = await db.execute(stmt)
+    orders = result.scalars().all()
+
+    # Преобразование в схему в зависимости от роли
+    response_schema = _get_list_response_schema(user.role)
+    items = [response_schema.model_validate(order) for order in orders]
+
+    logger.info(
+        f"Получен список заказов для пользователя {user}: "
+        f"всего={total}, страница={filters.page}, лимит={filters.limit}"
+    )
+
+    return PaginatedResponse(total=total, items=items)
+
+
+def _validate_filters_for_role(user: User, filters: OrderListFilters) -> None:
+    """
+    Проверяет, что пользователь не использует запрещённые для его роли фильтры.
+
+    Raises:
+        HTTPException: Если пользователь использует запрещённый фильтр
+    """
+    if user.role != UserRole.ADMIN:
+        if filters.shop_id is not None:
+            logger.warning(
+                f"Пользователь {user} (роль {user.role}) попытался использовать "
+                f"фильтр shop_id (доступен только админам)"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Фильтр shop_id доступен только администраторам",
+            )
+
+        if filters.courier_id is not None:
+            logger.warning(
+                f"Пользователь {user} (роль {user.role}) попытался использовать "
+                f"фильтр courier_id (доступен только админам)"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Фильтр courier_id доступен только администраторам",
+            )
+
+
+def _build_base_query(user: User, filters: OrderListFilters):
+    """
+    Строит базовый запрос с учётом роли пользователя и фильтров.
+    """
+    # Базовый запрос с предзагрузкой связанных сущностей
+    stmt = (
+        select(Order)
+        .options(
+            joinedload(Order.shop).joinedload(Shop.user),
+            joinedload(Order.courier).joinedload(Courier.user),
+        )
+        .order_by(Order.created_at.desc())
+    )
+
+    # Применяем фильтры в зависимости от роли
+    if user.role == UserRole.SHOP:
+        stmt = _apply_shop_filters(stmt, user, filters)
+    elif user.role == UserRole.COURIER:
+        stmt = _apply_courier_filters(stmt, user, filters)
+    elif user.role == UserRole.ADMIN:
+        stmt = _apply_admin_filters(stmt, filters)
+    else:
+        logger.error(f"Неподдерживаемая роль {user.role} при получении списка заказов")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав доступа",
+        )
+
+    return stmt
+
+
+def _apply_shop_filters(stmt, user: User, filters: OrderListFilters):
+    """Применяет фильтры для магазина."""
+    if not user.shop:
+        logger.warning(f"Пользователь {user} без профиля магазина запрашивает список заказов")
+        raise OrderAccessForbiddenException("У вас нет профиля магазина")
+
+    # Магазин видит только свои заказы
+    stmt = stmt.where(Order.shop_id == user.shop.id)
+
+    # Фильтр по статусу
+    if filters.status is not None:
+        stmt = stmt.where(Order.status == filters.status)
+
+    # Фильтр по текущим заказам
+    if filters.current is True:
+        stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
+    elif filters.current is False:
+        stmt = stmt.where(Order.status.in_(FINAL_STATUSES))
+
+    return stmt
+
+
+def _apply_courier_filters(stmt, user: User, filters: OrderListFilters):
+    """Применяет фильтры для курьера."""
+    if not user.courier:
+        logger.warning(f"Пользователь {user} без профиля курьера запрашивает список заказов")
+        raise OrderAccessForbiddenException("У вас нет профиля курьера")
+
+    # Курьер видит только назначенные ему заказы
+    stmt = stmt.where(Order.courier_id == user.courier.id)
+
+    # Фильтр по статусу
+    if filters.status is not None:
+        stmt = stmt.where(Order.status == filters.status)
+
+    # Фильтр по текущим заказам
+    if filters.current is True:
+        stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
+    elif filters.current is False:
+        stmt = stmt.where(Order.status.in_(FINAL_STATUSES))
+
+    return stmt
+
+
+def _apply_admin_filters(stmt, filters: OrderListFilters):
+    """Применяет фильтры для администратора."""
+    # Фильтр по магазину
+    if filters.shop_id is not None:
+        stmt = stmt.where(Order.shop_id == filters.shop_id)
+
+    # Фильтр по курьеру
+    if filters.courier_id is not None:
+        stmt = stmt.where(Order.courier_id == filters.courier_id)
+
+    # Фильтр по статусу
+    if filters.status is not None:
+        stmt = stmt.where(Order.status == filters.status)
+
+    # Фильтр по текущим заказам
+    if filters.current is True:
+        stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
+    elif filters.current is False:
+        stmt = stmt.where(Order.status.in_(FINAL_STATUSES))
+
+    return stmt
+
+
+async def _count_total_orders(db: AsyncSession, stmt) -> int:
+    """Подсчитывает общее количество заказов по запросу."""
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    result = await db.execute(count_stmt)
+    return result.scalar_one()
+
+
+def _apply_pagination(stmt, filters: OrderListFilters):
+    """Применяет пагинацию к запросу."""
+    offset = (filters.page - 1) * filters.limit
+    return stmt.offset(offset).limit(filters.limit)
+
+
+def _get_list_response_schema(role: UserRole):
+    """Возвращает схему ответа для списка заказов в зависимости от роли."""
+    schemas = {
+        UserRole.ADMIN: OrderListItemForAdmin,
+        UserRole.SHOP: OrderListItemForShop,
+        UserRole.COURIER: OrderListItemForCourier,
+    }
+
+    schema = schemas.get(role)
+    if not schema:
+        logger.error(f"Нет схемы списка заказов для роли {role}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Недостаточно прав доступа",
+        )
+
+    return schema
+
+
+# Обновите также константы в constants.py
+LIST_RESPONSE_SCHEMAS: dict[UserRole, type] = {
+    UserRole.ADMIN: OrderListItemForAdmin,
+    UserRole.SHOP: OrderListItemForShop,
+    UserRole.COURIER: OrderListItemForCourier,
+}
+
+
+async def complete_order(
+    db: AsyncSession, order_id: int, photo_report_id: str, current_user: User
+) -> Order:
+    """
+    Завершает заказ, устанавливая статус COMPLETED и сохраняя фото-отчет.
+
+    Args:
+        db: Сессия базы данных
+        order_id: ID завершаемого заказа
+        photo_report_id: ID фото-отчета в Telegram
+        current_user: Текущий пользователь (курьер)
+
+    Returns:
+        Завершенный заказ
+
+    Raises:
+        OrderNotFoundException: Если заказ не найден
+        OrderUpdateForbiddenException: Если у пользователя нет прав или заказ в неверном статусе
+    """
+    order = await _fetch_order_for_update(db, order_id)
+
+    # Проверяем, что пользователь - курьер
+    if current_user.role != UserRole.COURIER:
+        logger.warning(
+            f"Пользователь {current_user} с ролью {current_user.role.value} "
+            f"попытался завершить заказ {order_id}"
+        )
+        raise OrderUpdateForbiddenException("Только курьер может завершить заказ")
+
+    # Проверяем, что курьер назначен на этот заказ
+    _validate_courier_assigned_to_order(current_user, order)
+
+    # Проверяем статус заказа - можно завершать только заказы в статусе DELIVERING
+    if order.status not in [OrderStatus.DELIVERING, OrderStatus.SEMI_COMPLETED]:
+        logger.warning(
+            f"Попытка завершить заказ {order_id} в статусе {order.status.value}. "
+            f"Завершение возможно только из статусов DELIVERING или SEMI_COMPLETED"
+        )
+        raise OrderUpdateForbiddenException(
+            f"Невозможно завершить заказ в статусе {order.status.value}. "
+            f"Заказ должен быть в статусе доставки"
+        )
+
+    # Устанавливаем данные завершения
+    order.status = OrderStatus.COMPLETED
+    order.photo_report_id = photo_report_id
+    order.completed_at = datetime.now(UTC)
+
+    await _commit_order_changes(db, order)
+    return order
