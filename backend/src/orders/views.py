@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi import status as status_code
+from fastapi import status as http_status
 
 from backend.src.auth.dependencies import RequireAllRoles, RequireCourier, RequireShop
 from backend.src.common.constants import PaginatedResponse
@@ -30,32 +30,35 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/", response_model=OrderResponse, status_code=status_code.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=OrderResponse,
+    status_code=http_status.HTTP_201_CREATED,
+    summary="Создать заказ",
+    tags=["Orders - Shop"],
+)
 async def create_order(
     order_in: OrderCreateRequest,
     current_user: RequireShop,
     db: DbSession,
 ):
     """
-    Создание нового заказа магазином.
+    Создаёт новый заказ от имени магазина.
 
-    **Права доступа**: только магазины
+    ## Права доступа
+    - Доступно только магазинам
 
-    **Типы заказов**:
-    - `regular`: обычный заказ, курьер назначается автоматически
-    - `special`: специальный заказ с указанием конкретного курьера
+    ## Типы заказов
+    - **regular**: обычный заказ, курьер назначается автоматически
+    - **special**: специальный заказ, требуется указать courier_id
 
-    **Возвращаемые коды**:
-    - `201`: заказ успешно создан
-    - `400`: некорректные данные заказа или курьер не найден
-    - `401`: пользователь не авторизован
-    - `403`: пользователь не является магазином
-    - `500`: внутренняя ошибка сервера
+    ## Коды ответа
+    - **201**: заказ успешно создан
+    - **400**: некорректные данные или курьер не найден
+    - **401**: пользователь не авторизован
+    - **403**: недостаточно прав (не магазин)
     """
-    logger.info(
-        f"Попытка создания заказа: магазин {current_user.shop}, "
-        f"order_type={order_in.order_type}, special_type={order_in.special_type}"
-    )
+    logger.info(f"Создание заказа: {current_user.shop}, order_type={order_in.order_type.value}")
 
     try:
         order = await service.create_order(
@@ -63,29 +66,32 @@ async def create_order(
             order_in=order_in,
             shop_id=current_user.shop.id,  # type: ignore
         )
-        logger.info(f"Заказ order_id={order.id} успешно создан магазином {current_user.shop}")
+
+        logger.info(f"✓ Заказ {order} создан магазином {current_user.shop}")
         return order
 
     except ValueError as e:
-        logger.warning(f"Ошибка валидации при создании заказа магазином {current_user.shop}: {e!s}")
+        logger.warning(f"Ошибка валидации при создании заказа: {e}")
         raise HTTPException(
-            status_code=status_code.HTTP_400_BAD_REQUEST,
-            detail=f"Некорректные данные заказа: {e!s}",
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Неожиданная ошибка при создании заказа магазином {current_user.shop}: {e!s}",
-            exc_info=True,
-        )
+        logger.error(f"Неожиданная ошибка при создании заказа: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Внутренняя ошибка сервера при создании заказа",
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Внутренняя ошибка сервера",
         )
 
 
-@router.patch("/{order_id}", response_model=OrderResponse)
+@router.patch(
+    "/{order_id}",
+    response_model=OrderResponse,
+    summary="Обновить заказ",
+    tags=["Orders - All Roles"],
+)
 async def update_order(
     order_id: int,
     order_in: OrderUpdate,
@@ -93,54 +99,55 @@ async def update_order(
     db: DbSession,
 ):
     """
-    Обновление существующего заказа.
+    Обновляет существующий заказ.
 
-    **Права на изменение по ролям**:
+    ## Права по ролям
     - **Администратор**: может изменять любые поля любых заказов
-    - **Магазин**: может только отменить свой заказ (status -> CANCELED)
+    - **Магазин**: может только отменить свой заказ (status → CANCELED)
     - **Курьер**: может изменять status, courier_notes, completion_notes своих заказов
 
-    **Ограничения**:
+    ## Ограничения
     - Нельзя изменять заказы в финальных статусах (COMPLETED, CANCELED)
-    - Каждая роль имеет строго определённый набор разрешённых операций
 
-    **Возвращаемые коды**:
-    - `200`: заказ успешно обновлён
-    - `400`: некорректные данные обновления
-    - `401`: пользователь не авторизован
-    - `403`: недостаточно прав для обновления
-    - `404`: заказ не найден
-    - `500`: внутренняя ошибка сервера
+    ## Коды ответа
+    - **200**: заказ успешно обновлён
+    - **400**: некорректные данные
+    - **401**: пользователь не авторизован
+    - **403**: недостаточно прав
+    - **404**: заказ не найден
     """
+    update_fields = list(order_in.model_dump(exclude_unset=True).keys())
     logger.info(
-        f"Попытка обновления заказа {order_id=}: пользователь {current_user}, "
-        f"поля={list(order_in.model_dump(exclude_unset=True).keys())}"
+        f"Обновление заказа {order_id=}: пользователем {current_user}, fields={update_fields}"
     )
 
     try:
-        updated_order = await service.update_order(db, order_id, order_in, current_user)
-        logger.info(f"Заказ {order_id=} успешно обновлён пользователем {current_user} ")
+        updated_order = await service.update_order(
+            db=db,
+            order_id=order_id,
+            update_data=order_in,
+            current_user=current_user,
+        )
+
+        logger.info(f"✓ Заказ {order_id=} обновлён пользователем {current_user}")
         return updated_order
 
-    except OrderException as e:
-        logger.warning(
-            f"Запрещённая операция обновления заказа {order_id=} "
-            f"пользователем {current_user}: {e.detail}"
-        )
+    except OrderException:
         raise
     except Exception as e:
-        logger.error(
-            f"Неожиданная ошибка при обновлении заказа {order_id=} "
-            f"пользователем {current_user}: {e!s}",
-            exc_info=True,
-        )
+        logger.error(f"Неожиданная ошибка при обновлении заказа {order_id=}: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Внутренняя ошибка сервера при обновлении заказа",
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Внутренняя ошибка сервера",
         )
 
 
-@router.put("/{order_id}/complete", response_model=OrderResponse)
+@router.put(
+    "/{order_id}/complete",
+    response_model=OrderResponse,
+    summary="Завершить заказ",
+    tags=["Orders - Courier"],
+)
 async def complete_order(
     order_id: int,
     request: OrderCompleteRequest,
@@ -148,31 +155,30 @@ async def complete_order(
     db: DbSession,
 ):
     """
-    Завершение заказа с загрузкой фото-отчета.
+    Завершает заказ с загрузкой фото-отчёта.
 
-    **Права доступа**: только курьеры, назначенные на заказ
+    ## Права доступа
+    - Доступно только курьерам, назначенным на заказ
 
-    **Требования**:
-    - Заказ должен быть в статусе DELIVERING или SEMI_COMPLETED
-    - Курьер должен быть назначен на этот заказ
-    - Необходимо предоставить ID фото-отчета из Telegram
+    ## Требования
+    - Заказ должен быть в статусе **DELIVERING** или **SEMI_COMPLETED**
+    - Необходимо предоставить photo_report_id (ID фото в Telegram)
 
-    **Результат**:
-    - Статус заказа меняется на COMPLETED
+    ## Результат
+    - Статус меняется на **COMPLETED**
     - Сохраняется photo_report_id
-    - Устанавливается время завершения (completed_at)
+    - Устанавливается completed_at
 
-    **Возвращаемые коды**:
-    - `200`: заказ успешно завершён
-    - `400`: некорректные данные
-    - `401`: пользователь не авторизован
-    - `403`: недостаточно прав (не курьер или не назначен на заказ)
-    - `404`: заказ не найден
-    - `500`: внутренняя ошибка сервера
+    ## Коды ответа
+    - **200**: заказ успешно завершён
+    - **400**: некорректные данные
+    - **401**: не авторизован
+    - **403**: не назначен на заказ или неверный статус
+    - **404**: заказ не найден
     """
     logger.info(
-        f"Попытка завершения заказа {order_id=} курьером {current_user.courier} "
-        f"с фото-отчетом photo_report_id={request.photo_report_id}"
+        f"Завершение заказа {order_id=}: курьером {current_user.courier}, "
+        f"photo_id={request.photo_report_id}"
     )
 
     try:
@@ -182,77 +188,71 @@ async def complete_order(
             photo_report_id=request.photo_report_id,
             current_user=current_user,
         )
-        logger.info(f"Заказ {order_id=} успешно завершён курьером {current_user.courier}")
+
+        logger.info(f"✓ Заказ {order_id=} завершён курьером {current_user.courier}")
         return completed_order
 
-    except OrderException as e:
-        logger.warning(
-            f"Ошибка завершения заказа {order_id=} курьером {current_user.courier}: {e.detail}"
-        )
+    except OrderException:
         raise
     except Exception as e:
-        logger.error(
-            f"Неожиданная ошибка при завершении заказа {order_id=} "
-            f"курьером {current_user.courier}: {e!s}",
-            exc_info=True,
-        )
+        logger.error(f"Неожиданная ошибка при завершении заказа {order_id=}: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Внутренняя ошибка сервера при завершении заказа",
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Внутренняя ошибка сервера",
         )
 
 
 @router.get(
     "/{order_id}",
     response_model=OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier,
+    summary="Получить заказ",
+    tags=["Orders - All Roles"],
 )
-async def get_order_endpoint(
+async def get_order(
     order_id: int,
     current_user: RequireAllRoles,
     db: DbSession,
 ):
     """
-    Получение детальной информации о заказе.
+    Возвращает детальную информацию о заказе.
 
-    **Права доступа**:
+    ## Права доступа
     - **Администратор**: доступ ко всем заказам с полной информацией
     - **Магазин**: доступ только к своим заказам
     - **Курьер**: доступ только к назначенным ему заказам
 
-    **Форматы ответа** (зависят от роли):
-    - Администратор получает полную информацию о магазине и курьере
-    - Магазин видит информацию о курьере
-    - Курьер видит информацию о магазине
+    ## Форматы ответа
+    Формат зависит от роли:
+    - Администратор получает полную информацию
+    - Магазин видит данные курьера
+    - Курьер видит данные магазина
 
-    **Возвращаемые коды**:
-    - `200`: заказ успешно получен
-    - `401`: пользователь не авторизован
-    - `403`: нет прав на просмотр этого заказа
-    - `404`: заказ не найден
-    - `500`: внутренняя ошибка сервера
+    ## Коды ответа
+    - **200**: заказ успешно получен
+    - **401**: не авторизован
+    - **403**: нет прав на просмотр
+    - **404**: заказ не найден
     """
-    logger.info(f"Получение заказа {order_id=} пользователем {current_user=}")
+    logger.info(f"Запрос заказа {order_id=}: пользователем {current_user}")
 
     try:
-        response = await service.get_order(
+        order = await service.get_order(
             db=db,
             user_id=current_user.id,
             order_id=order_id,
         )
-        logger.info(f"Заказ {order_id=} успешно получен пользователем {current_user}")
-        return response
-    except OrderException as e:
-        logger.warning(
-            f"Ошибка доступа при получении заказа {order_id=} "
-            f"пользователем {current_user}: {e.detail}"
-        )
+
+        logger.info(f"✓ Заказ {order_id=} получен пользователем {current_user}")
+        return order
+
+    except OrderException:
         raise
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при получении заказа {order_id=}: {e!s}", exc_info=True)
+        logger.error(f"Ошибка при получении заказа {order_id=}: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Не удалось получить заказ",
         )
 
@@ -262,61 +262,60 @@ async def get_order_endpoint(
     response_model=PaginatedResponse[
         OrderListItemForAdmin | OrderListItemForShop | OrderListItemForCourier
     ],
+    summary="История заказов",
+    tags=["Orders - All Roles"],
 )
 async def get_orders_history(
     current_user: RequireAllRoles,
     db: DbSession,
-    page: Annotated[int, Query(ge=1)] = 1,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    status: OrderStatus | None = None,
-    shop_id: int | None = None,
-    courier_id: int | None = None,
-    current: bool | None = None,
+    page: Annotated[int, Query(ge=1, description="Номер страницы")] = 1,
+    limit: Annotated[int, Query(ge=1, le=100, description="Элементов на странице")] = 20,
+    status: Annotated[OrderStatus | None, Query(description="Фильтр по статусу")] = None,
+    shop_id: Annotated[int | None, Query(description="Фильтр по магазину (только админ)")] = None,
+    courier_id: Annotated[int | None, Query(description="Фильтр по курьеру (только админ)")] = None,
+    current: Annotated[bool | None, Query(description="true=активные, false=завершённые")] = None,
 ):
     """
-    Получение истории заказов с пагинацией и фильтрами.
+    Возвращает историю заказов с пагинацией и фильтрами.
 
-    **Права доступа по ролям**:
+    ## Права по ролям
 
-    **Магазин**:
+    ### Магазин
     - Видит только свои заказы
     - Доступные фильтры: `status`, `current`
-    - Не может использовать `shop_id`, `courier_id`
 
-    **Курьер**:
+    ### Курьер
     - Видит только назначенные ему заказы
     - Доступные фильтры: `status`, `current`
-    - Не может использовать `shop_id`, `courier_id`
 
-    **Администратор**:
+    ### Администратор
     - Видит все заказы
     - Доступные фильтры: `status`, `shop_id`, `courier_id`, `current`
 
-    **Параметры запроса**:
-    - `page`: Номер страницы (по умолчанию 1)
-    - `limit`: Количество элементов на странице (1-100, по умолчанию 20)
-    - `status`: Фильтр по статусу заказа
-    - `shop_id`: Фильтр по ID магазина (только для админа)
-    - `courier_id`: Фильтр по ID курьера (только для админа)
-    - `current`: true - только активные заказы, false - только завершённые
+    ## Параметры
+    - **page**: номер страницы (по умолчанию 1)
+    - **limit**: элементов на странице (1-100, по умолчанию 20)
+    - **status**: фильтр по статусу
+    - **shop_id**: фильтр по магазину (только админ)
+    - **courier_id**: фильтр по курьеру (только админ)
+    - **current**: true - активные, false - завершённые
 
-    **Примеры запросов**:
-    - `/orders/history` - первая страница всех доступных заказов
-    - `/orders/history?page=2&limit=50` - вторая страница по 50 заказов
-    - `/orders/history?status=completed` - только завершённые заказы
-    - `/orders/history?current=true` - только активные заказы
-    - `/orders/history?shop_id=7` - заказы конкретного магазина (только админ)
-    - `/orders/history?courier_id=12` - заказы конкретного курьера (только админ)
+    ## Примеры
+    - `/orders/history` - первая страница
+    - `/orders/history?page=2&limit=50` - вторая страница по 50
+    - `/orders/history?status=completed` - только завершённые
+    - `/orders/history?current=true` - только активные
+    - `/orders/history?shop_id=7` - по магазину (админ)
 
-    **Возвращаемые коды**:
-    - `200`: список заказов успешно получен
-    - `401`: пользователь не авторизован
-    - `403`: попытка использовать запрещённый фильтр
-    - `500`: внутренняя ошибка сервера
+    ## Коды ответа
+    - **200**: список успешно получен
+    - **401**: не авторизован
+    - **403**: попытка использовать запрещённый фильтр
     """
     logger.info(
-        f"Запрос истории заказов от пользователя {current_user}: "
-        f"{page=}, {limit=}, {status=}, {shop_id=}, {courier_id=}, {current=}"
+        f"Запрос истории заказов: пользователем {current_user},"
+        f"{page=}, {limit=}, {status=}, {shop_id=}, "
+        f"{courier_id=}, {current=}"
     )
 
     try:
@@ -329,31 +328,25 @@ async def get_orders_history(
             current=current,
         )
 
-        orders = await service.get_orders_list(
+        result = await service.get_orders_list(
             db=db,
             user=current_user,
             filters=filters,
         )
 
         logger.info(
-            f"Успешно получена история заказов для пользователя {current_user}: "
-            f"всего={orders.total}, возвращено={len(orders.items)}"
+            f"✓ История заказов получена: пользователем {current_user}, "
+            f"total={result.total}, returned={len(result.items)}"
         )
-        return orders
+        return result
 
-    except OrderException as e:
-        logger.warning(
-            f"Ошибка доступа при получении истории заказов пользователем {current_user}: {e.detail}"
-        )
+    except OrderException:
         raise
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Неожиданная ошибка при получении истории заказов пользователем {current_user}: {e!s}",
-            exc_info=True,
-        )
+        logger.error(f"Неожиданная ошибка при получении истории заказов: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status_code.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Не удалось получить историю заказов",
         )

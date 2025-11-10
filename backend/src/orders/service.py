@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -10,9 +11,6 @@ from backend.src.common.constants import (
     FINAL_STATUSES,
     RESPONSE_SCHEMAS,
     PaginatedResponse,
-    RetrievePermissionCheck,
-    UpdatePayload,
-    UpdatePermissionCheck,
 )
 from backend.src.common.enums import OrderStatus, UserRole
 from backend.src.core.logging import get_logger
@@ -34,9 +32,6 @@ from .schemas import (
     OrderListItemForAdmin,
     OrderListItemForCourier,
     OrderListItemForShop,
-    OrderResponseForAdmin,
-    OrderResponseForCourier,
-    OrderResponseForShop,
     OrderUpdate,
 )
 
@@ -52,73 +47,68 @@ async def create_order(db: AsyncSession, order_in: OrderCreateRequest, shop_id: 
 
     Args:
         db: Сессия базы данных
-        order_in: Входные данные заказа от API
-        shop_id: ID магазина, создающего заказ
+        order_in: Данные заказа от API
+        shop_id: ID магазина-создателя
 
     Returns:
-        Созданный заказ в виде Pydantic-схемы
+        Созданный заказ
 
     Raises:
-        HTTPException: Если указанный курьер не существует
+        HTTPException: Если курьер не существует (для special заказов)
     """
-    order_data = _prepare_order_data(order_in, shop_id)
-    await _validate_courier_for_order(db, order_data.courier_id)
+    # Преобразуем внешнюю схему во внутреннюю
+    order_data = OrderCreate(**order_in.model_dump(), shop_id=shop_id)
 
-    order = _create_order_entity(order_data)
-    await _save_order_to_db(db, order)
+    # Валидируем курьера для special заказов
+    if order_data.courier_id:
+        await _validate_courier_exists(db, order_data.courier_id)
 
-    return order
+    # Создаём ORM-объект
+    order = _build_order_entity(order_data)
 
-
-def _prepare_order_data(order_in: OrderCreateRequest, shop_id: int) -> OrderCreate:
-    """Преобразует входные данные API в внутреннюю схему с добавлением shop_id."""
-    return OrderCreate(**order_in.model_dump(), shop_id=shop_id)
-
-
-def _create_order_entity(order_data: OrderCreate) -> Order:
-    """Создаёт ORM-объект заказа из схемы данных."""
-    fields = (
-        "shop_id",
-        "courier_id",
-        "order_type",
-        "special_type",
-        "price",
-        "client_phone",
-        "recipient_address",
-        "recipient_phone",
-        "delivery_time",
-        "description",
-    )
-
-    return Order(
-        status=OrderStatus.PENDING,
-        **{f: getattr(order_data, f) for f in fields},
-    )
-
-
-async def _save_order_to_db(db: AsyncSession, order: Order) -> None:
-    """Сохраняет заказ в базу данных и обновляет его ID."""
+    # Сохраняем в БД
     db.add(order)
     await db.flush()
     await db.refresh(order)
 
+    logger.info(
+        f"Создан заказ {order}: shop_id={shop_id}, "
+        f"type={order.order_type.value}, courier_id={order.courier_id}"
+    )
 
-async def _validate_courier_for_order(db: AsyncSession, courier_id: int | None) -> None:
+    return order
+
+
+def _build_order_entity(order_data: OrderCreate) -> Order:
+    """Создаёт ORM-модель заказа из схемы данных."""
+    return Order(
+        shop_id=order_data.shop_id,
+        courier_id=order_data.courier_id,
+        status=OrderStatus.PENDING,
+        order_type=order_data.order_type,
+        special_type=order_data.special_type,
+        price=order_data.price,
+        client_phone=order_data.client_phone,
+        recipient_address=order_data.recipient_address,
+        recipient_phone=order_data.recipient_phone,
+        delivery_time=order_data.delivery_time,
+        description=order_data.description,
+    )
+
+
+async def _validate_courier_exists(db: AsyncSession, courier_id: int) -> None:
     """
-    Проверяет существование курьера в базе данных.
+    Проверяет существование курьера в БД.
 
     Raises:
         HTTPException: Если курьер не найден
     """
-    if courier_id is None:
-        return
-
     courier = await db.get(Courier, courier_id)
-    if courier is None:
-        logger.error(f"Попытка создать заказ с несуществующим курьером {courier_id=}")
+    if not courier:
+        logger.error(f"Попытка создать заказ с несуществующим courier_id={courier_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Указанный курьер не найден: {courier_id=}",
+            detail=f"Курьер с ID {courier_id} не найден",
         )
 
 
@@ -129,276 +119,237 @@ async def update_order(
     db: AsyncSession, order_id: int, update_data: OrderUpdate, current_user: User
 ) -> Order:
     """
-    Обновляет заказ с учётом роли и прав пользователя.
+    Обновляет заказ с учётом ролевых прав.
 
     Args:
         db: Сессия базы данных
-        order_id: ID обновляемого заказа
+        order_id: ID заказа
         update_data: Данные для обновления
-        current_user: Текущий пользователь, инициирующий обновление
+        current_user: Пользователь, инициирующий обновление
 
     Returns:
-        Обновлённый заказ в виде Pydantic-схемы
+        Обновлённый заказ
 
     Raises:
-        OrderNotFoundException: Если заказ не найден
-        OrderUpdateForbiddenException: Если у пользователя нет прав на обновление
+        OrderNotFoundException: Заказ не найден
+        OrderUpdateForbiddenException: Нет прав на обновление
     """
-    order = await _fetch_order_for_update(db, order_id)
-    update_payload = _extract_update_payload(update_data)
+    order = await _fetch_order_or_404(db, order_id)
+
+    # Извлекаем только установленные поля
+    update_payload = update_data.model_dump(exclude_unset=True)
 
     if not update_payload:
-        logger.debug(f"Пустое обновление заказа {order_id=}, возвращаем без изменений")
+        logger.debug(f"Пустое обновление заказа {order_id}, возвращаем без изменений")
         return order
 
-    _validate_order_can_be_modified(order)
-    await _validate_update_permissions(current_user, order, update_payload)
-    await _validate_courier_reassignment(db, update_payload)
+    # Проверяем возможность изменения
+    _ensure_order_not_finalized(order)
 
+    # Проверяем права доступа
+    await _verify_update_permissions(current_user, order, update_payload)
+
+    # Валидируем нового курьера при переназначении
+    if "courier_id" in update_payload:
+        await _validate_courier_exists(db, update_payload["courier_id"])
+
+    # Применяем изменения
     previous_status = order.status
-    _apply_order_updates(order, update_payload)
-    _process_status_change_effects(order, previous_status, current_user)
+    _apply_updates_to_order(order, update_payload)
 
-    await _commit_order_changes(db, order)
+    # Обрабатываем побочные эффекты
+    _handle_status_change_side_effects(order, previous_status, current_user)
+
+    # Сохраняем
+    await db.flush()
+    await db.refresh(order)
+
+    logger.info(
+        f"Заказ {order_id} обновлён пользователем {current_user.id} "
+        f"(роль: {current_user.role.value})"
+    )
+
     return order
 
 
-async def _fetch_order_for_update(db: AsyncSession, order_id: int) -> Order:
-    """Загружает заказ для обновления или выбрасывает исключение, если не найден."""
+async def _fetch_order_or_404(db: AsyncSession, order_id: int) -> Order:
+    """Загружает заказ или выбрасывает 404."""
     order = await db.get(Order, order_id)
-    if order is None:
+    if not order:
         raise OrderNotFoundException(order_id)
     return order
 
 
-def _extract_update_payload(update_data: OrderUpdate) -> UpdatePayload:
-    """Извлекает только установленные поля из схемы обновления."""
-    return update_data.model_dump(exclude_unset=True)
-
-
-def _validate_order_can_be_modified(order: Order) -> None:
+def _ensure_order_not_finalized(order: Order) -> None:
     """
-    Проверяет, что заказ находится в статусе, допускающем изменения.
+    Проверяет, что заказ не в финальном статусе.
 
     Raises:
-        OrderUpdateForbiddenException: Если заказ в финальном статусе
+        OrderUpdateForbiddenException: Если заказ завершён/отменён
     """
     if order.status in FINAL_STATUSES:
-        logger.warning(f"Попытка изменить заказ {order} в финальном статусе {order.status.value}")
+        logger.warning(
+            f"Попытка изменить заказ {order.id} в финальном статусе {order.status.value}"
+        )
         raise OrderUpdateForbiddenException(
             f"Невозможно изменить заказ в статусе {order.status.value}"
         )
 
 
-async def _validate_update_permissions(
-    user: User, order: Order, update_payload: UpdatePayload
+async def _verify_update_permissions(
+    user: User, order: Order, update_payload: dict[str, Any]
 ) -> None:
     """
-    Проверяет права пользователя на обновление заказа.
+    Проверяет права пользователя на обновление.
+
+    Вызывает соответствующую функцию проверки в зависимости от роли.
 
     Raises:
-        OrderUpdateForbiddenException: Если у пользователя нет прав
+        OrderUpdateForbiddenException: Если нет прав
     """
-    permission_check = UPDATE_PERMISSION_CHECKS.get(user.role)
-    if permission_check is None:
-        logger.warning(f"Неизвестная роль {user.role.value} при попытке обновить заказ {order}")
-        raise OrderUpdateForbiddenException()
+    permission_checks = {
+        UserRole.ADMIN: _verify_admin_can_update,
+        UserRole.SHOP: _verify_shop_can_update,
+        UserRole.COURIER: _verify_courier_can_update,
+    }
 
-    await permission_check(user, order, update_payload)
+    check_func = permission_checks.get(user.role)
+
+    if not check_func:
+        logger.error(f"Неизвестная роль {user.role.value} при обновлении заказа")
+        raise OrderUpdateForbiddenException("Недостаточно прав")
+
+    await check_func(user, order, update_payload)
 
 
-async def _validate_courier_reassignment(db: AsyncSession, update_payload: UpdatePayload) -> None:
-    """Проверяет существование нового курьера при переназначении."""
-    new_courier_id = update_payload.get("courier_id")
-    if new_courier_id is not None:
-        await _validate_courier_for_order(db, new_courier_id)
+async def _verify_admin_can_update(
+    user: User, order: Order, update_payload: dict[str, Any]
+) -> None:
+    """Администратор может обновлять любые заказы."""
+    logger.debug(f"Администратор {user.id} обновляет заказ {order.id}")
 
 
-def _apply_order_updates(order: Order, update_payload: UpdatePayload) -> None:
+async def _verify_shop_can_update(user: User, order: Order, update_payload: dict[str, Any]) -> None:
+    """
+    Проверяет права магазина на обновление.
+
+    Магазин может:
+    - Изменять только свои заказы
+    - Только отменять их (status -> CANCELED)
+    """
+    if not user.shop:
+        raise OrderUpdateForbiddenException("У вас нет профиля магазина")
+
+    # Проверяем владение заказом
+    if order.shop_id != user.shop.id:
+        logger.warning(f"Магазин {user.shop.id} попытался обновить чужой заказ {order.id}")
+        raise OrderUpdateForbiddenException("Вы можете изменять только свои заказы")
+
+    # Проверяем разрешённые поля
+    allowed_fields = {"status"}
+    if not set(update_payload.keys()).issubset(allowed_fields):
+        raise OrderUpdateForbiddenException("Магазин может изменять только статус заказа")
+
+    # Проверяем допустимый статус
+    if "status" in update_payload and update_payload["status"] != OrderStatus.CANCELED:
+        raise OrderUpdateForbiddenException("Магазин может только отменить заказ")
+
+
+async def _verify_courier_can_update(
+    user: User, order: Order, update_payload: dict[str, Any]
+) -> None:
+    """
+    Проверяет права курьера на обновление.
+
+    Курьер может:
+    - Изменять только назначенные ему заказы
+    - Только разрешённые поля (status, courier_notes, completion_notes)
+    """
+    if not user.courier:
+        raise OrderUpdateForbiddenException("У вас нет профиля курьера")
+
+    # Проверяем назначение
+    if order.courier_id != user.courier.id:
+        logger.warning(f"Курьер {user.courier.id} попытался обновить не свой заказ {order.id}")
+        raise OrderUpdateForbiddenException("Вы можете изменять только назначенные вам заказы")
+
+    # Проверяем разрешённые поля
+    if not set(update_payload.keys()).issubset(COURIER_ALLOWED_FIELDS):
+        forbidden = set(update_payload.keys()) - COURIER_ALLOWED_FIELDS
+        logger.warning(f"Курьер {user.courier.id} попытался изменить поля: {forbidden}")
+        raise OrderUpdateForbiddenException(
+            f"Курьер может изменять только: {', '.join(COURIER_ALLOWED_FIELDS)}"
+        )
+
+
+def _apply_updates_to_order(order: Order, update_payload: dict[str, Any]) -> None:
     """Применяет изменения к полям заказа."""
     for field, value in update_payload.items():
         setattr(order, field, value)
 
 
-def _process_status_change_effects(order: Order, previous_status: OrderStatus, user: User) -> None:
+def _handle_status_change_side_effects(
+    order: Order, previous_status: OrderStatus, user: User
+) -> None:
     """
-    Обрабатывает побочные эффекты при изменении статуса заказа.
+    Обрабатывает побочные эффекты при смене статуса.
 
-    Например, устанавливает время завершения при переходе в статус COMPLETED.
+    Например, устанавливает completed_at при завершении.
     """
     if order.status == previous_status:
         return
 
     if order.status == OrderStatus.COMPLETED:
         order.completed_at = datetime.now(UTC)
-        logger.info(f"Заказ {order} завершён пользователем {user}")
+        logger.info(f"Заказ {order.id} завершён пользователем {user.id}")
 
     logger.info(
-        f"Статус заказа {order} изменён: {previous_status.value} -> {order.status.value} "
-        f"(пользователь {user})"
+        f"Статус заказа {order.id} изменён: {previous_status.value} -> {order.status.value}"
     )
-
-
-async def _commit_order_changes(db: AsyncSession, order: Order) -> None:
-    """Сохраняет изменения заказа в базу данных."""
-    await db.flush()
-    await db.refresh(order)
-
-
-# ==================== ПРОВЕРКА ПРАВ НА ОБНОВЛЕНИЕ ====================
-
-
-async def _check_admin_update_permissions(_: User, order: Order, __: UpdatePayload) -> None:
-    """Администратор может обновлять любые заказы без ограничений."""
-    logger.debug(f"Администратор обновляет заказ {order.id}")
-
-
-async def _check_shop_update_permissions(
-    user: User, order: Order, update_payload: UpdatePayload
-) -> None:
-    """
-    Проверяет права магазина на обновление заказа.
-
-    Магазин может:
-    - Изменять только свои заказы
-    - Только отменять заказы (status -> CANCELED)
-
-    Raises:
-        OrderUpdateForbiddenException: Если магазин пытается изменить чужой заказ
-            или недопустимые поля
-    """
-    _validate_shop_owns_order(user, order)
-    _validate_shop_update_fields(user, update_payload)
-    _validate_shop_status_change(user, order, update_payload)
-
-
-def _validate_shop_owns_order(user: User, order: Order) -> None:
-    """Проверяет, что заказ принадлежит магазину пользователя."""
-    if not user.shop:
-        logger.warning(f"Пользователь {user.id} без магазина пытается обновить заказ {order.id}")
-        raise OrderUpdateForbiddenException()
-
-    if order.shop_id != user.shop.id:
-        logger.warning(
-            f"Магазин {user.shop.id} попытался обновить чужой заказ {order.id} "
-            f"(владелец: магазин {order.shop_id})"
-        )
-        raise OrderUpdateForbiddenException("Вы можете изменять только свои заказы")
-
-
-def _validate_shop_update_fields(user: User, update_payload: UpdatePayload) -> None:
-    """Проверяет, что магазин изменяет только разрешённые поля."""
-    update_keys = set(update_payload.keys())
-    allowed_keys = {"status"}
-
-    if not update_keys.issubset(allowed_keys):
-        disallowed_fields = list(update_keys - allowed_keys)
-        logger.warning(
-            f"Магазин {user.shop.id if user.shop else 'Unknown'} попытался изменить "
-            f"запрещённые поля: {disallowed_fields}"
-        )
-        raise OrderUpdateForbiddenException("Магазин может изменять только статус заказа")
-
-
-def _validate_shop_status_change(user: User, order: Order, update_payload: UpdatePayload) -> None:
-    """Проверяет, что магазин меняет статус только на CANCELED."""
-    status_value = update_payload.get("status")
-    if status_value and status_value != OrderStatus.CANCELED:
-        logger.warning(
-            f"Магазин {user.shop.id if user.shop else 'Unknown'} попытался изменить статус "
-            f"заказа {order.id} на {status_value} (разрешён только CANCELED)"
-        )
-        raise OrderUpdateForbiddenException("Магазин может только отменить заказ")
-
-
-async def _check_courier_update_permissions(
-    user: User, order: Order, update_payload: UpdatePayload
-) -> None:
-    """
-    Проверяет права курьера на обновление заказа.
-
-    Курьер может:
-    - Изменять только назначенные ему заказы
-    - Изменять только разрешённые поля (status, courier_notes, completion_notes)
-
-    Raises:
-        OrderUpdateForbiddenException: Если курьер пытается изменить чужой заказ
-            или недопустимые поля
-    """
-    _validate_courier_profile_exists(user)
-    _validate_courier_assigned_to_order(user, order)
-    _validate_courier_update_fields(user, update_payload)
-
-
-def _validate_courier_profile_exists(user: User) -> None:
-    """Проверяет наличие профиля курьера у пользователя."""
-    if not user.courier:
-        logger.warning(f"Пользователь {user.id} без профиля курьера пытается обновить заказ")
-        raise OrderUpdateForbiddenException("У вас нет профиля курьера")
-
-
-def _validate_courier_assigned_to_order(user: User, order: Order) -> None:
-    """Проверяет, что заказ назначен данному курьеру."""
-    if order.courier_id != user.courier.id:
-        logger.warning(
-            f"Курьер {user.courier} попытался обновить чужой заказ {order} "
-            f"(назначен курьеру {order.courier})"
-        )
-        raise OrderUpdateForbiddenException("Вы можете изменять только назначенные вам заказы")
-
-
-def _validate_courier_update_fields(user: User, update_payload: UpdatePayload) -> None:
-    """Проверяет, что курьер изменяет только разрешённые поля."""
-    update_keys = set(update_payload.keys())
-
-    if not update_keys.issubset(COURIER_ALLOWED_FIELDS):
-        disallowed_fields = list(update_keys - COURIER_ALLOWED_FIELDS)
-        logger.warning(
-            f"Курьер {user.courier.id if user.courier else 'Unknown'} попытался изменить "
-            f"запрещённые поля: {disallowed_fields}"
-        )
-        raise OrderUpdateForbiddenException(
-            f"Курьер может изменять только поля: {', '.join(COURIER_ALLOWED_FIELDS)}"
-        )
 
 
 # ==================== ПОЛУЧЕНИЕ ЗАКАЗА ====================
 
 
-async def get_order(
-    db: AsyncSession, user_id: int, order_id: int
-) -> OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier:
+async def get_order(db: AsyncSession, user_id: int, order_id: int):
     """
-    Возвращает информацию о заказе, адаптированную под роль пользователя.
+    Возвращает детальную информацию о заказе.
+
+    Формат ответа адаптирован под роль пользователя.
 
     Args:
-        db: Сессия базы данных
-        user_id: ID пользователя, запрашивающего заказ
-        order_id: ID запрашиваемого заказа
+        db: Сессия БД
+        user_id: ID пользователя
+        order_id: ID заказа
 
     Returns:
-        Заказ в формате, соответствующем роли пользователя
+        OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier
 
     Raises:
-        UserNotFoundException: Если пользователь не найден
-        OrderNotFoundException: Если заказ не найден
-        OrderAccessForbiddenException: Если у пользователя нет прав на просмотр
-        HTTPException: Если роль пользователя не поддерживается
+        UserNotFoundException: Пользователь не найден
+        OrderNotFoundException: Заказ не найден
+        OrderAccessForbiddenException: Нет прав на просмотр
     """
-    user = await _fetch_user_with_profiles(db, user_id)
+    user = await _fetch_user_with_relations(db, user_id)
     order = await _fetch_order_with_relations(db, order_id)
 
-    await _validate_order_access_permissions(user, order)
+    # Проверяем права доступа
+    await _verify_retrieve_permissions(user, order)
 
-    response_schema = _get_response_schema_for_role(user.role)
+    # Возвращаем в нужном формате
+    response_schema = RESPONSE_SCHEMAS.get(user.role)
+
+    if not response_schema:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав доступа"
+        )
+
     return response_schema.model_validate(order)
 
 
-async def _fetch_user_with_profiles(db: AsyncSession, user_id: int) -> User:
+async def _fetch_user_with_relations(db: AsyncSession, user_id: int) -> User:
     """
-    Загружает пользователя с предзагрузкой профилей магазина и курьера.
-
-    Предотвращает проблемы с lazy loading в async контексте.
+    Загружает пользователя с профилями shop/courier.
 
     Raises:
         UserNotFoundException: Если пользователь не найден
@@ -411,11 +362,11 @@ async def _fetch_user_with_profiles(db: AsyncSession, user_id: int) -> User:
             joinedload(User.courier),
         )
     )
+
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
-    if user is None:
-        logger.warning(f"Попытка получить заказ несуществующим пользователем {user_id}")
+    if not user:
         raise UserNotFoundException(user_id)
 
     return user
@@ -423,9 +374,9 @@ async def _fetch_user_with_profiles(db: AsyncSession, user_id: int) -> User:
 
 async def _fetch_order_with_relations(db: AsyncSession, order_id: int) -> Order:
     """
-    Загружает заказ с предзагрузкой всех связанных сущностей.
+    Загружает заказ со всеми связанными данными.
 
-    Оптимизирует запросы к БД и предотвращает N+1 проблему.
+    Оптимизирует запросы к БД, избегая N+1 проблемы.
 
     Raises:
         OrderNotFoundException: Если заказ не найден
@@ -439,172 +390,107 @@ async def _fetch_order_with_relations(db: AsyncSession, order_id: int) -> Order:
             joinedload(Order.history),
         )
     )
+
     result = await db.execute(stmt)
     order = result.scalar_one_or_none()
 
-    if order is None:
-        logger.warning(f"Попытка получить несуществующий заказ {order_id}")
+    if not order:
         raise OrderNotFoundException(order_id)
 
     return order
 
 
-async def _validate_order_access_permissions(user: User, order: Order) -> None:
+async def _verify_retrieve_permissions(user: User, order: Order) -> None:
     """
-    Проверяет права пользователя на просмотр заказа.
+    Проверяет права на просмотр заказа.
 
     Raises:
-        OrderAccessForbiddenException: Если у пользователя нет прав на просмотр
-        HTTPException: Если роль пользователя не поддерживается
+        OrderAccessForbiddenException: Если нет прав
     """
-    permission_check = RETRIEVE_PERMISSION_CHECKS.get(user.role)
+    permission_checks = {
+        UserRole.ADMIN: _verify_admin_can_retrieve,
+        UserRole.SHOP: _verify_shop_can_retrieve,
+        UserRole.COURIER: _verify_courier_can_retrieve,
+    }
 
-    if not permission_check:
-        logger.error(
-            f"Неизвестная роль {user.role} при попытке получить заказ {order.id} "
-            f"пользователем {user.id}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав доступа",
-        )
+    check_func = permission_checks.get(user.role)
 
-    await permission_check(user, order)
+    if not check_func:
+        raise OrderAccessForbiddenException("Недостаточно прав")
 
-
-def _get_response_schema_for_role(
-    role: UserRole,
-) -> type[OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier]:
-    """
-    Возвращает схему ответа, соответствующую роли пользователя.
-
-    Raises:
-        HTTPException: Если для роли нет соответствующей схемы
-    """
-    response_schema = RESPONSE_SCHEMAS.get(role)
-
-    if not response_schema:
-        logger.error(f"Нет схемы ответа для роли {role}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав доступа",
-        )
-
-    return response_schema
+    await check_func(user, order)
 
 
-# ==================== ПРОВЕРКА ПРАВ НА ПРОСМОТР ====================
-
-
-async def _check_admin_retrieve_permissions(user: User, order: Order) -> None:
+async def _verify_admin_can_retrieve(user: User, order: Order) -> None:
     """Администратор имеет доступ ко всем заказам."""
     logger.debug(f"Администратор {user.id} запрашивает заказ {order.id}")
 
 
-async def _check_shop_retrieve_permissions(user: User, order: Order) -> None:
-    """
-    Проверяет права магазина на просмотр заказа.
-
-    Магазин может просматривать только свои заказы.
-
-    Raises:
-        OrderAccessForbiddenException: Если заказ не принадлежит магазину
-    """
-    if not user.shop:
-        logger.warning(f"Пользователь {user.id} без магазина пытается получить заказ {order.id}")
-        raise OrderAccessForbiddenException()
-
-    if order.shop_id != user.shop.id:
+async def _verify_shop_can_retrieve(user: User, order: Order) -> None:
+    """Магазин может просматривать только свои заказы."""
+    if not user.shop or order.shop_id != user.shop.id:
         logger.warning(
-            f"Магазин {user.shop.id} попытался получить чужой заказ {order.id} "
-            f"(владелец: магазин {order.shop_id})"
+            f"Магазин {user.shop.id if user.shop else 'N/A'} попытался получить чужой заказ {order.id}"
         )
         raise OrderAccessForbiddenException()
 
 
-async def _check_courier_retrieve_permissions(user: User, order: Order) -> None:
-    """
-    Проверяет права курьера на просмотр заказа.
-
-    Курьер может просматривать только назначенные ему заказы.
-
-    Raises:
-        OrderAccessForbiddenException: Если заказ не назначен курьеру
-    """
-    if not user.courier:
+async def _verify_courier_can_retrieve(user: User, order: Order) -> None:
+    """Курьер может просматривать только назначенные ему заказы."""
+    if not user.courier or order.courier_id != user.courier.id:
         logger.warning(
-            f"Пользователь {user.id} без профиля курьера пытается получить заказ {order.id}"
-        )
-        raise OrderAccessForbiddenException()
-
-    if order.courier_id is None or order.courier_id != user.courier.id:
-        logger.warning(
-            f"Курьер {user.courier.id} попытался получить не назначенный ему заказ {order.id} "
-            f"(назначен курьеру {order.courier_id})"
+            f"Курьер {user.courier.id if user.courier else 'N/A'} попытался получить чужой заказ {order.id}"
         )
         raise OrderAccessForbiddenException()
 
 
-# ==================== МАППИНГИ ПРОВЕРОК ПРАВ ====================
-
-
-RETRIEVE_PERMISSION_CHECKS: dict[UserRole, RetrievePermissionCheck] = {
-    UserRole.ADMIN: _check_admin_retrieve_permissions,
-    UserRole.SHOP: _check_shop_retrieve_permissions,
-    UserRole.COURIER: _check_courier_retrieve_permissions,
-}
-
-
-UPDATE_PERMISSION_CHECKS: dict[UserRole, UpdatePermissionCheck] = {
-    UserRole.ADMIN: _check_admin_update_permissions,
-    UserRole.SHOP: _check_shop_update_permissions,
-    UserRole.COURIER: _check_courier_update_permissions,
-}
+# ==================== СПИСОК ЗАКАЗОВ ====================
 
 
 async def get_orders_list(
     db: AsyncSession,
     user: User,
     filters: OrderListFilters,
-) -> PaginatedResponse[OrderListItemForAdmin | OrderListItemForShop | OrderListItemForCourier]:
+) -> PaginatedResponse:
     """
-    Получает список заказов с пагинацией и фильтрами в зависимости от роли.
+    Возвращает пагинированный список заказов с фильтрами.
+
+    Список адаптирован под роль пользователя.
 
     Args:
-        db: Сессия базы данных
+        db: Сессия БД
         user: Текущий пользователь
-        filters: Фильтры и параметры пагинации
+        filters: Параметры фильтрации и пагинации
 
     Returns:
-        Пагинированный список заказов, адаптированный под роль пользователя
+        PaginatedResponse с заказами
 
     Raises:
-        OrderAccessForbiddenException: Если роль не имеет доступа
         HTTPException: При попытке использовать запрещённые фильтры
     """
-    # Валидация фильтров в зависимости от роли
+    # Валидируем фильтры для роли
     _validate_filters_for_role(user, filters)
 
-    # Построение базового запроса
-    stmt = _build_base_query(user, filters)
+    # Строим запрос
+    stmt = _build_orders_query(user, filters)
 
-    # Подсчёт общего количества
-    total = await _count_total_orders(db, stmt)
+    # Считаем общее количество
+    total = await _count_orders(db, stmt)
 
-    # Применение пагинации
-    stmt = _apply_pagination(stmt, filters)
+    # Применяем пагинацию
+    stmt = stmt.offset((filters.page - 1) * filters.limit).limit(filters.limit)
 
-    # Получение заказов
+    # Получаем заказы
     result = await db.execute(stmt)
     orders = result.scalars().all()
 
-    # Преобразование в схему в зависимости от роли
-    response_schema = _get_list_response_schema(user.role)
+    # Преобразуем в схемы
+    response_schema = _get_list_item_schema(user.role)
     items = [response_schema.model_validate(order) for order in orders]
 
     logger.info(
-        f"Получен список заказов для пользователя {user}: "
-        f"всего={total}, страница={filters.page}, лимит={filters.limit}"
+        f"Получен список заказов для {user.role.value} {user.id}: "
+        f"total={total}, page={filters.page}, items={len(items)}"
     )
 
     return PaginatedResponse(total=total, items=items)
@@ -612,38 +498,29 @@ async def get_orders_list(
 
 def _validate_filters_for_role(user: User, filters: OrderListFilters) -> None:
     """
-    Проверяет, что пользователь не использует запрещённые для его роли фильтры.
+    Проверяет допустимость фильтров для роли.
 
     Raises:
-        HTTPException: Если пользователь использует запрещённый фильтр
+        HTTPException: Если используется запрещённый фильтр
     """
-    if user.role != UserRole.ADMIN:
-        if filters.shop_id is not None:
-            logger.warning(
-                f"Пользователь {user} (роль {user.role}) попытался использовать "
-                f"фильтр shop_id (доступен только админам)"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Фильтр shop_id доступен только администраторам",
-            )
+    if user.role == UserRole.ADMIN:
+        return
 
-        if filters.courier_id is not None:
-            logger.warning(
-                f"Пользователь {user} (роль {user.role}) попытался использовать "
-                f"фильтр courier_id (доступен только админам)"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Фильтр courier_id доступен только администраторам",
-            )
+    if filters.shop_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Фильтр shop_id доступен только администраторам",
+        )
+
+    if filters.courier_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Фильтр courier_id доступен только администраторам",
+        )
 
 
-def _build_base_query(user: User, filters: OrderListFilters):
-    """
-    Строит базовый запрос с учётом роли пользователя и фильтров.
-    """
-    # Базовый запрос с предзагрузкой связанных сущностей
+def _build_orders_query(user: User, filters: OrderListFilters):
+    """Строит SQL-запрос с учётом роли и фильтров."""
     stmt = (
         select(Order)
         .options(
@@ -661,11 +538,7 @@ def _build_base_query(user: User, filters: OrderListFilters):
     elif user.role == UserRole.ADMIN:
         stmt = _apply_admin_filters(stmt, filters)
     else:
-        logger.error(f"Неподдерживаемая роль {user.role} при получении списка заказов")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав доступа",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
 
     return stmt
 
@@ -673,17 +546,16 @@ def _build_base_query(user: User, filters: OrderListFilters):
 def _apply_shop_filters(stmt, user: User, filters: OrderListFilters):
     """Применяет фильтры для магазина."""
     if not user.shop:
-        logger.warning(f"Пользователь {user} без профиля магазина запрашивает список заказов")
         raise OrderAccessForbiddenException("У вас нет профиля магазина")
 
     # Магазин видит только свои заказы
     stmt = stmt.where(Order.shop_id == user.shop.id)
 
     # Фильтр по статусу
-    if filters.status is not None:
+    if filters.status:
         stmt = stmt.where(Order.status == filters.status)
 
-    # Фильтр по текущим заказам
+    # Фильтр по текущим/завершённым
     if filters.current is True:
         stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
     elif filters.current is False:
@@ -695,17 +567,16 @@ def _apply_shop_filters(stmt, user: User, filters: OrderListFilters):
 def _apply_courier_filters(stmt, user: User, filters: OrderListFilters):
     """Применяет фильтры для курьера."""
     if not user.courier:
-        logger.warning(f"Пользователь {user} без профиля курьера запрашивает список заказов")
         raise OrderAccessForbiddenException("У вас нет профиля курьера")
 
-    # Курьер видит только назначенные ему заказы
+    # Курьер видит только свои заказы
     stmt = stmt.where(Order.courier_id == user.courier.id)
 
     # Фильтр по статусу
-    if filters.status is not None:
+    if filters.status:
         stmt = stmt.where(Order.status == filters.status)
 
-    # Фильтр по текущим заказам
+    # Фильтр по текущим/завершённым
     if filters.current is True:
         stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
     elif filters.current is False:
@@ -716,19 +587,15 @@ def _apply_courier_filters(stmt, user: User, filters: OrderListFilters):
 
 def _apply_admin_filters(stmt, filters: OrderListFilters):
     """Применяет фильтры для администратора."""
-    # Фильтр по магазину
-    if filters.shop_id is not None:
+    if filters.shop_id:
         stmt = stmt.where(Order.shop_id == filters.shop_id)
 
-    # Фильтр по курьеру
-    if filters.courier_id is not None:
+    if filters.courier_id:
         stmt = stmt.where(Order.courier_id == filters.courier_id)
 
-    # Фильтр по статусу
-    if filters.status is not None:
+    if filters.status:
         stmt = stmt.where(Order.status == filters.status)
 
-    # Фильтр по текущим заказам
     if filters.current is True:
         stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
     elif filters.current is False:
@@ -737,21 +604,15 @@ def _apply_admin_filters(stmt, filters: OrderListFilters):
     return stmt
 
 
-async def _count_total_orders(db: AsyncSession, stmt) -> int:
-    """Подсчитывает общее количество заказов по запросу."""
+async def _count_orders(db: AsyncSession, stmt) -> int:
+    """Подсчитывает общее количество заказов."""
     count_stmt = select(func.count()).select_from(stmt.subquery())
     result = await db.execute(count_stmt)
     return result.scalar_one()
 
 
-def _apply_pagination(stmt, filters: OrderListFilters):
-    """Применяет пагинацию к запросу."""
-    offset = (filters.page - 1) * filters.limit
-    return stmt.offset(offset).limit(filters.limit)
-
-
-def _get_list_response_schema(role: UserRole):
-    """Возвращает схему ответа для списка заказов в зависимости от роли."""
+def _get_list_item_schema(role: UserRole):
+    """Возвращает схему элемента списка для роли."""
     schemas = {
         UserRole.ADMIN: OrderListItemForAdmin,
         UserRole.SHOP: OrderListItemForShop,
@@ -759,71 +620,61 @@ def _get_list_response_schema(role: UserRole):
     }
 
     schema = schemas.get(role)
+
     if not schema:
-        logger.error(f"Нет схемы списка заказов для роли {role}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Недостаточно прав доступа",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
 
     return schema
 
 
-# Обновите также константы в constants.py
-LIST_RESPONSE_SCHEMAS: dict[UserRole, type] = {
-    UserRole.ADMIN: OrderListItemForAdmin,
-    UserRole.SHOP: OrderListItemForShop,
-    UserRole.COURIER: OrderListItemForCourier,
-}
+# ==================== ЗАВЕРШЕНИЕ ЗАКАЗА ====================
 
 
 async def complete_order(
     db: AsyncSession, order_id: int, photo_report_id: str, current_user: User
 ) -> Order:
     """
-    Завершает заказ, устанавливая статус COMPLETED и сохраняя фото-отчет.
+    Завершает заказ с фото-отчётом.
 
     Args:
-        db: Сессия базы данных
-        order_id: ID завершаемого заказа
-        photo_report_id: ID фото-отчета в Telegram
-        current_user: Текущий пользователь (курьер)
+        db: Сессия БД
+        order_id: ID заказа
+        photo_report_id: ID фото в Telegram
+        current_user: Курьер, завершающий заказ
 
     Returns:
-        Завершенный заказ
+        Завершённый заказ
 
     Raises:
-        OrderNotFoundException: Если заказ не найден
-        OrderUpdateForbiddenException: Если у пользователя нет прав или заказ в неверном статусе
+        OrderNotFoundException: Заказ не найден
+        OrderUpdateForbiddenException: Нет прав или неверный статус
     """
-    order = await _fetch_order_for_update(db, order_id)
+    order = await _fetch_order_or_404(db, order_id)
 
-    # Проверяем, что пользователь - курьер
+    # Проверяем, что это курьер
     if current_user.role != UserRole.COURIER:
-        logger.warning(
-            f"Пользователь {current_user} с ролью {current_user.role.value} "
-            f"попытался завершить заказ {order_id}"
-        )
         raise OrderUpdateForbiddenException("Только курьер может завершить заказ")
 
-    # Проверяем, что курьер назначен на этот заказ
-    _validate_courier_assigned_to_order(current_user, order)
+    # Проверяем назначение
+    if not current_user.courier or order.courier_id != current_user.courier.id:
+        raise OrderUpdateForbiddenException("Вы можете завершать только назначенные вам заказы")
 
-    # Проверяем статус заказа - можно завершать только заказы в статусе DELIVERING
-    if order.status not in [OrderStatus.DELIVERING, OrderStatus.SEMI_COMPLETED]:
-        logger.warning(
-            f"Попытка завершить заказ {order_id} в статусе {order.status.value}. "
-            f"Завершение возможно только из статусов DELIVERING или SEMI_COMPLETED"
-        )
+    # Проверяем статус
+    allowed_statuses = {OrderStatus.DELIVERING, OrderStatus.SEMI_COMPLETED}
+    if order.status not in allowed_statuses:
         raise OrderUpdateForbiddenException(
             f"Невозможно завершить заказ в статусе {order.status.value}. "
-            f"Заказ должен быть в статусе доставки"
+            f"Заказ должен быть в процессе доставки"
         )
 
-    # Устанавливаем данные завершения
+    # Завершаем заказ
     order.status = OrderStatus.COMPLETED
     order.photo_report_id = photo_report_id
     order.completed_at = datetime.now(UTC)
 
-    await _commit_order_changes(db, order)
+    await db.flush()
+    await db.refresh(order)
+
+    logger.info(f"Заказ {order_id} завершён курьером {current_user.courier.id}")
+
     return order
