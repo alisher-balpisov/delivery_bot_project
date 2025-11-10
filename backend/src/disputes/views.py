@@ -29,13 +29,20 @@ async def create_dispute(
     Только магазины и курьеры, связанные с заказом, могут открывать споры.
     """
     logger.info(
-        f"User {current_user.id} ({current_user.role}) creating dispute for order {dispute_in.order_id}"
+        f"Пользователь {current_user} создает спор для заказа order_id={dispute_in.order_id}"
     )
 
     try:
-        return await service.create_dispute(db=db, dispute_data=dispute_in, initiator=current_user)
+        response = await service.create_dispute(
+            db=db, dispute_data=dispute_in, initiator=current_user
+        )
+        logger.info(
+            f"Пользователь {current_user} создал спор для заказа order_id={dispute_in.order_id}"
+        )
+        return response
+
     except ValueError as e:
-        logger.warning(f"Validation error creating dispute: {e}")
+        logger.warning(f"Validation error при создании спора: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 

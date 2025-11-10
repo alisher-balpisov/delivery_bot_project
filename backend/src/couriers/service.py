@@ -8,7 +8,6 @@ from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
 from backend.src.models.courier_rating import CourierRating
 from backend.src.models.user import User
-from backend.src.couriers.courier import CourierCardResponse
 
 logger = get_logger(__name__)
 
@@ -49,7 +48,9 @@ async def get_avg_rating(db: DbSession, courier_id: int) -> float | None:
         raise
 
 
-async def get_courier_card(db: DbSession, courier_id: int) -> CourierCardResponse:
+async def get_courier_card(
+    db: DbSession, courier_id: int
+) -> tuple[Courier, float | None, list[str]]:
     """
     Сервисная функция: собирает и возвращает CourierCardResponse для указанного courier_id.
     Бросает ValueError, если курьер не найден, или SQLAlchemyError при проблемах с БД.
@@ -64,16 +65,4 @@ async def get_courier_card(db: DbSession, courier_id: int) -> CourierCardRespons
 
     phone_numbers = courier.phone_number if courier.phone_number else []
 
-    card = CourierCardResponse(
-        id=courier.id,
-        telegram_id=courier.user.telegram_id,
-        username=courier.user.username,
-        full_name=courier.full_name,
-        status=courier.user.status,
-        phone_numbers=phone_numbers,
-        photo_id=courier.photo_id,
-        is_active=courier.is_active,
-        rating=avg_rating,
-    )
-
-    return card
+    return courier, avg_rating, phone_numbers

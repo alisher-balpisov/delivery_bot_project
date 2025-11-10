@@ -1,8 +1,8 @@
 from backend.src.auth.dependencies import RequireAllRoles, RequireShopOrCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.users.schemas import UserBase, UserCreateWithoutPassword, UserRead, UserUpdate
 from backend.src.users import service
+from backend.src.users.schemas import UserBase, UserCreateWithoutPassword, UserRead, UserUpdate
 from fastapi import APIRouter, HTTPException
 
 logger = get_logger(__name__)
@@ -30,24 +30,26 @@ async def update_my_profile(
     """
     Обновление профиля текущего пользователя (магазин или курьер).
     """
-    logger.info(f"Обновление профиля для пользователя ID: {current_user.id}")
+    logger.info(f"Обновление профиля для пользователя {current_user}")
 
-    if profile_data.role != current_user.role:
-        raise HTTPException(
-            status_code=400,
-            detail="Роль в запросе не соответствует роли пользователя.",
+    try:
+        updated_user = await service.update_my_profile(
+            db=db, user_id=current_user.id, profile_data=profile_data
         )
+        logger.info(f"Профиль для пользователя {current_user} успешно обновлен.")
+        return updated_user
 
-    updated_user = await service.update_my_profile(
-        db=db, user_id=current_user.id, profile_data=profile_data
-    )
-    if not updated_user:
-        logger.error(f"Не удалось найти или обновить профиль для пользователя {current_user.id}.")
+    except ValueError as e:
         raise HTTPException(
-            status_code=404, detail="Профиль пользователя не найден или не может быть обновлен."
+            status_code=404,
+            detail=f"Профиль пользователя не найден или не может быть обновлен: {e!s}",
         )
-    logger.info(f"Профиль для пользователя ID: {current_user.id} успешно обновлен.")
-    return updated_user
+    except Exception as e:
+        logger.error(
+            f"Непредвиденная ошибка при обновлении профиля для пользователя {current_user}: {e!s}",
+            exc_info=True,
+        )
+        raise
 
 
 @router.post("/complete-registration", response_model=UserRead)

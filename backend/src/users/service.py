@@ -49,15 +49,12 @@ async def update_my_profile(
     db: AsyncSession, user_id: int, profile_data: UserUpdate
 ) -> User | None:
     """Обновление профиля пользователя (магазина или курьера)."""
-    logger.info(f"Обновление профиля пользователя ID: {user_id}")
-
     user = await get_user_or_none(db, user_id)
     if not user:
-        return None
+        logger.error(f"Не удалось найти или обновить профиль для пользователя {user_id=}.")
+        raise ValueError("Профиль пользователя не найден или не может быть обновлен.")
 
-    # Берём только те поля, которые реально переданы
     update_data = profile_data.model_dump(exclude_unset=True)
-    logger.debug(f"Данные для обновления: {update_data}")
 
     async with db.begin():
         if profile_data.role == UserRole.SHOP and isinstance(profile_data, ShopUserUpdate):
@@ -72,7 +69,6 @@ async def update_my_profile(
             return None
 
     await db.refresh(user)
-    logger.info(f"Профиль пользователя {user_id} успешно обновлён.")
     return user
 
 

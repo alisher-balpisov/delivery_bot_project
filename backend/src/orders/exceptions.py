@@ -31,8 +31,8 @@ class OrderUpdateForbiddenException(OrderException):
 class OrderAccessForbiddenException(OrderException):
     """Исключение для случаев, когда у пользователя нет прав на доступ к заказу."""
 
-    def __init__(self):
+    def __init__(self, detail: str = "У вас нет прав на доступ к этому заказу"):
         super().__init__(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="У вас нет прав на доступ к этому заказу",
+            detail=detail,
         )

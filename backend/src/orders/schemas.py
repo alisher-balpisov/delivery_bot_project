@@ -1,10 +1,29 @@
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
-from backend.src.common.utils.validaters import PhoneFlexible
+
+class OrderStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELED = "canceled"
+
+
+class OrderType(str, Enum):
+    REGULAR = "regular"
+    SPECIAL = "special"
+
+
+class SpecialOrderType(str, Enum):
+    VIP = "vip"
+    TIME = "time"
+
+
+PhoneFlexible = str
 
 
 class OrderBase(BaseModel):
@@ -75,7 +94,7 @@ class OrderHistoryResponse(BaseModel):
 class OrderCreate(OrderCreateRequest):
     """Схема для создания нового заказа (внутреннее использование в сервисах)."""
 
-    shop_id: int  # Это поле добавляется сервером из данных токена
+    shop_id: int
 
 
 class OrderUpdate(BaseModel):
@@ -99,7 +118,7 @@ class ShopInfoForCourier(BaseModel):
 
 
 class CourierInfoForShop(BaseModel):
-    """Информация о магазине для магазина."""
+    """Информация о курьере для магазина."""
 
     id: int
     name: str
@@ -127,7 +146,7 @@ class OrderResponse(OrderBase):
 
 
 class OrderResponseForShop(OrderResponse):
-    courier: CourierInfoForShop
+    courier: CourierInfoForShop | None = None
     price: Decimal
 
 

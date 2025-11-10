@@ -1,12 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from re import I
+
+from fastapi import APIRouter
 
 from backend.src.auth.dependencies import RequireAdminOrCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.models.shop import Shop
+from backend.src.shops import service
 from backend.src.shops.schemas import ShopCardResponse
 
 logger = get_logger(__name__)
+
 
 router = APIRouter()
 
@@ -16,9 +20,9 @@ async def get_shop_card(
     shop_id: int,
     current_user: RequireAdminOrCourier,
     db: DbSession,
-):
+) -> ShopCardResponse:
     """
-    Получение карточки магазина с кнопками на основе роли пользователя.
+    Получение карточки магазина.
 
     Args:
         shop_id: ID магазина
@@ -26,17 +30,12 @@ async def get_shop_card(
         db: Сессия базы данных
 
     Returns:
-        ShopCardResponse: Данные карточки магазина с кнопками
+        ShopCardResponse: Данные карточки магазина
     """
-    logger.debug(f"Пользователь {current_user} запрашивает карточку магазина {shop_id}")
+    logger.debug(f"Пользователь {current_user} запрашивает карточку магазина {shop_id=}")
 
-    # Получение данных магазина из базы данных
-    shop = await db.get(Shop, shop_id)
-    if shop is None:
-        logger.warning(f"Магазин с ID {shop_id} не найден")
-        raise HTTPException(status_code=404, detail="Магазин не найден")
+    shop: Shop = await service.get_shop_card(shop_id, db)
 
-    # Формирование ответа
     response = ShopCardResponse(
         id=shop.id,
         telegram_id=shop.user.telegram_id,
@@ -48,5 +47,6 @@ async def get_shop_card(
         phone_numbers=shop.phone_number,
     )
 
-    logger.info(f"Карточка магазина {shop} успешно возвращена для пользователя {current_user}")
+    logger.info(f"Карточка магазина {shop} успешно сформирована для пользователя {current_user}")
+
     return response

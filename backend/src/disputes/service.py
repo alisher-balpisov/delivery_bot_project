@@ -62,7 +62,6 @@ async def create_dispute(
 
         logger.info(f"Dispute created successfully with ID {new_dispute.id}")
 
-        # Возвращаем DisputeResponse с необходимыми полями
         return DisputeResponse(
             id=new_dispute.id,
             order_id=new_dispute.order_id,

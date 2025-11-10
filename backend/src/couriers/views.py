@@ -4,7 +4,7 @@ from icecream import ic
 from backend.src.auth.dependencies import RequireAdminOrShop, RequireCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.couriers.courier import CourierCardResponse, CourierShiftResponse
+from backend.src.couriers.schemas import CourierCardResponse, CourierShiftResponse
 
 from . import service
 
@@ -50,15 +50,29 @@ async def get_courier_card(
     """
     Получение карточки курьера с кнопками на основе роли пользователя.
     """
-    logger.debug(f"Пользователь {current_user} запрашивает карточку курьера {courier_id}")
+    logger.debug(f"Пользователь {current_user} запрашивает карточку курьера {courier_id=}")
 
     try:
-        response = await service.get_courier_card(db=db, courier_id=courier_id)
+        courier, avg_rating, phone_numbers = await service.get_courier_card(
+            db=db, courier_id=courier_id
+        )
+
+        response = CourierCardResponse(
+            id=courier.id,
+            telegram_id=courier.user.telegram_id,
+            username=courier.user.username,
+            full_name=courier.full_name,
+            status=courier.user.status,
+            phone_numbers=phone_numbers,
+            photo_id=courier.photo_id,
+            is_active=courier.is_active,
+            rating=avg_rating,
+        )
     except ValueError:
         logger.warning(
-            f"Попытка доступа к несуществующему курьеру {courier_id} от пользователя {current_user}"
+            f"Попытка доступа к несуществующему курьеру {courier_id=} от пользователя {current_user}"
         )
         raise HTTPException(status_code=404, detail="Курьер не найден")
 
-    logger.info(f"Карточка курьера {courier_id} успешно возвращена для пользователя {current_user}")
+    logger.info(f"Карточка курьера {courier} успешно возвращена для пользователя {current_user}")
     return response
