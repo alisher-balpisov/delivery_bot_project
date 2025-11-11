@@ -9,7 +9,6 @@ from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from fastapi import HTTPException, status
-from icecream import ic
 from jose import JWTError, jwt
 from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -407,21 +406,25 @@ async def auth_by_code(
 async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
     """
     Аутентификация существующего пользователя по telegram_id.
+
+    Возвращает токены если пользователь зарегистрирован и активен.
+
+    Raises:
+        InvalidCredentialsError (401): Пользователь не найден
+        RegistrationIncompleteError (403): Регистрация не завершена
+        AccountLockedError (423): Аккаунт заблокирован
     """
     logger.info(f"Попытка входа для telegram_id={telegram_id}")
-    ic("222222")
+
     try:
-        ic(telegram_id)
-        ic("1111")
         user = await _find_existing_user(db, telegram_id)
-        ic(user)
 
         # 1. Проверяем, что пользователь вообще существует
         if not user:
             logger.warning(f"Попытка входа для несуществующего telegram_id={telegram_id}")
             raise exceptions.InvalidCredentialsError("Пользователь не найден.")
 
-        # 2. НОВАЯ ЛОГИКА: Проверка статуса регистрации
+        # 2. Проверка статуса регистрации
         if user.status == UserStatus.PENDING_REGISTRATION:
             logger.info(f"Пользователь {user} не завершил регистрацию")
             raise exceptions.RegistrationIncompleteError(
@@ -433,14 +436,19 @@ async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
             logger.warning(f"Заблокированный пользователь {user} попытался войти")
             raise exceptions.AccountLockedError("Учетная запись заблокирована.")
 
-        # 4. Проверяем, что у пользователя есть роль (дополнительная проверка)
+        # 4. Проверяем неактивность
+        if user.status == UserStatus.INACTIVE:
+            logger.warning(f"Неактивный пользователь {user} попытался войти")
+            raise exceptions.AccountInactiveError("Учетная запись неактивна.")
+
+        # 5. Проверяем, что у пользователя есть роль (дополнительная проверка)
         if not _is_already_registered(user):
             logger.error(f"Пользователь {user} имеет статус {user.status}, но роль GUEST")
             raise exceptions.InvalidCredentialsError(
                 "Данные пользователя повреждены. Обратитесь в поддержку."
             )
 
-        # 5. Если все проверки пройдены, создаём и возвращаем токен
+        # 6. Если все проверки пройдены, создаём и возвращаем токен
         await _clear_login_attempts(user)
         await db.commit()
 
@@ -451,6 +459,7 @@ async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
         exceptions.InvalidCredentialsError,
         exceptions.AccountLockedError,
         exceptions.RegistrationIncompleteError,
+        exceptions.AccountInactiveError,
     ):
         raise
     except Exception as e:

@@ -3,7 +3,6 @@ from backend.src.core.database import DbSession, settings
 from backend.src.core.logging import get_logger
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from icecream import ic
 
 from . import exceptions, service
 from .auth_error_handlers import *
@@ -96,12 +95,11 @@ async def login(
     Raises:
         HTTPException:
             - 401: Пользователь не найден
-            - 403: Регистрация не завершена
+            - 403: Регистрация не завершена или аккаунт неактивен
             - 423: Аккаунт заблокирован
             - 500: Внутренняя ошибка сервера
     """
     logger.info(f"Попытка входа для telegram_id={form_data.telegram_id}")
-    ic()
 
     try:
         result = await service.login(
@@ -116,6 +114,9 @@ async def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=e.detail)
     except exceptions.RegistrationIncompleteError as e:
         logger.warning(f"Пользователь telegram_id={form_data.telegram_id} не завершил регистрацию")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=e.detail)
+    except exceptions.AccountInactiveError as e:
+        logger.warning(f"Неактивный аккаунт для telegram_id={form_data.telegram_id}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=e.detail)
     except exceptions.AccountLockedError as e:
         handle_account_locked(e, form_data.telegram_id)

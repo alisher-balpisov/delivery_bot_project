@@ -6,21 +6,21 @@ class UsersClient(BaseApiClient):
 
     async def get_user_profile(self, token: str) -> RequestResult:
         """Получить профиль пользователя по JWT токену."""
-        return await self._make_request("GET", "/users/me", token=token)
+        return await self._make_request("GET", "/me", token=token)
 
     async def get_all_couriers(self, token: str) -> RequestResult:
         """Получить всех курьеров."""
-        return await self._make_request("GET", "/users/couriers", token=token)
+        return await self._make_request("GET", "/couriers", token=token)
 
     async def complete_registration(self, token: str, registration_data: dict) -> RequestResult:
         """Завершить регистрацию пользователя."""
         return await self._make_request(
             "POST",
-            "/users/complete-registration",
+            "/complete-registration",
             token=token,
             json_data=registration_data,
         )
 
     async def update_user_info(self, token: str, update_data: dict) -> RequestResult:
         """Обновить информацию о пользователе."""
-        return await self._make_request("PUT", "/users/me", token=token, json_data=update_data)
+        return await self._make_request("PUT", "/me", token=token, json_data=update_data)
