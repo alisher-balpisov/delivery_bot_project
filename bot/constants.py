@@ -12,7 +12,6 @@ ROLE_EMOJI_MAP = {
     UserRole.SHOP: "🏪",
     UserRole.COURIER: "🏍️",
     UserRole.GUEST: "👤",
-    UserRole.PENDING: "👤",
 }
 
 STATS_EMOJIS = {

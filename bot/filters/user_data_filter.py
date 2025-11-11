@@ -37,6 +37,7 @@ class UserDataFilter(BaseFilter):
             return False
 
         telegram_id = event.from_user.id
+
         state_data = await state.get_data()
         token = state_data.get("jwt_token")
 
@@ -50,7 +51,7 @@ class UserDataFilter(BaseFilter):
 
         # 2. Если токена нет или он невалиден, запрашиваем новый
         if user_dto is None:
-            token_result = await auth_client.get_token(telegram_id)
+            token_result = await auth_client.login(telegram_id)
             if token_result.success and isinstance(token_result.data, dict):
                 new_token = token_result.data.get("access_token")
                 await state.update_data(jwt_token=new_token)

@@ -1,13 +1,12 @@
-from re import I
-
 from fastapi import APIRouter
 
 from backend.src.auth.dependencies import RequireAdminOrCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.models.shop import Shop
-from backend.src.shops import service
-from backend.src.shops.schemas import ShopCardResponse
+
+from . import service
+from .schemas import ShopCardResponse
 
 logger = get_logger(__name__)
 

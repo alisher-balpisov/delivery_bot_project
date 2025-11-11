@@ -4,9 +4,9 @@ from icecream import ic
 from backend.src.auth.dependencies import RequireAdminOrShop, RequireCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.couriers.schemas import CourierCardResponse, CourierShiftResponse
 
 from . import service
+from .schemas import CourierCardResponse, CourierShiftResponse
 
 logger = get_logger(__name__)
 

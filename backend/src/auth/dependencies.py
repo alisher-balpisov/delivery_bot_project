@@ -1,7 +1,6 @@
 from collections.abc import Callable, Coroutine
 from typing import Annotated, Any
 
-from backend.src.auth import exceptions
 from backend.src.common.enums import TokenType, UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.database import DbSession
@@ -10,6 +9,8 @@ from backend.src.models.user import User
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+
+from . import exceptions
 
 logger = get_logger(__name__)
 

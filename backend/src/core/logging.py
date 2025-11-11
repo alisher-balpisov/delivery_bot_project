@@ -6,7 +6,7 @@ from copy import copy
 from pathlib import Path
 from typing import ClassVar
 
-from backend.src.core.config import settings
+from .config import settings
 
 
 class ColoredFormatter(logging.Formatter):

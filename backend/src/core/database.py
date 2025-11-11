@@ -10,8 +10,8 @@ from sqlalchemy import DateTime, func, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
-from backend.src.core.config import settings
-from backend.src.core.logging import get_logger
+from .config import settings
+from .logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -111,7 +111,7 @@ class Base(DeclarativeBase):
         return f"<{self.__class__.__name__} {id_part}{attrs_part}>"
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """
     Асинхронный генератор зависимости для FastAPI.
     """
@@ -253,7 +253,7 @@ async def reset_database() -> None:
 
 
 @asynccontextmanager
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_db_session() -> AsyncGenerator[AsyncSession]:
     """
     Получить новую сессию базы данных для использования вне FastAPI.
     """

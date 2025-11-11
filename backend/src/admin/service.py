@@ -13,17 +13,18 @@ from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole, UserS
 from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
+from backend.src.couriers.schemas import CourierCardResponse
+from backend.src.disputes.schemas import DisputeCardResponse
 from backend.src.models.courier import Courier
 from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
 from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
-from backend.src.admin.schemas import RegistrationCodeResponse
-from backend.src.couriers.courier import CourierCardResponse
-from backend.src.disputes.schemas import DisputeCardResponse
 from backend.src.orders.schemas import OrderCardResponse
 from backend.src.shops.schemas import ShopCardResponse
+
+from .schemas import RegistrationCodeResponse
 
 logger = get_logger(__name__)
 

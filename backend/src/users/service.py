@@ -4,15 +4,16 @@ from backend.src.couriers.schemas import CourierResponse
 from backend.src.models.courier import Courier
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
-from backend.src.users.schemas import (
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from .schemas import (
     CourierUserUpdate,
     ShopUserUpdate,
     UserCreateWithoutPassword,
     UserResponse,
     UserUpdate,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 logger = get_logger(__name__)
 

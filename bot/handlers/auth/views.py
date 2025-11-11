@@ -10,6 +10,7 @@ from bot.dto import UserDTO
 from bot.filters.filters import IsAuthenticatedFilter
 from bot.handlers.states import RegistrationStates
 from bot.messages import AuthMessages, AuthServiceMessages
+from icecream import ic
 
 from . import service
 
@@ -31,7 +32,9 @@ async def start_handler(
     Получает JWT токен для пользователя и сохраняет его.
     """
     telegram_id = message.from_user.id
-    token_result = await auth_client.get_token(telegram_id)
+    ic(telegram_id)
+    token_result = await auth_client.login(telegram_id)
+    ic(token_result)
 
     if token_result.success and isinstance(token_result.data, dict):
         token = token_result.data.get("access_token")
@@ -82,7 +85,7 @@ async def register_code_handler(
     loading_msg = await message.answer(AuthMessages.CHECKING_CODE)
 
     try:
-        result = await auth_client.auth_by_code(telegram_id, code)
+        result = await auth_client.auth_by_code(telegram_id, code, message.from_user.username)
         if result.success and isinstance(result.data, dict):
             # Успешная регистрация, получаем токен из ответа
             await service.handle_registration_success(message, state, result.data, telegram_id)

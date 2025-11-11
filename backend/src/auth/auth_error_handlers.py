@@ -1,6 +1,7 @@
-from backend.src.auth import exceptions
 from backend.src.core.logging import get_logger
 from fastapi import APIRouter, HTTPException, status
+
+from . import exceptions
 
 router = APIRouter()
 

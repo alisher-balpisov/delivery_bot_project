@@ -2,8 +2,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.src.common.enums import UserStatus
 from backend.src.common.utils.validaters import Phone
-
-from ..users.schemas import UserRead
+from backend.src.users.schemas import UserRead
 
 
 class ShopBase(BaseModel):

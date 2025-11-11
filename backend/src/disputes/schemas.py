@@ -5,13 +5,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from backend.src.common.constants import PaginatedResponse
 from backend.src.common.enums import DisputeStatus, UserRole
 from backend.src.models.dispute import Dispute
-from backend.src.orders.schemas import OrderResponse
 
 
 class DisputeBase(BaseModel):
-    """Базовая схема для спора."""
+    """Базовая схема для спора с общими полями."""
 
     description: str = Field(
         ...,
@@ -24,81 +24,70 @@ class DisputeBase(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_and_sanitize_description(cls, v: str) -> str:
-        """Валидация и санитизация описания."""
-        if v:
-            v = html.escape(v.strip())
-            if len(v.split()) < 3:
-                raise ValueError("Описание должно содержать минимум 3 слова")
-        return v
+        """
+        Валидация и санитизация описания.
+
+        Проверяет минимальное количество слов и экранирует HTML.
+        """
+        if not v:
+            raise ValueError("Описание не может быть пустым")
+
+        # Санитизация HTML
+        sanitized = html.escape(v.strip())
+
+        # Проверка минимального количества слов
+        word_count = len(sanitized.split())
+        if word_count < 3:
+            raise ValueError(f"Описание должно содержать минимум 3 слова (сейчас: {word_count})")
+
+        return sanitized
 
 
 class DisputeCreate(DisputeBase):
     """Схема для создания нового спора."""
 
-    order_id: int = Field(..., gt=0, description="ID заказа")
-
-    @field_validator("order_id")
-    @classmethod
-    def validate_order_id(cls, v: int) -> int:
-        """Проверка корректности ID заказа."""
-        if v <= 0:
-            raise ValueError("ID заказа должен быть положительным числом")
-        return v
+    order_id: int = Field(..., gt=0, description="ID заказа, по которому открывается спор")
 
 
 class DisputeUpdate(BaseModel):
-    """Схема для обновления спора (администратором)."""
+    """
+    Схема для обновления спора администратором.
 
-    status: DisputeStatus | None = None
-    admin_notes: str | None = Field(None, max_length=1000, description="Заметки администратора")
+    Все поля опциональны для частичного обновления.
+    """
+
+    status: DisputeStatus | None = Field(None, description="Новый статус спора")
     resolution_notes: str | None = Field(
-        None, max_length=1500, description="Описание решения спора"
+        None,
+        min_length=10,
+        max_length=1500,
+        description="Описание решения спора",
     )
 
+    @field_validator("resolution_notes")
+    @classmethod
+    def sanitize_resolution_notes(cls, v: str | None) -> str | None:
+        """Санитизация заметок о решении."""
+        if v:
+            return html.escape(v.strip())
+        return v
+
     @model_validator(mode="after")
-    def validate_resolution(self) -> DisputeUpdate:
-        """Проверка логики разрешения спора."""
+    def validate_resolution_logic(self) -> DisputeUpdate:
+        """
+        Проверка бизнес-логики разрешения спора.
+
+        При закрытии спора обязательно указать resolution_notes.
+        """
         if self.status == DisputeStatus.RESOLVED and not self.resolution_notes:
-            raise ValueError("При закрытии спора необходимо указать resolution_notes")
-        return self
-
-
-class DisputeRead(DisputeBase):
-    """Схема для чтения данных спора."""
-
-    id: int
-    status: DisputeStatus
-    created_by_role: UserRole
-    order: OrderResponse
-    admin_notes: str | None = None
-    resolution_notes: str | None = None
-    created_at: datetime
-    resolved_at: datetime | None = None
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "id": 1,
-                "description": "Товар пришёл с дефектом",
-                "status": "OPEN",
-                "created_by_role": "CUSTOMER",
-                "created_at": "2024-01-01T10:00:00",
-                "resolved_at": None,
-            }
-        },
-    )
-
-    @model_validator(mode="after")
-    def validate_dates(self) -> DisputeRead:
-        """Проверка корректности дат."""
-        if self.resolved_at and self.resolved_at < self.created_at:
-            raise ValueError("Дата разрешения не может быть раньше даты создания")
+            raise ValueError(
+                "При переводе спора в статус RESOLVED обязательно указать resolution_notes"
+            )
         return self
 
 
 class DisputeResponse(DisputeBase):
-    """Схема для ответа с данными спора."""
+    """Полная схема ответа с данными спора."""
 
     id: int
     order_id: int
@@ -106,7 +95,6 @@ class DisputeResponse(DisputeBase):
     shop_id: int
     status: DisputeStatus
     created_by_role: UserRole
-    admin_notes: str | None = None
     resolution_notes: str | None = None
     created_at: datetime
     resolved_at: datetime | None = None
@@ -114,20 +102,34 @@ class DisputeResponse(DisputeBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class DisputeList(BaseModel):
-    """Схема для списка споров с пагинацией."""
+class DisputeListItem(BaseModel):
+    """Схема для отображения спора в списке (краткая информация)."""
 
-    items: list[DisputeRead]
-    total: int = Field(..., ge=0)
-    page: int = Field(..., ge=1)
-    per_page: int = Field(..., ge=1, le=100)
-
-    @property
-    def pages(self) -> int:
-        """Общее количество страниц."""
-        return (self.total + self.per_page - 1) // self.per_page if self.per_page > 0 else 0
+    id: int
+    order_id: int
+    shop_id: int
+    shop_name: str | None = Field(None, description="Название магазина")
+    courier_id: int
+    courier_name: str | None = Field(None, description="ФИО курьера")
+    status: DisputeStatus
+    created_by_role: UserRole
+    description: str = Field(..., description="Короткое описание проблемы")
+    created_at: datetime
+    resolved_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DisputeFilters(BaseModel):
+    """Фильтры для списка споров."""
+
+    status: DisputeStatus | None = Field(None, description="Фильтр по статусу")
+    shop_id: int | None = Field(None, gt=0, description="Фильтр по ID магазина")
+    courier_id: int | None = Field(None, gt=0, description="Фильтр по ID курьера")
+    created_by_role: UserRole | None = Field(None, description="Фильтр по роли создателя")
+
+
+DisputeListResponse = PaginatedResponse[DisputeListItem]
 
 
 class DisputeCardResponse(BaseModel):

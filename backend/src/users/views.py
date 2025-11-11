@@ -1,9 +1,10 @@
 from backend.src.auth.dependencies import RequireAllRoles, RequireShopOrCourier
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.users import service
-from backend.src.users.schemas import UserBase, UserCreateWithoutPassword, UserRead, UserUpdate
 from fastapi import APIRouter, HTTPException
+
+from . import service
+from .schemas import UserBase, UserCreateWithoutPassword, UserRead, UserUpdate
 
 logger = get_logger(__name__)
 

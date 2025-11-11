@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
 from backend.src.auth.schemas import AuthSuccessResponse, UserInfo
-from backend.src.common.constants import MAX_TELEGRAM_ID, MIN_TELEGRAM_ID
 from backend.src.common.enums import TokenType, UserRole, UserStatus
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
@@ -10,6 +9,7 @@ from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from fastapi import HTTPException, status
+from icecream import ic
 from jose import JWTError, jwt
 from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,7 +184,6 @@ def _validate_input_data(username: str | None, telegram_id: int, code: str) -> N
     """Валидирует входные данные."""
 
     _validate_username(username)
-    _validate_telegram_id(telegram_id)
 
     if not code.strip() or len(code) != settings.auth.code_length:
         raise ValueError("Некорректный код регистрации")
@@ -239,14 +238,6 @@ async def _clear_login_attempts(user: User) -> None:
 async def _find_existing_user(db: AsyncSession, telegram_id: int) -> User | None:
     """Ищет существующего пользователя по telegram_id."""
     return await db.scalar(select(User).where(User.telegram_id == telegram_id))
-
-
-def _validate_telegram_id(telegram_id: int) -> None:
-    """Валидирует Telegram ID."""
-    if not (MIN_TELEGRAM_ID <= telegram_id <= MAX_TELEGRAM_ID):
-        raise exceptions.InvalidCredentialsError(
-            f"Telegram ID должен быть в диапазоне от {MIN_TELEGRAM_ID} до {MAX_TELEGRAM_ID}"
-        )
 
 
 def _validate_username(username: str | None) -> str | None:
@@ -418,10 +409,12 @@ async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
     Аутентификация существующего пользователя по telegram_id.
     """
     logger.info(f"Попытка входа для telegram_id={telegram_id}")
-    _validate_telegram_id(telegram_id)
-
+    ic("222222")
     try:
+        ic(telegram_id)
+        ic("1111")
         user = await _find_existing_user(db, telegram_id)
+        ic(user)
 
         # 1. Проверяем, что пользователь вообще существует
         if not user:

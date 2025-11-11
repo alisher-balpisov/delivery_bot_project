@@ -1,5 +1,6 @@
 from backend.src.common.enums import TokenType
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import BigInteger
 
 
 class Token(BaseModel):
