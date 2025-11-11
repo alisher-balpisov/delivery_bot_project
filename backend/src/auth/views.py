@@ -3,6 +3,7 @@ from backend.src.core.database import DbSession, settings
 from backend.src.core.logging import get_logger
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from icecream import ic
 
 from . import exceptions, service
 from .auth_error_handlers import *
@@ -50,6 +51,7 @@ async def auth_by_code(
     logger.info(f"Попытка аутентификации по коду для telegram_id={form_data.telegram_id}")
 
     try:
+        ic(form_data)
         result = await service.auth_by_code(
             db=db,
             telegram_id=form_data.telegram_id,

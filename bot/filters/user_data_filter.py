@@ -1,13 +1,13 @@
 from typing import Any
 
 from aiogram.filters import BaseFilter
-from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, TelegramObject
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.auth_client import AuthClient
 from bot.clients.users_client import UsersClient
 from bot.dto import UserDTO
+from bot.redis_storage import UserDataStorage
 from bot.utils.helpers import parse_user_role
 
 logger = get_logger(__name__)
@@ -18,16 +18,18 @@ class UserDataFilter(BaseFilter):
     Фильтр-провайдер, который обеспечивает наличие UserDTO для каждого входящего события.
 
     Логика работы:
-    1. Проверяет наличие токена в FSM
+    1. Проверяет наличие токена в Redis
     2. Если токен есть и валиден - получает профиль пользователя
     3. Если токена нет - пытается получить через login()
     4. Если login() не удался - создает DTO гостя
     """
 
+    def __init__(self, user_data_storage: UserDataStorage):
+        self.user_data_storage = user_data_storage
+
     async def __call__(
         self,
         event: TelegramObject,
-        state: FSMContext,
         auth_client: AuthClient,
         users_client: UsersClient,
     ) -> dict[str, Any] | bool:
@@ -39,8 +41,8 @@ class UserDataFilter(BaseFilter):
             return False
 
         telegram_id = event.from_user.id
-        state_data = await state.get_data()
-        token = state_data.get("jwt_token")
+        user_data = await self.user_data_storage.get_data(telegram_id)
+        token = user_data.get("jwt_token")
 
         user_dto: UserDTO | None = None
 
@@ -50,7 +52,9 @@ class UserDataFilter(BaseFilter):
 
             # Если токен валиден, возвращаем пользователя
             if user_dto:
-                await state.update_data(user=user_dto.model_dump())
+                await self.user_data_storage.update_data(
+                    telegram_id, {"user": user_dto.model_dump()}
+                )
                 return {"user": user_dto}
 
         # 2. Токена нет или он невалиден - пытаемся получить новый через login()
@@ -61,14 +65,16 @@ class UserDataFilter(BaseFilter):
             new_token = token_result.data.get("access_token")
 
             if new_token:
-                await state.update_data(jwt_token=new_token)
+                await self.user_data_storage.update_data(telegram_id, {"jwt_token": new_token})
                 logger.info(f"JWT токен для пользователя {telegram_id} обновлен и кэширован")
 
                 # Получаем профиль с новым токеном
                 user_dto = await self._get_user_by_token(new_token, users_client, telegram_id)
 
                 if user_dto:
-                    await state.update_data(user=user_dto.model_dump())
+                    await self.user_data_storage.update_data(
+                        telegram_id, {"user": user_dto.model_dump()}
+                    )
                     return {"user": user_dto}
 
         # 3. Не удалось получить токен - определяем статус по коду ответа
@@ -86,8 +92,8 @@ class UserDataFilter(BaseFilter):
             )
             user_dto = UserDTO(telegram_id=telegram_id, role=UserRole.GUEST)
 
-        # Сохраняем гостя в FSM
-        await state.update_data(user=user_dto.model_dump())
+        # Сохраняем гостя в Redis
+        await self.user_data_storage.update_data(telegram_id, {"user": user_dto.model_dump()})
         return {"user": user_dto}
 
     async def _get_user_by_token(
@@ -123,3 +129,4 @@ class UserDataFilter(BaseFilter):
             name=api_data.get("name"),
             role=parse_user_role(api_data.get("role")),
         )
+

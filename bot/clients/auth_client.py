@@ -53,3 +53,22 @@ class AuthClient(BaseApiClient):
             json_data={"telegram_id": telegram_id, "code": code, "username": username},
             expected_status=200,
         )
+
+    async def refresh_token(self, refresh_token: str) -> RequestResult:
+        """
+        Обновляет access token используя refresh token.
+
+        Args:
+            refresh_token: Существующий refresh token
+
+        Returns:
+            RequestResult с новыми токенами при успехе
+        """
+        logger.debug("Запрос на обновление токена")
+
+        return await self._make_request(
+            "POST",
+            "/auth/refresh",
+            json_data={"refresh_token": refresh_token},
+            expected_status=200,
+        )

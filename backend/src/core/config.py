@@ -257,6 +257,16 @@ class JwtConfig(BaseModel):
         )
 
 
+class RedisConfig(BaseModel):
+    """Конфигурация для подключения к Redis."""
+
+    host: str = "localhost"
+    port: int = 6379
+    db: int = 0
+    state_ttl: int | None = None
+    data_ttl: int | None = None
+
+
 class Settings(BaseSettings):
     """
     Основной класс настроек приложения.
@@ -275,6 +285,7 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     # --- Вложенные конфигурационные блоки ---
+    redis: RedisConfig = Field(default_factory=RedisConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)  # type: ignore
     auth: AuthConfig = Field(default_factory=AuthConfig)  # type: ignore
     middleware: MiddlewareConfig = Field(default_factory=MiddlewareConfig)  # type: ignore
@@ -405,6 +416,7 @@ __all__ = [
     "FileStorageConfig",
     "JwtConfig",
     "LoggingConfig",
+    "RedisConfig",
     "Settings",
     "TelegramConfig",
     "ensure_upload_dir_exists",

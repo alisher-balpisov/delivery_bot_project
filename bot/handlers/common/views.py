@@ -2,10 +2,12 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+from bot.clients.auth_client import AuthClient
 from bot.clients.disputes_client import DisputesClient
 from bot.dto import UserDTO
 from bot.filters.filters import IsAuthenticatedFilter
 from bot.messages import DisputeMessages
+from bot.utils.token_manager import TokenManager
 
 from . import service
 
@@ -29,10 +31,13 @@ async def dispute_handler(message: Message, user: UserDTO):
 
 
 @common_router.message(Command("disputes"))
-async def disputes_handler(message: Message, state: FSMContext, disputes_client: DisputesClient):
+async def disputes_handler(
+    message: Message, state: FSMContext, auth_client: AuthClient, disputes_client: DisputesClient
+):
     """Показать споры пользователя."""
-    data = await state.get_data()
-    token = data.get("jwt_token")
+    # Используем TokenManager для получения токена
+    token_manager = TokenManager(auth_client)
+    token = await token_manager.get_token(state, message.from_user.id)
 
     await message.answer(DisputeMessages.LOADING_DISPUTES)
     response_text = await service.get_user_disputes_text(token, disputes_client)

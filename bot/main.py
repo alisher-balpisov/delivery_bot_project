@@ -10,8 +10,9 @@ from backend.src.core.logging import get_logger, setup_logging
 
 from bot.clients import ClientManager
 from bot.clients.base_client import ConnectionPool
-from bot.filters.user_data_filter import UserDataFilter
+from bot.filters.user_data_filter import UserDataFilter, UserDataStorage
 from bot.handlers import *
+from bot.middleware import setup_middlewares
 
 logger = get_logger(__name__)
 
@@ -25,10 +26,14 @@ def create_dispatcher(storage, **kwargs) -> Dispatcher:
     """Создает и настраивает диспетчер."""
     dp = Dispatcher(storage=storage, **kwargs)
 
+    # ВАЖНО: Регистрируем middleware ДО фильтров и роутеров
+    setup_middlewares(dp)
+
     # UserDataFilter теперь нуждается в клиентах для выполнения
     # поиска токенов/пользователей. Мы передаем эти клиенты напрямую в его конструктор.
     # Aiogram будет использовать эти экземпляры при срабатывании фильтра.
-    user_data_provider = UserDataFilter()
+    user_data_storage = UserDataStorage(settings.redis)
+    user_data_provider = UserDataFilter(user_data_storage)
 
     # Применяем фильтр ко всем роутерам, которые обрабатывают взаимодействия с пользователем.
     for router in [auth_router, protected_router, orders_router, public_router]:

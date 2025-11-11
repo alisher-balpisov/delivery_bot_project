@@ -6,13 +6,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+from bot.clients.auth_client import AuthClient
 from bot.clients.users_client import UsersClient
 from bot.constants import ROLE_EMOJI_MAP
 from bot.dto import UserDTO
 from bot.exceptions import ErrorMessages
 from bot.messages import AuthMessages, AuthServiceMessages
 from bot.utils.helpers import parse_user_role
-from icecream import ic
+from bot.utils.token_manager import TokenManager
 
 logger = get_logger(__name__)
 
@@ -33,27 +34,32 @@ async def _update_user_state_from_profile(
         name=user_profile.get("name", ""),
         role=role,
     )
-    # Сохраняем только DTO пользователя, токен уже должен быть в state
+    # Сохраняем только DTO пользователя, токен управляется TokenManager
     await state.update_data(user=user_dto.model_dump())
     logger.info(AuthServiceMessages.STATE_UPDATED.format(user_dto.telegram_id))
     return user_dto
 
 
 async def handle_registration_success(
-    message: Message, state: FSMContext, response_data: dict, telegram_id: int
+    message: Message,
+    state: FSMContext,
+    response_data: dict,
+    telegram_id: int,
+    auth_client: AuthClient,
 ) -> None:
     """Обрабатывает успешную регистрацию, сохраняет токен и обновляет DTO."""
-    access_token = response_data.get("access_token")
     user_info = response_data.get("user", {})
 
-    if not access_token:
+    if not response_data.get("access_token"):
         logger.error(f"В успешном ответе регистрации для {telegram_id} отсутствует access_token")
         await message.answer(AuthServiceMessages.GENERIC_ERROR)
         await state.clear()
         return
 
-    # Сохраняем токен в FSM
-    await state.update_data(jwt_token=access_token)
+    # Используем TokenManager для сохранения токена
+    token_manager = TokenManager(auth_client)
+    await token_manager.save_token_from_response(state, response_data, telegram_id)
+
     logger.info(f"JWT токен для пользователя {telegram_id} получен и кэширован после регистрации.")
 
     # Обновляем DTO пользователя
@@ -70,9 +76,11 @@ async def handle_registration_success(
 
     await message.answer(text, parse_mode=ParseMode.HTML)
 
-    # Очищаем состояние регистрации и сохраняем только нужные данные
+    # Очищаем состояние регистрации
     await state.clear()
-    await state.update_data({"user": user_dto.model_dump(), "jwt_token": access_token})
+    # Сохраняем токен через TokenManager и пользователя
+    await token_manager.save_token_from_response(state, response_data, telegram_id)
+    await state.update_data({"user": user_dto.model_dump()})
 
 
 async def handle_registration_failure(
@@ -159,7 +167,6 @@ async def get_user_profile_by_token(token: str, users_client: UsersClient) -> di
 
     try:
         profile_result = await users_client.get_user_profile(token)
-        ic(profile_result)
 
         if profile_result.success and isinstance(profile_result.data, dict):
             return profile_result.data

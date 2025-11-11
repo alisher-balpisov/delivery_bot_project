@@ -5,11 +5,13 @@ from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
+from bot.clients.auth_client import AuthClient
 from bot.clients.system_client import SystemClient
 from bot.dto import UserDTO
 from bot.filters.filters import RoleFilter
 from bot.handlers.keyboards import get_back_to_menu_keyboard, get_role_selection_keyboard
 from bot.messages import AdminMessages, CommonMessages
+from bot.utils.token_manager import TokenManager
 
 from . import service
 
@@ -45,11 +47,13 @@ async def admin_create_code_menu_handler(callback: CallbackQuery):
 
 @admin_router.callback_query(F.data.startswith("admin_create_code_"))
 async def admin_create_code_for_role_handler(
-    callback: CallbackQuery, state: FSMContext, admin_client: AdminClient
+    callback: CallbackQuery, state: FSMContext, auth_client: AuthClient, admin_client: AdminClient
 ):
     """Создает код для выбранной роли."""
-    data = await state.get_data()
-    token = data.get("jwt_token")
+    # Используем TokenManager для получения токена
+    token_manager = TokenManager(auth_client)
+    token = await token_manager.get_token(state, callback.from_user.id)
+
     role_str = callback.data.split("_")[-1]
 
     try:
@@ -71,12 +75,14 @@ async def admin_create_code_for_role_handler(
 
 @admin_router.callback_query(F.data == "admin_view_codes")
 async def admin_view_codes_handler(
-    callback: CallbackQuery, state: FSMContext, admin_client: AdminClient
+    callback: CallbackQuery, state: FSMContext, auth_client: AuthClient, admin_client: AdminClient
 ):
     """Отображает список кодов регистрации."""
     await callback.message.edit_text(AdminMessages.LOADING_CODES)
-    data = await state.get_data()
-    token = data.get("jwt_token")
+
+    # Используем TokenManager для получения токена
+    token_manager = TokenManager(auth_client)
+    token = await token_manager.get_token(state, callback.from_user.id)
 
     response_text = await service.get_formatted_codes(token, admin_client)
     keyboard = get_back_to_menu_keyboard()
@@ -87,11 +93,17 @@ async def admin_view_codes_handler(
 @admin_router.message(Command("system_stats"))
 @admin_router.callback_query(F.data == "system_stats")
 async def system_stats_handler(
-    event: Message | CallbackQuery, state: FSMContext, admin_client: AdminClient, user: UserDTO
+    event: Message | CallbackQuery,
+    state: FSMContext,
+    auth_client: AuthClient,
+    admin_client: AdminClient,
+    user: UserDTO,
 ) -> None:
     """Отображает системную статистику для администратора."""
-    data = await state.get_data()
-    token = data.get("jwt_token")
+    # Используем TokenManager для получения токена
+    token_manager = TokenManager(auth_client)
+    token = await token_manager.get_token(state, user.telegram_id)
+
     logger.info(f"Обработка запроса системной статистики от пользователя {user.telegram_id}")
     try:
         if isinstance(event, CallbackQuery):

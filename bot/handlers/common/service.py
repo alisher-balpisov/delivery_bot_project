@@ -51,9 +51,7 @@ def get_new_dispute_text() -> str:
     return DisputeMessages.NEW_DISPUTE_PROMPT.format(status=DisputeStatus.OPEN.value)
 
 
-async def get_user_disputes_text(
-    token: str | None, disputes_client: DisputesClient
-) -> str:
+async def get_user_disputes_text(token: str | None, disputes_client: DisputesClient) -> str:
     """Получает споры пользователя и возвращает отформатированный текст."""
     if not token:
         return ErrorMessages.Auth.UNAUTHORIZED

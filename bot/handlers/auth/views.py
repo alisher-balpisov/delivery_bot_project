@@ -10,7 +10,7 @@ from bot.dto import UserDTO
 from bot.filters.filters import IsAuthenticatedFilter
 from bot.handlers.states import RegistrationStates
 from bot.messages import AuthMessages, AuthServiceMessages
-from icecream import ic
+from bot.utils.token_manager import TokenManager
 
 from . import service
 
@@ -31,27 +31,23 @@ async def start_handler(
     Обработчик команды /start.
 
     Логика:
-    1. Пытается получить JWT токен через login()
-    2. Если успех (200) - пользователь зарегистрирован, показываем приветствие
-    3. Если 403 (регистрация не завершена) - предлагаем ввести код
-    4. Если 401 (пользователь не найден) - предлагаем регистрацию
-    5. Если другая ошибка - показываем как гостя
+    1. Использует TokenManager для получения токена
+    2. Если успех - пользователь зарегистрирован, показываем приветствие
+    3. Если токена нет - предлагаем регистрацию
     """
     telegram_id = message.from_user.id
     logger.info(f"Команда /start от пользователя {telegram_id}")
 
-    token_result = await auth_client.login(telegram_id)
-    ic(token_result)
+    # Используем TokenManager для получения токена
+    token_manager = TokenManager(auth_client)
+    token = await token_manager.get_token(state, telegram_id)
 
     # Успешная авторизация - пользователь уже зарегистрирован
-    if token_result.success and isinstance(token_result.data, dict):
-        token = token_result.data.get("access_token")
-        await state.update_data(jwt_token=token)
-        logger.info(f"JWT токен для пользователя {telegram_id} получен и кэширован")
+    if token:
+        logger.info(f"JWT токен для пользователя {telegram_id} получен")
 
         # Получаем профиль пользователя
         user_profile = await service.get_user_profile_by_token(token, users_client)
-        ic(user_profile)
 
         if user_profile:
             await service.handle_authenticated_user(
@@ -62,7 +58,8 @@ async def start_handler(
             )
             return
 
-    # Обработка ошибок авторизации
+    # Токен не получен - проверяем статус через login
+    token_result = await auth_client.login(telegram_id)
     status_code = token_result.status_code
 
     # 403 - регистрация не завершена (пользователь существует, но не ввел код)
@@ -74,23 +71,12 @@ async def start_handler(
         )
         return
 
-    # 401 - пользователь не найден (совсем новый пользователь)
-    if status_code == 401:
-        logger.info(f"Новый пользователь {telegram_id}, предлагаем регистрацию")
-        await state.clear()
-        guest_user = UserDTO(telegram_id=telegram_id, role=UserRole.GUEST)
-        await state.update_data(user=guest_user.model_dump())
-        await message.answer(AuthMessages.WELCOME_NEW_USER)
-        return
-
-    # Другие ошибки - показываем как гостя
-    logger.warning(
-        f"Неожиданный статус {status_code} при /start для {telegram_id}: {token_result.detail}"
-    )
+    # 401 или другой код - пользователь не найден (совсем новый пользователь)
+    logger.info(f"Новый пользователь {telegram_id}, предлагаем регистрацию")
     await state.clear()
     guest_user = UserDTO(telegram_id=telegram_id, role=UserRole.GUEST)
     await state.update_data(user=guest_user.model_dump())
-    await message.answer("⚠️ Произошла ошибка при авторизации.\n\n" + AuthMessages.WELCOME_NEW_USER)
+    await message.answer(AuthMessages.WELCOME_NEW_USER)
 
 
 @auth_router.message(Command("register"))
@@ -133,7 +119,9 @@ async def register_code_handler(
 
         if result.success and isinstance(result.data, dict):
             # Успешная регистрация, получаем токен из ответа
-            await service.handle_registration_success(message, state, result.data, telegram_id)
+            await service.handle_registration_success(
+                message, state, result.data, telegram_id, auth_client
+            )
         else:
             # Обработка различных ошибок
             await service.handle_registration_failure(message, state, result.detail)
@@ -150,17 +138,27 @@ async def register_code_handler(
 
 
 @auth_router.message(Command("me"), IsAuthenticatedFilter())
-async def user_stats_handler(message: Message, state: FSMContext, users_client: UsersClient):
+async def user_stats_handler(
+    message: Message, state: FSMContext, auth_client: AuthClient, users_client: UsersClient
+):
     """Получить статистику пользователя (требует авторизации)."""
-    data = await state.get_data()
-    token = data.get("jwt_token")
+    # Используем TokenManager для получения токена
+    token_manager = TokenManager(auth_client)
+    token = await token_manager.get_token(state, message.from_user.id)
+
     response_text = await service.get_user_stats_text(token, users_client)
     await message.answer(response_text)
 
 
 @auth_router.message(Command("logout"), IsAuthenticatedFilter())
-async def logout_handler(message: Message, state: FSMContext, user: UserDTO):
+async def logout_handler(
+    message: Message, state: FSMContext, user: UserDTO, auth_client: AuthClient
+):
     """Обработчик команды /logout."""
+    # Используем TokenManager для инвалидации токена
+    token_manager = TokenManager(auth_client)
+    await token_manager.invalidate_token(state, user.telegram_id)
+
     await state.clear()
     guest_dto = UserDTO(telegram_id=user.telegram_id, role=UserRole.GUEST)
     await state.update_data(user=guest_dto.model_dump())

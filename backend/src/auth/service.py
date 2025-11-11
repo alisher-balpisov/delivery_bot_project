@@ -9,6 +9,7 @@ from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from fastapi import HTTPException, status
+from icecream import ic
 from jose import JWTError, jwt
 from sqlalchemy import exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -278,6 +279,7 @@ async def _get_or_create_user(db: AsyncSession, telegram_id: int) -> User:
     user = await _find_existing_user(db, telegram_id)
     if not user:
         user = User(telegram_id=telegram_id, status=UserStatus.PENDING_REGISTRATION)
+        ic(user)
         db.add(user)
         await db.flush()
         logger.info(f"Создан новый пользователь с telegram_id={telegram_id}")
@@ -376,9 +378,11 @@ async def auth_by_code(
 
     try:
         async with db.begin():
+            ic()
             user = await _get_or_create_user(db, telegram_id)
+            ic(user)
 
-            if _is_already_registered(user):
+            if ic(_is_already_registered(user)):
                 if _is_user_locked(user):
                     raise exceptions.AccountLockedError("Учетная запись заблокирована.")
                 return await _handle_already_registered(user)

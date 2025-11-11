@@ -3,10 +3,12 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
+from bot.clients.auth_client import AuthClient
 from bot.clients.orders_client import OrdersClient
 from bot.filters.filters import RoleFilter
 from bot.handlers.states import OrderStates
 from bot.messages import OrderMessages
+from bot.utils.token_manager import TokenManager
 
 from . import service
 
@@ -62,11 +64,14 @@ async def order_price_handler(message: Message, state: FSMContext):
 
 @shop_router.callback_query(F.data == "order_confirm", OrderStates.confirmation)
 async def order_confirm_handler(
-    callback: CallbackQuery, state: FSMContext, orders_client: OrdersClient
+    callback: CallbackQuery, state: FSMContext, auth_client: AuthClient, orders_client: OrdersClient
 ):
     """Подтверждение и создание заказа."""
     state_data = await state.get_data()
-    token = state_data.get("jwt_token")
+
+    # Используем TokenManager для получения токена
+    token_manager = TokenManager(auth_client)
+    token = await token_manager.get_token(state, callback.from_user.id)
 
     await callback.message.edit_text(OrderMessages.CREATING_ORDER)
 
