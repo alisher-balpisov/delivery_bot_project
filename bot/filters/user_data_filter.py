@@ -1,3 +1,12 @@
+"""
+Упрощенный фильтр для предоставления UserDTO.
+
+Ключевые изменения:
+- Убрана зависимость от UsersClient для получения профиля
+- Используется только Redis для кэширования
+- Улучшена логика определения статуса пользователя
+"""
+
 from typing import Any
 
 from aiogram.filters import BaseFilter
@@ -5,9 +14,8 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.auth_client import AuthClient
-from bot.clients.users_client import UsersClient
 from bot.dto import UserDTO
-from bot.redis_storage import UserDataStorage
+from bot.redis_storage import UserCacheData, UserDataStorage
 from bot.utils.helpers import parse_user_role
 
 logger = get_logger(__name__)
@@ -15,118 +23,143 @@ logger = get_logger(__name__)
 
 class UserDataFilter(BaseFilter):
     """
-    Фильтр-провайдер, который обеспечивает наличие UserDTO для каждого входящего события.
+    Фильтр-провайдер данных пользователя через Redis.
 
     Логика работы:
-    1. Проверяет наличие токена в Redis
-    2. Если токен есть и валиден - получает профиль пользователя
-    3. Если токена нет - пытается получить через login()
-    4. Если login() не удался - создает DTO гостя
+    1. Проверяет наличие данных в Redis
+    2. Если данных нет - пытается получить через login()
+    3. Если login() не удался - создает DTO гостя
+    4. Возвращает UserDTO для использования в хендлерах
     """
 
-    def __init__(self, user_data_storage: UserDataStorage):
-        self.user_data_storage = user_data_storage
+    def __init__(self, storage: UserDataStorage):
+        self.storage = storage
 
     async def __call__(
         self,
         event: TelegramObject,
         auth_client: AuthClient,
-        users_client: UsersClient,
     ) -> dict[str, Any] | bool:
         """
         Основной метод фильтра.
-        Возвращает словарь с user (UserDTO) для использования в хендлерах.
+
+        Returns:
+            Словарь с user (UserDTO) для использования в хендлерах
         """
         if not isinstance(event, (Message, CallbackQuery)) or not event.from_user:
             return False
 
         telegram_id = event.from_user.id
-        user_data = await self.user_data_storage.get_data(telegram_id)
-        token = user_data.get("jwt_token")
+        username = event.from_user.username
 
-        user_dto: UserDTO | None = None
+        # Пытаемся получить данные из Redis
+        user_data = await self.storage.get_user_data(telegram_id)
 
-        # 1. Попытка получить пользователя по существующему токену
-        if token:
-            user_dto = await self._get_user_by_token(token, users_client, telegram_id)
+        if user_data:
+            # Данные есть в кэше
+            logger.debug(f"Данные пользователя {telegram_id} получены из Redis")
 
-            # Если токен валиден, возвращаем пользователя
-            if user_dto:
-                await self.user_data_storage.update_data(
-                    telegram_id, {"user": user_dto.model_dump()}
-                )
-                return {"user": user_dto}
+            # Обновляем активность
+            await self.storage.update_activity(telegram_id)
 
-        # 2. Токена нет или он невалиден - пытаемся получить новый через login()
-        logger.debug(f"Попытка получить новый токен для пользователя {telegram_id}")
-        token_result = await auth_client.login(telegram_id)
+            # Создаем DTO
+            user_dto = self._create_dto_from_cache(user_data, username)
+            return {"user": user_dto}
 
-        if token_result.success and isinstance(token_result.data, dict):
-            new_token = token_result.data.get("access_token")
+        # Данных нет - пытаемся получить через login
+        logger.debug(f"Данные пользователя {telegram_id} отсутствуют, пробуем login")
 
-            if new_token:
-                await self.user_data_storage.update_data(telegram_id, {"jwt_token": new_token})
-                logger.info(f"JWT токен для пользователя {telegram_id} обновлен и кэширован")
+        login_result = await auth_client.login(telegram_id)
 
-                # Получаем профиль с новым токеном
-                user_dto = await self._get_user_by_token(new_token, users_client, telegram_id)
+        if login_result.success and isinstance(login_result.data, dict):
+            # Успешный login - сохраняем данные и создаем DTO
+            user_dto = await self._handle_successful_login(telegram_id, username, login_result.data)
+            return {"user": user_dto}
 
-                if user_dto:
-                    await self.user_data_storage.update_data(
-                        telegram_id, {"user": user_dto.model_dump()}
-                    )
-                    return {"user": user_dto}
+        # Login не удался - создаем гостя
+        status_code = login_result.status_code
+        logger.info(f"Login не удался для {telegram_id} (код: {status_code}), создаем гостя")
 
-        # 3. Не удалось получить токен - определяем статус по коду ответа
-        status_code = token_result.status_code
-
-        # 403 означает, что пользователь существует, но регистрация не завершена
-        if status_code == 403:
-            logger.info(f"Пользователь {telegram_id} не завершил регистрацию (403)")
-            user_dto = UserDTO(telegram_id=telegram_id, role=UserRole.GUEST)
-
-        # 401 или любой другой код - пользователь не найден или ошибка
-        else:
-            logger.info(
-                f"Пользователь {telegram_id} не найден или ошибка авторизации (код: {status_code})"
-            )
-            user_dto = UserDTO(telegram_id=telegram_id, role=UserRole.GUEST)
-
-        # Сохраняем гостя в Redis
-        await self.user_data_storage.update_data(telegram_id, {"user": user_dto.model_dump()})
+        user_dto = await self._create_guest(telegram_id, username)
         return {"user": user_dto}
 
-    async def _get_user_by_token(
-        self, token: str, users_client: UsersClient, telegram_id: int
-    ) -> UserDTO | None:
-        """
-        Получает профиль пользователя по токену и создает UserDTO.
-        Возвращает None если токен невалиден или произошла ошибка.
-        """
-        try:
-            profile_result = await users_client.get_user_profile(token)
-
-            if profile_result.success and isinstance(profile_result.data, dict):
-                api_data = profile_result.data
-                return self._user_dto_from_api_response(api_data)
-
-            # Токен невалиден или ошибка API
-            logger.warning(
-                f"Не удалось получить профиль для {telegram_id}: "
-                f"{profile_result.status_code} - {profile_result.detail}"
-            )
-            return None
-
-        except Exception as e:
-            logger.error(f"Ошибка при получении профиля для {telegram_id}: {e}", exc_info=True)
-            return None
-
-    def _user_dto_from_api_response(self, api_data: dict[str, Any]) -> UserDTO:
-        """Безопасно создает UserDTO из ответа API."""
+    def _create_dto_from_cache(self, user_data: UserCacheData, username: str | None) -> UserDTO:
+        """Создает UserDTO из кэшированных данных"""
         return UserDTO(
-            user_id=api_data.get("id"),
-            telegram_id=api_data.get("telegram_id"),
-            name=api_data.get("name"),
-            role=parse_user_role(api_data.get("role")),
+            user_id=user_data.user_id,
+            telegram_id=user_data.telegram_id,
+            name=user_data.name,
+            role=user_data.role,
         )
 
+    async def _handle_successful_login(
+        self, telegram_id: int, username: str | None, response_data: dict
+    ) -> UserDTO:
+        """
+        Обрабатывает успешный login:
+        - Сохраняет токены
+        - Сохраняет данные пользователя
+        - Создает DTO
+        """
+        user_info = response_data.get("user", {})
+
+        # Создаем объект данных пользователя
+        user_data = UserCacheData(
+            user_id=user_info.get("id"),
+            telegram_id=telegram_id,
+            name=user_info.get("name"),
+            role=parse_user_role(user_info.get("role")),
+            username=username,
+        )
+
+        # Сохраняем токены
+        await self.storage.save_tokens(
+            telegram_id=telegram_id,
+            access_token=response_data["access_token"],
+            refresh_token=response_data["refresh_token"],
+            access_expires_in=response_data["expires_in"],
+            refresh_expires_in=response_data["refresh_expires_in"],
+        )
+
+        # Сохраняем данные пользователя
+        await self.storage.save_user_data(telegram_id, user_data)
+
+        logger.info(f"Данные пользователя {telegram_id} сохранены после login")
+
+        # Создаем DTO
+        return UserDTO(
+            user_id=user_data.user_id,
+            telegram_id=user_data.telegram_id,
+            name=user_data.name,
+            role=user_data.role,
+        )
+
+    async def _create_guest(self, telegram_id: int, username: str | None) -> UserDTO:
+        """
+        Создает гостя и сохраняет его в Redis.
+
+        Это позволяет избежать повторных запросов к API
+        для незарегистрированных пользователей.
+        """
+        user_data = UserCacheData(
+            user_id=None,
+            telegram_id=telegram_id,
+            name=None,
+            role=UserRole.GUEST,
+            username=username,
+        )
+
+        # Сохраняем гостя в Redis с коротким TTL (5 минут)
+        await self.storage.save_user_data(telegram_id, user_data, ttl=300)
+
+        logger.debug(f"Создан гость для {telegram_id}")
+
+        return UserDTO(
+            user_id=None,
+            telegram_id=telegram_id,
+            name=None,
+            role=UserRole.GUEST,
+        )
+
+
+__all__ = ["UserDataFilter"]

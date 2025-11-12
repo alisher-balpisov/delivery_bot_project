@@ -1,221 +1,152 @@
 """
-Менеджер JWT токенов с автоматическим обновлением и кэшированием.
+Упрощенный менеджер JWT токенов с использованием только Redis.
 
-Этот модуль предоставляет централизованное управление токенами:
-- Автоматическое обновление при истечении
-- Кэширование в FSM
-- Обработка ошибок
+Ключевые изменения:
+- Убрана зависимость от FSM (используется только Redis)
+- Упрощена логика работы с токенами
+- Улучшена обработка ошибок
 """
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-
-from aiogram.fsm.context import FSMContext
 from backend.src.core.logging import get_logger
-
 from bot.clients.auth_client import AuthClient
+from bot.redis_storage import UserCacheData, UserDataStorage
 
 logger = get_logger(__name__)
 
 
-@dataclass
-class TokenData:
-    """Данные о токене с метаинформацией"""
-
-    access_token: str
-    refresh_token: str
-    expires_at: datetime
-    refresh_expires_at: datetime
-    user_id: int
-
-    @property
-    def is_expired(self) -> bool:
-        """Проверяет, истек ли access токен"""
-        return datetime.utcnow() >= self.expires_at
-
-    @property
-    def needs_refresh(self) -> bool:
-        """Проверяет, нужно ли обновить токен (за 5 минут до истечения)"""
-        return datetime.utcnow() >= self.expires_at - timedelta(minutes=5)
-
-    @property
-    def refresh_expired(self) -> bool:
-        """Проверяет, истек ли refresh токен"""
-        return datetime.utcnow() >= self.refresh_expires_at
-
-    def to_dict(self) -> dict:
-        """Сериализует данные для хранения в FSM"""
-        return {
-            "access_token": self.access_token,
-            "refresh_token": self.refresh_token,
-            "expires_at": self.expires_at.isoformat(),
-            "refresh_expires_at": self.refresh_expires_at.isoformat(),
-            "user_id": self.user_id,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "TokenData":
-        """Десериализует данные из FSM"""
-        return cls(
-            access_token=data["access_token"],
-            refresh_token=data["refresh_token"],
-            expires_at=datetime.fromisoformat(data["expires_at"]),
-            refresh_expires_at=datetime.fromisoformat(data["refresh_expires_at"]),
-            user_id=data["user_id"],
-        )
-
-    @classmethod
-    def from_api_response(cls, response: dict, user_id: int) -> "TokenData":
-        """Создает TokenData из ответа API"""
-        now = datetime.utcnow()
-
-        return cls(
-            access_token=response["access_token"],
-            refresh_token=response["refresh_token"],
-            expires_at=now + timedelta(seconds=response["expires_in"]),
-            refresh_expires_at=now + timedelta(seconds=response["refresh_expires_in"]),
-            user_id=user_id,
-        )
-
-
 class TokenManager:
     """
-    Менеджер для управления JWT токенами.
+    Менеджер для управления JWT токенами через Redis.
 
     Функции:
     - Автоматическое обновление токенов
-    - Кэширование в FSM
+    - Кэширование в Redis
     - Безопасное получение токенов
     - Обработка истечения срока действия
     """
 
-    FSM_KEY = "token_data"
-
-    def __init__(self, auth_client: AuthClient):
+    def __init__(self, auth_client: AuthClient, storage: UserDataStorage):
         self.auth_client = auth_client
+        self.storage = storage
 
-    async def get_token(
-        self, state: FSMContext, telegram_id: int, force_refresh: bool = False
-    ) -> str | None:
+    async def get_token(self, telegram_id: int, force_refresh: bool = False) -> str | None:
         """
-        Получает валидный access токен.
+        Получает валидный access токен для пользователя.
 
         Алгоритм:
-        1. Проверяет наличие токена в FSM
+        1. Проверяет наличие токена в Redis
         2. Если токен истек или скоро истечет - обновляет
         3. Если refresh токен истек - требует повторную авторизацию
 
         Args:
-            state: FSM контекст пользователя
             telegram_id: Telegram ID пользователя
             force_refresh: Принудительно обновить токен
 
         Returns:
             Access токен или None если требуется авторизация
         """
-        # Пытаемся получить сохраненные данные о токене
-        token_data = await self._get_cached_token_data(state)
+        # Получаем данные пользователя из Redis
+        user_data = await self.storage.get_user_data(telegram_id)
 
-        # Если токена нет - пробуем получить новый через login
-        if not token_data:
-            logger.debug(f"Токен отсутствует для {telegram_id}, пробуем login")
-            return await self._login_and_cache(state, telegram_id)
+        # Если данных нет - пробуем получить через login
+        if not user_data:
+            logger.debug(f"Данные пользователя {telegram_id} отсутствуют, пробуем login")
+            return await self._login_and_cache(telegram_id)
 
         # Если refresh токен истек - требуется повторная авторизация
-        if token_data.refresh_expired:
+        if not user_data.refresh_token_valid:
             logger.warning(f"Refresh токен истек для пользователя {telegram_id}")
-            await self._clear_token_data(state)
+            await self.storage.invalidate_tokens(telegram_id)
             return None
 
         # Если access токен валиден и не требует обновления
-        if not force_refresh and not token_data.needs_refresh:
+        if not force_refresh and user_data.has_valid_token and not user_data.needs_token_refresh:
             logger.debug(f"Используем кэшированный токен для {telegram_id}")
-            return token_data.access_token
+            await self.storage.update_activity(telegram_id)
+            return user_data.access_token
 
-        # Обновляем токен
+        # Обновляем токен через refresh
         logger.info(f"Обновляем токен для пользователя {telegram_id}")
-        return await self._refresh_and_cache(state, token_data)
+        return await self._refresh_and_cache(telegram_id, user_data)
 
     async def save_token_from_response(
-        self, state: FSMContext, response: dict, telegram_id: int
-    ) -> None:
+        self, response: dict, telegram_id: int, user_data: UserCacheData | None = None
+    ) -> bool:
         """
-        Сохраняет токен из ответа API в FSM.
+        Сохраняет токены из ответа API в Redis.
 
         Args:
-            state: FSM контекст
-            response: Ответ от /auth/by-code или /auth/login
+            response: Ответ от /auth/by-code, /auth/login или /auth/refresh
             telegram_id: Telegram ID пользователя
+            user_data: Существующие данные пользователя (опционально)
+
+        Returns:
+            True при успехе
         """
         try:
-            # Извлекаем user_id из ответа
-            user_id = response.get("user", {}).get("id")
-            if not user_id:
-                logger.error(f"Отсутствует user_id в ответе для {telegram_id}")
-                return
+            # Извлекаем данные из ответа
+            access_token = response.get("access_token")
+            refresh_token = response.get("refresh_token")
+            expires_in = response.get("expires_in")
+            refresh_expires_in = response.get("refresh_expires_in")
 
-            # Создаем TokenData из ответа
-            token_data = TokenData.from_api_response(response, user_id)
+            if not all([access_token, refresh_token, expires_in, refresh_expires_in]):
+                logger.error(f"Неполные данные токена в ответе для {telegram_id}")
+                return False
 
-            # Сохраняем в FSM
-            await self._cache_token_data(state, token_data)
+            # Если данных пользователя нет - создаем минимальные
+            if not user_data:
+                user_info = response.get("user", {})
+                user_data = UserCacheData(
+                    user_id=user_info.get("id"),
+                    telegram_id=telegram_id,
+                    name=user_info.get("name"),
+                    role=user_info.get("role", "guest"),
+                    username=user_info.get("username"),
+                )
 
-            logger.info(
-                f"Токен сохранен для пользователя {telegram_id} "
-                f"(истекает через {response['expires_in']}с)"
+            # Сохраняем токены
+            success = await self.storage.save_tokens(
+                telegram_id=telegram_id,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                access_expires_in=expires_in,
+                refresh_expires_in=refresh_expires_in,
             )
 
-        except Exception as e:
-            logger.error(f"Ошибка при сохранении токена для {telegram_id}: {e}")
+            if success:
+                # Также обновляем данные пользователя
+                await self.storage.save_user_data(telegram_id, user_data)
+                logger.info(f"Токены сохранены для {telegram_id} (expires_in={expires_in}s)")
 
-    async def invalidate_token(self, state: FSMContext, telegram_id: int) -> None:
+            return success
+
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении токена для {telegram_id}: {e}", exc_info=True)
+            return False
+
+    async def invalidate_token(self, telegram_id: int) -> bool:
         """
-        Инвалидирует токен (при logout или блокировке).
+        Инвалидирует токены пользователя (при logout).
 
         Args:
-            state: FSM контекст
             telegram_id: Telegram ID пользователя
+
+        Returns:
+            True при успехе
         """
-        await self._clear_token_data(state)
-        logger.info(f"Токен инвалидирован для пользователя {telegram_id}")
+        success = await self.storage.invalidate_tokens(telegram_id)
+
+        if success:
+            logger.info(f"Токены инвалидированы для {telegram_id}")
+
+        return success
 
     # === Приватные методы ===
 
-    async def _get_cached_token_data(self, state: FSMContext) -> TokenData | None:
-        """Получает данные о токене из FSM"""
-        try:
-            data = await state.get_data()
-            token_dict = data.get(self.FSM_KEY)
-
-            if not token_dict:
-                return None
-
-            return TokenData.from_dict(token_dict)
-
-        except Exception as e:
-            logger.error(f"Ошибка при чтении токена из FSM: {e}")
-            return None
-
-    async def _cache_token_data(self, state: FSMContext, token_data: TokenData) -> None:
-        """Сохраняет данные о токене в FSM"""
-        try:
-            await state.update_data({self.FSM_KEY: token_data.to_dict()})
-        except Exception as e:
-            logger.error(f"Ошибка при сохранении токена в FSM: {e}")
-
-    async def _clear_token_data(self, state: FSMContext) -> None:
-        """Удаляет данные о токене из FSM"""
-        try:
-            data = await state.get_data()
-            if self.FSM_KEY in data:
-                del data[self.FSM_KEY]
-                await state.set_data(data)
-        except Exception as e:
-            logger.error(f"Ошибка при очистке токена из FSM: {e}")
-
-    async def _login_and_cache(self, state: FSMContext, telegram_id: int) -> str | None:
+    async def _login_and_cache(self, telegram_id: int) -> str | None:
         """
-        Получает токен через login и кэширует его.
+        Получает токен через /auth/login и кэширует его.
 
         Returns:
             Access токен или None при ошибке
@@ -224,14 +155,17 @@ class TokenManager:
             result = await self.auth_client.login(telegram_id)
 
             if not result.success or not isinstance(result.data, dict):
-                logger.warning(
+                logger.debug(
                     f"Не удалось получить токен через login для {telegram_id}: "
                     f"{result.status_code} - {result.detail}"
                 )
                 return None
 
-            # Сохраняем токен
-            await self.save_token_from_response(state, result.data, telegram_id)
+            # Получаем существующие данные пользователя (если есть)
+            user_data = await self.storage.get_user_data(telegram_id)
+
+            # Сохраняем токены
+            await self.save_token_from_response(result.data, telegram_id, user_data)
 
             return result.data["access_token"]
 
@@ -239,25 +173,37 @@ class TokenManager:
             logger.error(f"Ошибка при login для {telegram_id}: {e}", exc_info=True)
             return None
 
-    async def _refresh_and_cache(self, state: FSMContext, old_token_data: TokenData) -> str | None:
+    async def _refresh_and_cache(self, telegram_id: int, user_data: UserCacheData) -> str | None:
         """
-        Обновляет токен через refresh endpoint и кэширует.
+        Обновляет токен через /auth/refresh и кэширует.
 
         Returns:
-            Новый access токен или старый при ошибке обновления
+            Новый access токен или None при ошибке
         """
         try:
-            result = await self.auth_client.refresh_token(old_token_data.refresh_token)
+            if not user_data.refresh_token:
+                logger.error(f"Отсутствует refresh токен для {telegram_id}")
+                return None
+
+            result = await self.auth_client.refresh_token(user_data.refresh_token)
 
             if result.success and isinstance(result.data, dict):
-                await self.save_token_from_response(state, result.data, old_token_data.user_id)
+                # Сохраняем новые токены
+                await self.save_token_from_response(result.data, telegram_id, user_data)
                 return result.data["access_token"]
             else:
-                logger.error(f"Не удалось обновить токен: {result.detail}")
-                await self._clear_token_data(state)
+                logger.error(
+                    f"Не удалось обновить токен для {telegram_id}: "
+                    f"{result.status_code} - {result.detail}"
+                )
+                # Инвалидируем токены при ошибке
+                await self.storage.invalidate_tokens(telegram_id)
                 return None
 
         except Exception as e:
-            logger.error(f"Ошибка при обновлении токена: {e}", exc_info=True)
-            # При ошибке возвращаем старый токен
-            return old_token_data.access_token
+            logger.error(f"Ошибка при обновлении токена для {telegram_id}: {e}", exc_info=True)
+            # При критической ошибке возвращаем старый токен
+            return user_data.access_token
+
+
+__all__ = ["TokenManager"]

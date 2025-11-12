@@ -8,9 +8,8 @@ from bot.clients.orders_client import OrdersClient
 from bot.filters.filters import RoleFilter
 from bot.handlers.states import OrderStates
 from bot.messages import OrderMessages
+from bot.redis_storage import UserDataStorage
 from bot.utils.token_manager import TokenManager
-
-from . import service
 
 shop_router = Router(name="shop_handlers")
 
@@ -49,6 +48,8 @@ async def order_delivery_handler(message: Message, state: FSMContext):
 @shop_router.message(OrderStates.waiting_for_price)
 async def order_price_handler(message: Message, state: FSMContext):
     """Обработка цены и запрос на подтверждение."""
+    from bot.handlers.shop import service
+
     price, error_message = service.validate_price(message.text)
     if error_message:
         await message.answer(error_message)
@@ -64,16 +65,22 @@ async def order_price_handler(message: Message, state: FSMContext):
 
 @shop_router.callback_query(F.data == "order_confirm", OrderStates.confirmation)
 async def order_confirm_handler(
-    callback: CallbackQuery, state: FSMContext, auth_client: AuthClient, orders_client: OrdersClient
+    callback: CallbackQuery,
+    state: FSMContext,
+    auth_client: AuthClient,
+    orders_client: OrdersClient,
+    user_storage: UserDataStorage,
 ):
     """Подтверждение и создание заказа."""
     state_data = await state.get_data()
 
-    # Используем TokenManager для получения токена
-    token_manager = TokenManager(auth_client)
-    token = await token_manager.get_token(state, callback.from_user.id)
+    # Создаем TokenManager
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(callback.from_user.id)
 
     await callback.message.edit_text(OrderMessages.CREATING_ORDER)
+
+    from bot.handlers.shop import service
 
     response_text = await service.create_order(token, state_data, orders_client)
     await callback.message.edit_text(response_text)

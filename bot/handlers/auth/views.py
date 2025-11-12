@@ -1,3 +1,5 @@
+import stat
+
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -10,7 +12,9 @@ from bot.dto import UserDTO
 from bot.filters.filters import IsAuthenticatedFilter
 from bot.handlers.states import RegistrationStates
 from bot.messages import AuthMessages, AuthServiceMessages
+from bot.redis_storage import UserDataStorage
 from bot.utils.token_manager import TokenManager
+from icecream import ic
 
 from . import service
 
@@ -26,27 +30,30 @@ async def start_handler(
     user: UserDTO,
     auth_client: AuthClient,
     users_client: UsersClient,
+    user_storage: UserDataStorage,
 ) -> None:
     """
     Обработчик команды /start.
 
     Логика:
-    1. Использует TokenManager для получения токена
-    2. Если успех - пользователь зарегистрирован, показываем приветствие
+    1. Проверяет наличие валидного токена в Redis
+    2. Если успех - показываем приветствие
     3. Если токена нет - предлагаем регистрацию
     """
     telegram_id = message.from_user.id
     logger.info(f"Команда /start от пользователя {telegram_id}")
 
-    # Используем TokenManager для получения токена
-    token_manager = TokenManager(auth_client)
-    token = await token_manager.get_token(state, telegram_id)
+    # Создаем TokenManager
+    token_manager = TokenManager(auth_client, user_storage)
 
-    # Успешная авторизация - пользователь уже зарегистрирован
+    # Проверяем наличие валидного токена
+    token = await token_manager.get_token(telegram_id)
+
+    # Если токен есть - пользователь зарегистрирован
     if token:
-        logger.info(f"JWT токен для пользователя {telegram_id} получен")
+        logger.info(f"Пользователь {telegram_id} авторизован")
 
-        # Получаем профиль пользователя
+        # Получаем профиль
         user_profile = await service.get_user_profile_by_token(token, users_client)
 
         if user_profile:
@@ -58,7 +65,7 @@ async def start_handler(
             )
             return
 
-    # Токен не получен - проверяем статус через login
+    # Токена нет - проверяем статус через login
     token_result = await auth_client.login(telegram_id)
     status_code = token_result.status_code
 
@@ -71,11 +78,9 @@ async def start_handler(
         )
         return
 
-    # 401 или другой код - пользователь не найден (совсем новый пользователь)
+    # 401 или другой код - совсем новый пользователь
     logger.info(f"Новый пользователь {telegram_id}, предлагаем регистрацию")
     await state.clear()
-    guest_user = UserDTO(telegram_id=telegram_id, role=UserRole.GUEST)
-    await state.update_data(user=guest_user.model_dump())
     await message.answer(AuthMessages.WELCOME_NEW_USER)
 
 
@@ -86,6 +91,8 @@ async def register_handler(
     user: UserDTO,
 ) -> None:
     """Начинает процесс регистрации."""
+    ic(state.get_data.__dict__, state.get_state.__dict__)
+    ic(user)
     if user.role != UserRole.GUEST:
         await message.answer(AuthMessages.ALREADY_REGISTERED)
     else:
@@ -98,6 +105,7 @@ async def register_code_handler(
     message: Message,
     state: FSMContext,
     auth_client: AuthClient,
+    user_storage: UserDataStorage,
 ) -> None:
     """Обрабатывает введенный код регистрации и получает токен."""
     telegram_id = message.from_user.id
@@ -118,12 +126,12 @@ async def register_code_handler(
         result = await auth_client.auth_by_code(telegram_id, code, message.from_user.username)
 
         if result.success and isinstance(result.data, dict):
-            # Успешная регистрация, получаем токен из ответа
+            # Успешная регистрация
             await service.handle_registration_success(
-                message, state, result.data, telegram_id, auth_client
+                message, state, result.data, telegram_id, auth_client, user_storage
             )
         else:
-            # Обработка различных ошибок
+            # Обработка ошибок
             await service.handle_registration_failure(message, state, result.detail)
 
     except Exception as e:
@@ -139,12 +147,15 @@ async def register_code_handler(
 
 @auth_router.message(Command("me"), IsAuthenticatedFilter())
 async def user_stats_handler(
-    message: Message, state: FSMContext, auth_client: AuthClient, users_client: UsersClient
+    message: Message,
+    auth_client: AuthClient,
+    users_client: UsersClient,
+    user_storage: UserDataStorage,
 ):
     """Получить статистику пользователя (требует авторизации)."""
-    # Используем TokenManager для получения токена
-    token_manager = TokenManager(auth_client)
-    token = await token_manager.get_token(state, message.from_user.id)
+    # Создаем TokenManager
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(message.from_user.id)
 
     response_text = await service.get_user_stats_text(token, users_client)
     await message.answer(response_text)
@@ -152,14 +163,21 @@ async def user_stats_handler(
 
 @auth_router.message(Command("logout"), IsAuthenticatedFilter())
 async def logout_handler(
-    message: Message, state: FSMContext, user: UserDTO, auth_client: AuthClient
+    message: Message,
+    state: FSMContext,
+    user: UserDTO,
+    auth_client: AuthClient,
+    user_storage: UserDataStorage,
 ):
     """Обработчик команды /logout."""
-    # Используем TokenManager для инвалидации токена
-    token_manager = TokenManager(auth_client)
-    await token_manager.invalidate_token(state, user.telegram_id)
+    # Создаем TokenManager и инвалидируем токены
+    token_manager = TokenManager(auth_client, user_storage)
+    await token_manager.invalidate_token(user.telegram_id)
 
+    # Очищаем FSM state
     await state.clear()
-    guest_dto = UserDTO(telegram_id=user.telegram_id, role=UserRole.GUEST)
-    await state.update_data(user=guest_dto.model_dump())
+
+    # Удаляем все данные пользователя из Redis
+    await user_storage.delete_user_data(user.telegram_id)
+
     await message.answer(AuthMessages.LOGOUT_SUCCESS)

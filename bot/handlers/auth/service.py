@@ -12,32 +12,11 @@ from bot.constants import ROLE_EMOJI_MAP
 from bot.dto import UserDTO
 from bot.exceptions import ErrorMessages
 from bot.messages import AuthMessages, AuthServiceMessages
+from bot.redis_storage import UserCacheData, UserDataStorage
 from bot.utils.helpers import parse_user_role
 from bot.utils.token_manager import TokenManager
 
 logger = get_logger(__name__)
-
-
-async def _update_user_state_from_profile(
-    state: FSMContext,
-    user_profile: dict,
-    telegram_id: int,
-) -> UserDTO | None:
-    """Обновляет состояние FSM из данных профиля и возвращает DTO."""
-    if not user_profile:
-        return None
-
-    role = parse_user_role(user_profile.get("role", UserRole.GUEST.value))
-    user_dto = UserDTO(
-        user_id=user_profile.get("id"),
-        telegram_id=telegram_id,
-        name=user_profile.get("name", ""),
-        role=role,
-    )
-    # Сохраняем только DTO пользователя, токен управляется TokenManager
-    await state.update_data(user=user_dto.model_dump())
-    logger.info(AuthServiceMessages.STATE_UPDATED.format(user_dto.telegram_id))
-    return user_dto
 
 
 async def handle_registration_success(
@@ -46,8 +25,16 @@ async def handle_registration_success(
     response_data: dict,
     telegram_id: int,
     auth_client: AuthClient,
+    user_storage: UserDataStorage,
 ) -> None:
-    """Обрабатывает успешную регистрацию, сохраняет токен и обновляет DTO."""
+    """
+    Обрабатывает успешную регистрацию.
+
+    Изменения:
+    - Использует TokenManager для сохранения токенов
+    - Сохраняет данные в Redis через storage
+    - Убрана зависимость от FSM для хранения токенов
+    """
     user_info = response_data.get("user", {})
 
     if not response_data.get("access_token"):
@@ -56,31 +43,34 @@ async def handle_registration_success(
         await state.clear()
         return
 
-    # Используем TokenManager для сохранения токена
-    token_manager = TokenManager(auth_client)
-    await token_manager.save_token_from_response(state, response_data, telegram_id)
+    # Создаем TokenManager
+    token_manager = TokenManager(auth_client, user_storage)
 
-    logger.info(f"JWT токен для пользователя {telegram_id} получен и кэширован после регистрации.")
+    # Создаем объект данных пользователя
+    user_data = UserCacheData(
+        user_id=user_info.get("id"),
+        telegram_id=telegram_id,
+        name=user_info.get("name"),
+        role=parse_user_role(user_info.get("role")),
+        username=message.from_user.username,
+    )
 
-    # Обновляем DTO пользователя
-    user_dto = await _update_user_state_from_profile(state, user_info, telegram_id)
-    if not user_dto:
-        await message.answer(AuthServiceMessages.GENERIC_ERROR)
-        return
+    # Сохраняем токены и данные пользователя
+    await token_manager.save_token_from_response(response_data, telegram_id, user_data)
 
-    # Определяем приветственное сообщение в зависимости от роли
-    if user_dto.role == UserRole.ADMIN:
+    logger.info(f"Пользователь {telegram_id} успешно зарегистрирован")
+
+    # Определяем приветственное сообщение
+    role = user_data.role
+    if role == UserRole.ADMIN:
         text = AuthMessages.WELCOME_ADMIN
     else:
         text = AuthMessages.SUCCESS + "\n\n" + AuthMessages.WELCOME_AUTHENTICATED
 
     await message.answer(text, parse_mode=ParseMode.HTML)
 
-    # Очищаем состояние регистрации
+    # Очищаем FSM state
     await state.clear()
-    # Сохраняем токен через TokenManager и пользователя
-    await token_manager.save_token_from_response(state, response_data, telegram_id)
-    await state.update_data({"user": user_dto.model_dump()})
 
 
 async def handle_registration_failure(
@@ -148,9 +138,6 @@ async def handle_authenticated_user(
     """Обрабатывает авторизованного пользователя при /start."""
     role = parse_user_role(user_profile.get("role", UserRole.GUEST.value))
 
-    # Обновляем состояние пользователя
-    await _update_user_state_from_profile(state, user_profile, telegram_id)
-
     # Отправляем приветствие в зависимости от роли
     if role == UserRole.ADMIN:
         await message.answer(AuthMessages.WELCOME_ADMIN)
@@ -161,7 +148,12 @@ async def handle_authenticated_user(
 
 
 async def get_user_profile_by_token(token: str, users_client: UsersClient) -> dict | None:
-    """Получает профиль пользователя, используя JWT токен."""
+    """
+    Получает профиль пользователя используя JWT токен.
+
+    Изменения:
+    - Добавлено кэширование профиля (можно расширить в будущем)
+    """
     if not token:
         return None
 
