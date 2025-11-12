@@ -17,6 +17,7 @@ from bot.clients.auth_client import AuthClient
 from bot.dto import UserDTO
 from bot.redis_storage import UserCacheData, UserDataStorage
 from bot.utils.helpers import parse_user_role
+from icecream import ic
 
 logger = get_logger(__name__)
 

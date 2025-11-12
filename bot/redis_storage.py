@@ -1,15 +1,6 @@
-"""
-Унифицированное хранилище данных пользователя с использованием Redis.
-
-Хранит:
-- JWT токены (access + refresh)
-- Базовую информацию о пользователе
-- Кэш профиля пользователя
-"""
-
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import redis.asyncio as redis
@@ -42,12 +33,12 @@ class UserCacheData:
     def to_dict(self) -> dict[str, Any]:
         """Сериализация для Redis"""
         data = asdict(self)
-        # Преобразуем enum и datetime в строки
+        # Преобразуем enum и datetime в нужные форматы
         data["role"] = self.role.value
         if self.token_expires_at:
-            data["token_expires_at"] = self.token_expires_at.isoformat()
+            data["token_expires_at"] = self.token_expires_at.timestamp()
         if self.refresh_expires_at:
-            data["refresh_expires_at"] = self.refresh_expires_at.isoformat()
+            data["refresh_expires_at"] = self.refresh_expires_at.timestamp()
         if self.last_activity:
             data["last_activity"] = self.last_activity.isoformat()
         if self.cached_at:
@@ -59,10 +50,10 @@ class UserCacheData:
         """Десериализация из Redis"""
         # Восстанавливаем enum и datetime
         data["role"] = UserRole(data["role"])
-        if data.get("token_expires_at"):
-            data["token_expires_at"] = datetime.fromisoformat(data["token_expires_at"])
-        if data.get("refresh_expires_at"):
-            data["refresh_expires_at"] = datetime.fromisoformat(data["refresh_expires_at"])
+        if data.get("token_expires_at") is not None:
+            data["token_expires_at"] = datetime.fromtimestamp(data["token_expires_at"], tz=UTC)
+        if data.get("refresh_expires_at") is not None:
+            data["refresh_expires_at"] = datetime.fromtimestamp(data["refresh_expires_at"], tz=UTC)
         if data.get("last_activity"):
             data["last_activity"] = datetime.fromisoformat(data["last_activity"])
         if data.get("cached_at"):
@@ -74,21 +65,21 @@ class UserCacheData:
         """Проверяет наличие валидного токена"""
         if not self.access_token or not self.token_expires_at:
             return False
-        return datetime.utcnow() < self.token_expires_at
+        return datetime.now(UTC) < self.token_expires_at
 
     @property
     def needs_token_refresh(self) -> bool:
         """Проверяет необходимость обновления токена (за 5 минут до истечения)"""
         if not self.token_expires_at:
             return False
-        return datetime.utcnow() >= self.token_expires_at - timedelta(minutes=5)
+        return datetime.now(UTC) >= self.token_expires_at - timedelta(minutes=5)
 
     @property
     def refresh_token_valid(self) -> bool:
         """Проверяет валидность refresh токена"""
         if not self.refresh_token or not self.refresh_expires_at:
             return False
-        return datetime.utcnow() < self.refresh_expires_at
+        return datetime.now(UTC) < self.refresh_expires_at
 
 
 class UserDataStorage:
@@ -175,8 +166,8 @@ class UserDataStorage:
             key = self._make_user_key(telegram_id)
 
             # Обновляем метаданные
-            user_data.cached_at = datetime.utcnow()
-            user_data.last_activity = datetime.utcnow()
+            user_data.cached_at = datetime.now(UTC)
+            user_data.last_activity = datetime.now(UTC)
 
             # Сохраняем с TTL
             ttl = ttl or self.DEFAULT_TTL
@@ -265,12 +256,12 @@ class UserDataStorage:
             access_expires_in: Время жизни access токена в секундах
             refresh_expires_in: Время жизни refresh токена в секундах
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         updates = {
             "access_token": access_token,
             "refresh_token": refresh_token,
-            "token_expires_at": (now + timedelta(seconds=access_expires_in)).isoformat(),
-            "refresh_expires_at": (now + timedelta(seconds=refresh_expires_in)).isoformat(),
+            "token_expires_at": (now + timedelta(seconds=access_expires_in)).timestamp(),
+            "refresh_expires_at": (now + timedelta(seconds=refresh_expires_in)).timestamp(),
         }
 
         return await self.update_user_data(telegram_id, updates, ttl=refresh_expires_in)
@@ -307,7 +298,7 @@ class UserDataStorage:
             client = await self.get_redis_client()
             key = self._make_profile_key(telegram_id)
 
-            profile_data["cached_at"] = datetime.utcnow().isoformat()
+            profile_data["cached_at"] = datetime.now(UTC).isoformat()
 
             await client.setex(key, self.PROFILE_CACHE_TTL, json.dumps(profile_data))
 
@@ -346,7 +337,7 @@ class UserDataStorage:
     async def update_activity(self, telegram_id: int) -> bool:
         """Обновляет время последней активности пользователя"""
         return await self.update_user_data(
-            telegram_id, {"last_activity": datetime.utcnow().isoformat()}
+            telegram_id, {"last_activity": datetime.now(UTC).isoformat()}
         )
 
     async def get_field(self, telegram_id: int, field: str) -> Any:

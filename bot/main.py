@@ -69,10 +69,6 @@ def create_dispatcher(
 async def lifespan():
     """
     Асинхронный менеджер контекста для жизненного цикла приложения.
-
-    Изменения:
-    - Добавлена явная инициализация UserDataStorage
-    - Улучшена последовательность инициализации
     """
     logger.info("🚀 Инициализация Telegram бота...")
     bot = None
@@ -140,7 +136,6 @@ async def run_polling(skip_updates: bool = True):
     async with lifespan() as (bot, dp):
         logger.info("🔄 Запуск бота в режиме polling...")
 
-        # Удаляем webhook если он был установлен
         try:
             await bot.delete_webhook(drop_pending_updates=True, request_timeout=60)
             logger.info("✅ Webhook успешно удален")

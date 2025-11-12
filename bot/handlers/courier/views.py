@@ -1,6 +1,5 @@
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger

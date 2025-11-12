@@ -215,8 +215,8 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                 await event.answer(message, show_alert=True)
                 if event.message:
                     await event.message.answer(message)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Не удалось отправить пользователю сообщение об ошибке: {e}")
 
     async def _notify_admins(
         self, event: TelegramObject, error: Exception, data: dict[str, Any]
@@ -247,8 +247,8 @@ class ErrorHandlerMiddleware(BaseMiddleware):
             for admin_id in settings.admin.super_admin_telegram_ids:
                 try:
                     await bot.send_message(admin_id, notification, parse_mode="HTML")
-                except Exception:
-                    continue
+                except Exception as e:
+                    logger.warning(f"Не удалось уведомить администратора {admin_id=}: {e}")
 
         except Exception as e:
             logger.error(f"Не удалось уведомить администраторов: {e}")
