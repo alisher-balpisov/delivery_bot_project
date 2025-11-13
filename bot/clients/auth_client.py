@@ -62,7 +62,11 @@ class AuthClient(BaseApiClient):
             refresh_token: Существующий refresh token
 
         Returns:
-            RequestResult с новыми токенами при успехе
+            RequestResult с новыми токенами при успехе:
+            - access_token
+            - refresh_token (может быть новый)
+            - expires_in
+            - refresh_expires_in
         """
         logger.debug("Запрос на обновление токена")
 
@@ -70,5 +74,24 @@ class AuthClient(BaseApiClient):
             "POST",
             "/auth/refresh",
             json_data={"refresh_token": refresh_token},
+            expected_status=200,
+        )
+
+    async def logout(self, access_token: str) -> RequestResult:
+        """
+        Выход пользователя (инвалидация токенов на сервере).
+
+        Args:
+            access_token: Access токен пользователя
+
+        Returns:
+            RequestResult с успехом при выходе
+        """
+        logger.debug("Запрос на выход пользователя")
+
+        return await self._make_request(
+            "POST",
+            "/auth/logout",
+            token=access_token,
             expected_status=200,
         )

@@ -12,7 +12,6 @@ from bot.handlers.states import RegistrationStates
 from bot.messages import AuthMessages, AuthServiceMessages
 from bot.redis_storage import UserDataStorage
 from bot.utils.token_manager import TokenManager
-from icecream import ic
 
 from . import service
 
@@ -89,8 +88,6 @@ async def register_handler(
     user: UserDTO,
 ) -> None:
     """Начинает процесс регистрации."""
-    ic(state.get_data.__dict__, state.get_state.__dict__)
-    ic(user)
     if user.role != UserRole.GUEST:
         await message.answer(AuthMessages.ALREADY_REGISTERED)
     else:

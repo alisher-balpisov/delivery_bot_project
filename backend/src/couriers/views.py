@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException
-from icecream import ic
 
 from backend.src.auth.dependencies import RequireAdminOrShop, RequireCourier
 from backend.src.core.database import DbSession
@@ -21,8 +20,7 @@ async def get_courier_shift_status(
     Получить статус смены текущего курьера.
     """
     logger.debug(f"Курьер {current_user} запрашивает статус смены.")
-    ic(current_user)
-    return ic(current_user.courier.is_active)  # type: ignore
+    return current_user.courier.is_active  # type: ignore
 
 
 @router.patch("/toggle-shift", response_model=CourierShiftResponse)

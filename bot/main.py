@@ -2,7 +2,6 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
-from aiogram.exceptions import TelegramNetworkError
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types.error_event import ErrorEvent
 from backend.src.core.config import get_bot_token, settings
@@ -13,6 +12,7 @@ from bot.clients.base_client import ConnectionPool
 from bot.filters.user_data_filter import UserDataFilter
 from bot.handlers import *
 from bot.middleware import setup_middlewares
+from bot.middleware.token_refresh_middleware import TokenRefreshMiddleware
 from bot.redis_storage import UserDataStorage
 
 logger = get_logger(__name__)
@@ -32,11 +32,24 @@ def create_dispatcher(
     Изменения:
     - UserDataStorage передается явно
     - ClientManager передается для доступа к клиентам
+    - TokenRefreshMiddleware регистрируется после setup_middlewares
     """
     dp = Dispatcher(storage=storage, **kwargs)
 
     # Регистрируем middleware ДО фильтров и роутеров
     setup_middlewares(dp)
+
+    # Регистрируем middleware для обновления токенов
+    token_refresh_middleware = TokenRefreshMiddleware(
+        storage=user_data_storage,
+        auth_client=client_manager.auth,
+    )
+    # Регистрируем middleware для message и callback_query
+    dp.message.middleware(token_refresh_middleware)
+    dp.callback_query.middleware(token_refresh_middleware)
+
+    # Сохраняем middleware в kwargs для доступа в lifespan
+    kwargs["token_refresh_middleware"] = token_refresh_middleware
 
     # Создаем фильтр с UserDataStorage
     user_data_provider = UserDataFilter(user_data_storage)
@@ -45,7 +58,6 @@ def create_dispatcher(
     for router in [auth_router, protected_router, orders_router, public_router]:
         router.message.filter(user_data_provider)
         router.callback_query.filter(user_data_provider)
-
     # Регистрируем роутеры
     dp.include_router(auth_router)
     dp.include_router(protected_router)
@@ -74,6 +86,7 @@ async def lifespan():
     bot = None
     pool = ConnectionPool()
     user_data_storage = None
+    token_refresh_middleware = None
 
     try:
         # 1. Создаем хранилище для FSM
@@ -93,25 +106,38 @@ async def lifespan():
         logger.info("✅ Бот создан")
 
         # 5. Создаем диспетчер с передачей всех зависимостей
-        dp = create_dispatcher(
-            storage=storage,
-            user_data_storage=user_data_storage,
-            client_manager=client_manager,
+        dp_kwargs = {
+            "storage": storage,
+            "user_data_storage": user_data_storage,
+            "client_manager": client_manager,
             # Передаем клиенты как kwargs для доступа в хендлерах
-            admin_client=client_manager.admin,
-            auth_client=client_manager.auth,
-            disputes_client=client_manager.disputes,
-            notifications_client=client_manager.notifications,
-            orders_client=client_manager.orders,
-            system_client=client_manager.system,
-            users_client=client_manager.users,
-            user_storage=user_data_storage,  # Передаем storage для TokenManager с другим именем
-        )
+            "admin_client": client_manager.admin,
+            "auth_client": client_manager.auth,
+            "disputes_client": client_manager.disputes,
+            "notifications_client": client_manager.notifications,
+            "orders_client": client_manager.orders,
+            "system_client": client_manager.system,
+            "users_client": client_manager.users,
+            "user_storage": user_data_storage,  # Передаем storage для TokenManager с другим именем
+        }
+        dp = create_dispatcher(**dp_kwargs)
         logger.info("✅ Диспетчер настроен")
+
+        # 6. Запускаем cleanup задачу для TokenRefreshMiddleware
+        token_refresh_middleware = dp_kwargs.get("token_refresh_middleware")
+        if token_refresh_middleware:
+            await token_refresh_middleware.start_cleanup_task()
+            logger.info("✅ Задача очистки locks запущена")
 
         logger.info("🎉 Telegram бот успешно инициализирован!")
 
-        yield bot, dp
+        try:
+            yield bot, dp
+        finally:
+            # Останавливаем cleanup задачу
+            if token_refresh_middleware:
+                await token_refresh_middleware.stop_cleanup_task()
+                logger.info("✅ Задача очистки locks остановлена")
 
     finally:
         logger.info("🔌 Завершение работы...")
@@ -136,15 +162,6 @@ async def run_polling(skip_updates: bool = True):
     async with lifespan() as (bot, dp):
         logger.info("🔄 Запуск бота в режиме polling...")
 
-        try:
-            await bot.delete_webhook(drop_pending_updates=True, request_timeout=60)
-            logger.info("✅ Webhook успешно удален")
-        except TelegramNetworkError as e:
-            logger.warning(f"⚠️ Не удалось удалить webhook: {e}. Продолжаем без удаления.")
-        except Exception as e:
-            logger.warning(f"⚠️ Ошибка при удалении webhook: {e}. Продолжаем без удаления.")
-
-        # Запускаем polling
         await dp.start_polling(
             bot,
             skip_updates=skip_updates,
