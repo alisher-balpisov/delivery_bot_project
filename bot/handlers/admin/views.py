@@ -8,6 +8,8 @@ from bot.clients.auth_client import AuthClient
 from bot.clients.system_client import SystemClient
 from bot.dto import UserDTO
 from bot.filters.filters import RoleFilter
+from bot.handlers.admin.keyboards import get_registration_code_menu_keyboard
+from bot.handlers.admin.messages import AdminMessages as AM
 from bot.handlers.keyboards import get_back_to_menu_keyboard, get_role_selection_keyboard
 from bot.messages import AdminMessages, CommonMessages
 from bot.redis_storage import UserDataStorage
@@ -21,6 +23,19 @@ admin_router.callback_query.filter(RoleFilter(UserRole.ADMIN))
 
 logger = get_logger(__name__)
 
+@admin_router.callback_query(F.data == "get_registration_code_menu")
+async def get_registration_code_menu_handler(callback: CallbackQuery):
+    """Открывает меню 'Код регистрации'"""
+    await callback.message.edit_text(
+        AM.REGISTRATION_CODE_MENU,
+        reply_markup=get_registration_code_menu_keyboard()
+    )
+    await callback.answer()
+
+@admin_router.callback_query(F.data == "admin_back_to_menu")
+async def back_to_menu_handler(callback: CallbackQuery, user: UserDTO):
+    """Возврат в главное меню админа."""
+    await service.show_admin_main_menu(callback, user.name)
 
 @admin_router.message(Command("admin"))
 async def admin_handler(message: Message, user: UserDTO):
@@ -29,12 +44,12 @@ async def admin_handler(message: Message, user: UserDTO):
     await message.answer(text, reply_markup=keyboard)
 
 
-@admin_router.callback_query(F.data == "admin_back_to_menu")
-async def admin_back_to_menu_handler(callback: CallbackQuery):
-    """Обрабатывает кнопку 'Назад' для возврата в главное меню."""
-    text, keyboard = service.get_admin_menu()
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
+# @admin_router.callback_query(F.data == "admin_back_to_menu")
+# async def admin_back_to_menu_handler(callback: CallbackQuery):
+#     """Обрабатывает кнопку 'Назад' для возврата в главное меню."""
+#     text, keyboard = service.get_admin_menu()
+#     await callback.message.edit_text(text, reply_markup=keyboard)
+#     await callback.answer()
 
 
 @admin_router.callback_query(F.data == "admin_create_code")
@@ -84,8 +99,6 @@ async def admin_view_codes_handler(
     user_storage: UserDataStorage,
 ):
     """Отображает список кодов регистрации."""
-    await callback.message.edit_text(AdminMessages.LOADING_CODES)
-
     # Создаем TokenManager
     token_manager = TokenManager(auth_client, user_storage)
     token = await token_manager.get_token(callback.from_user.id)

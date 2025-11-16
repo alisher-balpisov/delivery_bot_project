@@ -7,13 +7,24 @@ from bot.clients.admin_client import AdminClient
 from bot.clients.system_client import SystemClient
 from bot.constants import STATS_TIMEOUT
 from bot.exceptions import ErrorMessages
-from bot.handlers.keyboards import get_admin_main_keyboard, get_back_to_menu_keyboard
+from bot.handlers.admin.keyboards import get_admin_main_keyboard
+from bot.handlers.keyboards import get_back_to_menu_keyboard
 from bot.messages import AdminMessages, AdminServiceMessages, CommonMessages
 from bot.utils.formatters import format_codes_as_html_table
 from bot.utils.helpers import format_stats_message
 
 logger = get_logger(__name__)
 
+async def show_admin_main_menu(event: CallbackQuery | Message, admin_name: str):
+    """Показывает главное меню администратора."""
+    text = f"👑 Привет, администратор {admin_name}!\n"
+    keyboard = get_admin_main_keyboard()
+
+    if isinstance(event, CallbackQuery):
+        await event.message.edit_text(text, reply_markup=keyboard)
+        await event.answer()
+    else:
+        await event.answer(text, reply_markup=keyboard)
 
 def get_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
     """Возвращает текст и клавиатуру для главного меню администратора."""

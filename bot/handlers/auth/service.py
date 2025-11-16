@@ -147,24 +147,23 @@ async def handle_authenticated_user(
         await message.answer(AuthMessages.WELCOME_AUTHENTICATED)
 
 
-async def get_user_profile_by_token(token: str, users_client: UsersClient) -> dict | None:
-    """
-    Получает профиль пользователя используя JWT токен.
-
-    Изменения:
-    - Добавлено кэширование профиля (можно расширить в будущем)
-    """
+async def get_user_profile_by_token(token: str, users_client: UsersClient) -> UserDTO | None:
     if not token:
         return None
-
     try:
         profile_result = await users_client.get_user_profile(token)
 
         if profile_result.success and isinstance(profile_result.data, dict):
-            return profile_result.data
+            data = profile_result.data
+            return UserDTO(
+                user_id=data.get("id"),
+                telegram_id=data.get("telegram_id"),
+                name=data.get("name"),
+                role=parse_user_role(data.get("role", UserRole.GUEST.value)),
+            )
 
         logger.warning(
-            f"Не удалось получить профиль пользователя с помощью токена: "
+            f"Не удалось получить профиль пользователя: "
             f"статус {profile_result.status_code}, detail: {profile_result.detail}"
         )
         return None

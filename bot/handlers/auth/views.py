@@ -19,68 +19,6 @@ logger = get_logger(__name__)
 
 auth_router = Router(name="auth_handlers")
 
-
-@auth_router.message(Command("start"))
-async def start_handler(
-    message: Message,
-    state: FSMContext,
-    user: UserDTO,
-    auth_client: AuthClient,
-    users_client: UsersClient,
-    user_storage: UserDataStorage,
-) -> None:
-    """
-    Обработчик команды /start.
-
-    Логика:
-    1. Проверяет наличие валидного токена в Redis
-    2. Если успех - показываем приветствие
-    3. Если токена нет - предлагаем регистрацию
-    """
-    telegram_id = message.from_user.id
-    logger.info(f"Команда /start от пользователя {telegram_id}")
-
-    # Создаем TokenManager
-    token_manager = TokenManager(auth_client, user_storage)
-
-    # Проверяем наличие валидного токена
-    token = await token_manager.get_token(telegram_id)
-
-    # Если токен есть - пользователь зарегистрирован
-    if token:
-        logger.info(f"Пользователь {telegram_id} авторизован")
-
-        # Получаем профиль
-        user_profile = await service.get_user_profile_by_token(token, users_client)
-
-        if user_profile:
-            await service.handle_authenticated_user(
-                message,
-                state,
-                user_profile,
-                telegram_id,
-            )
-            return
-
-    # Токена нет - проверяем статус через login
-    token_result = await auth_client.login(telegram_id)
-    status_code = token_result.status_code
-
-    # 403 - регистрация не завершена (пользователь существует, но не ввел код)
-    if status_code == 403:
-        logger.info(f"Пользователь {telegram_id} не завершил регистрацию")
-        await state.set_state(RegistrationStates.waiting_for_code)
-        await message.answer(
-            "⚠️ Вы начали регистрацию, но не завершили её.\n\n" + AuthMessages.ENTER_CODE
-        )
-        return
-
-    # 401 или другой код - совсем новый пользователь
-    logger.info(f"Новый пользователь {telegram_id}, предлагаем регистрацию")
-    await state.clear()
-    await message.answer(AuthMessages.WELCOME_NEW_USER)
-
-
 @auth_router.message(Command("register"))
 async def register_handler(
     message: Message,
