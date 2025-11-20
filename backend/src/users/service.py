@@ -7,13 +7,7 @@ from backend.src.models.user import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from .schemas import (
-    CourierUserUpdate,
-    ShopUserUpdate,
-    UserCreateWithoutPassword,
-    UserResponse,
-    UserUpdate,
-)
+from .schemas import CourierUserUpdate, ShopUserUpdate, UserCreateWithoutPassword, UserUpdate
 
 logger = get_logger(__name__)
 
@@ -37,11 +31,16 @@ async def _update_profile(db: AsyncSession, user: User, data: dict, model: type)
         logger.warning(f"Профиль {model.__name__} для пользователя {user.id} не найден.")
         return False
 
-    for field, value in data.items():
+    # Исключаем поле 'role', т.к. оно хранится только в модели User
+    filtered_data = {k: v for k, v in data.items() if k != "role"}
+
+    for field, value in filtered_data.items():
         if hasattr(profile, field):
             setattr(profile, field, value)
         else:
-            logger.warning(f"Попытка обновить несуществующее поле '{field}' в модели {model}")
+            logger.warning(
+                f"Попытка обновить несуществующее поле '{field}' в модели {model.__name__}"
+            )
 
     return True
 
@@ -54,6 +53,18 @@ async def update_my_profile(
     if not user:
         logger.error(f"Не удалось найти или обновить профиль для пользователя {user_id=}.")
         raise ValueError("Профиль пользователя не найден или не может быть обновлен.")
+
+    if isinstance(profile_data, ShopUserUpdate) and user.role != UserRole.SHOP:
+        logger.error(f"Попытка обновить профиль магазина для пользователя с ролью {user.role}")
+        raise ValueError(
+            f"Несоответствие роли: пользователь имеет роль {user.role.value}, а не SHOP"
+        )
+
+    if isinstance(profile_data, CourierUserUpdate) and user.role != UserRole.COURIER:
+        logger.error(f"Попытка обновить профиль курьера для пользователя с ролью {user.role}")
+        raise ValueError(
+            f"Несоответствие роли: пользователь имеет роль {user.role.value}, а не COURIER"
+        )
 
     update_data = profile_data.model_dump(exclude_unset=True)
 
@@ -92,7 +103,7 @@ async def get_all_couriers(db: AsyncSession) -> list[CourierResponse]:
 
 async def complete_user_registration(
     db: AsyncSession, user_id: int, user_data: UserCreateWithoutPassword
-) -> UserResponse:
+) -> User:
     """
     Завершить регистрацию пользователя после сбора данных в боте.
     Обновляет данные пользователя и создает связанную сущность (Shop или Courier).
@@ -103,7 +114,7 @@ async def complete_user_registration(
         user_data: Данные пользователя для обновления.
 
     Returns:
-        Объект UserResponse с данными пользователя.
+        Объект User с обновленными данными.
 
     Raises:
         ValueError: Если пользователь не найден.
@@ -137,4 +148,4 @@ async def complete_user_registration(
 
     await db.refresh(user)
     logger.info(f"Пользователь с ID {user_id} успешно завершил регистрацию как {user.role.value}.")
-    return UserResponse.model_validate(user)
+    return user

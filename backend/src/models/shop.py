@@ -23,7 +23,7 @@ class Shop(Base):
     """
 
     __tablename__ = "shops"
-    __repr_attrs__ = "name"  # type: ignore
+    __repr_attrs__ = ("name",)
 
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),

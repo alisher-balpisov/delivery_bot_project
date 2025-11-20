@@ -4,14 +4,14 @@ from backend.src.core.logging import get_logger
 from fastapi import APIRouter, HTTPException
 
 from . import service
-from .schemas import UserBase, UserCreateWithoutPassword, UserRead, UserUpdate
+from .schemas import UserCreateWithoutPassword, UserRead, UserUpdate
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
 
-@router.get("/me", response_model=UserBase)
+@router.get("/me", response_model=UserRead)
 async def get_my_profile(
     current_user: RequireAllRoles,
 ):
@@ -22,7 +22,7 @@ async def get_my_profile(
     return current_user
 
 
-@router.put("/me", response_model=UserBase)
+@router.put("/me", response_model=UserRead)
 async def update_my_profile(
     profile_data: UserUpdate,
     current_user: RequireShopOrCourier,
@@ -37,20 +37,30 @@ async def update_my_profile(
         updated_user = await service.update_my_profile(
             db=db, user_id=current_user.id, profile_data=profile_data
         )
+
+        if updated_user is None:
+            logger.warning(f"Не удалось обновить профиль для пользователя {current_user.id}")
+            raise HTTPException(
+                status_code=404,
+                detail="Профиль пользователя не найден или не может быть обновлен",
+            )
+
         logger.info(f"Профиль для пользователя {current_user} успешно обновлен.")
         return updated_user
 
     except ValueError as e:
         raise HTTPException(
-            status_code=404,
+            status_code=400,
             detail=f"Профиль пользователя не найден или не может быть обновлен: {e!s}",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             f"Непредвиденная ошибка при обновлении профиля для пользователя {current_user}: {e!s}",
             exc_info=True,
         )
-        raise
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 
 @router.post("/complete-registration", response_model=UserRead)

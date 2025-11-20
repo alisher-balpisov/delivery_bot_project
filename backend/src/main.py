@@ -22,8 +22,6 @@ from backend.src.core.logging import get_logger, setup_logging
 
 install()
 
-# from backend.src.notifications.service import initialize_notification_service
-
 logger = get_logger(__name__)
 
 

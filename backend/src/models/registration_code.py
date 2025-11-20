@@ -51,6 +51,7 @@ class RegistrationCode(Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+        index=True,
         comment="Дата и время истечения срока действия кода",
     )
 

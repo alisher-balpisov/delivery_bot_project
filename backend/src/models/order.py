@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, String, Text
+from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -108,8 +108,10 @@ class Order(Base):
             name="check_completed_at_if_completed",
         ),
         CheckConstraint(
-            ((order_type == "regular") & (special_type is None))
-            | ((order_type == "special") & (special_type is not None)),
+            ((order_type == OrderType.REGULAR) & (special_type.is_(None)))
+            | ((order_type == OrderType.SPECIAL) & (special_type.is_not(None))),
             name="check_special_type_logic",
         ),
+        Index("ix_orders_shop_status", "shop_id", "status"),
+        Index("ix_orders_courier_status", "courier_id", "status"),
     )
