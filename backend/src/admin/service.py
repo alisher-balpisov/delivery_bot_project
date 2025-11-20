@@ -59,7 +59,11 @@ def _validate_code_settings() -> None:
 
 
 def _create_code_object(
-    code: str, role: UserRole, created_by_admin_id: int, now: datetime, expires_at: datetime
+    code: str,
+    role: UserRole,
+    created_by_admin_id: int,
+    now: datetime,
+    expires_at: datetime,
 ) -> RegistrationCode:
     """
     Создает объект RegistrationCode с заданными параметрами.
@@ -74,7 +78,9 @@ def _create_code_object(
     )
 
 
-async def _try_save_code(db: AsyncSession, reg_code: RegistrationCode, attempt: int) -> bool:
+async def _try_save_code(
+    db: AsyncSession, reg_code: RegistrationCode, attempt: int
+) -> bool:
     """
     Пытается сохранить код в БД.
 
@@ -132,7 +138,9 @@ async def create_registration_code(
         raise
 
     for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
-        reg_code = _create_code_object(new_code, role, created_by_admin_id, now, expires_at)
+        reg_code = _create_code_object(
+            new_code, role, created_by_admin_id, now, expires_at
+        )
 
         if await _try_save_code(db, reg_code, attempt):
             return reg_code
@@ -151,33 +159,17 @@ async def create_registration_code(
     raise RuntimeError("Не удалось сгенерировать уникальный код регистрации.")
 
 
-async def get_all_registration_codes(db: AsyncSession) -> list[RegistrationCodeResponse]:
+async def get_all_registration_codes(
+    db: AsyncSession,
+) -> list[RegistrationCodeResponse]:
     """
     Получить все коды регистрации (для администраторов).
     """
-    result = await db.execute(select(RegistrationCode).order_by(RegistrationCode.created_at.desc()))
+    result = await db.execute(
+        select(RegistrationCode).order_by(RegistrationCode.created_at.desc())
+    )
     codes = result.scalars().all()
     return [RegistrationCodeResponse.model_validate(code) for code in codes]
-
-
-async def deactivate_registration_code(db: AsyncSession, code_id: int) -> bool:
-    """
-    Деактивировать код регистрации (поместить в черный список).
-
-    Returns:
-        bool: True если код был найден и деактивирован
-    """
-    result = await db.execute(select(RegistrationCode).where(RegistrationCode.id == code_id))
-    code = result.scalars().first()
-
-    if not code:
-        return False
-
-    # Помечаем как использованный
-    async with db.begin():
-        code.is_used = True
-
-    return True
 
 
 async def get_registration_codes_by_role(
@@ -205,7 +197,9 @@ async def get_unused_registration_codes_count(db: AsyncSession) -> dict[Any, int
         .group_by(RegistrationCode.role)
     )
 
-    counts: dict[UserRole, int] = {UserRole(role): count for role, count in result.all()}
+    counts: dict[UserRole, int] = {
+        UserRole(role): count for role, count in result.all()
+    }
     return {
         UserRole.SHOP: counts.get(UserRole.SHOP, 0),
         UserRole.COURIER: counts.get(UserRole.COURIER, 0),
@@ -214,50 +208,107 @@ async def get_unused_registration_codes_count(db: AsyncSession) -> dict[Any, int
     }
 
 
-# async def get_system_stats(db: AsyncSession) -> dict:
-#     """
-#     Получить системную статистику для администраторов.
-#     Включает счетчики пользователей, заказов и споров.
-#     """
-#     # Статистика пользователей по ролям
-#     user_counts = await db.execute(select(User.role, func.count(User.id)).group_by(User.role))
-#     users = {role.value: count for role, count in user_counts.all()}
-#     total_users = sum(users.values())
+async def get_system_stats(db: AsyncSession) -> dict:
+    """
+    Получить системную статистику для администраторов.
+    Включает счетчики пользователей, заказов и споров.
+    """
+    # Статистика пользователей по ролям
+    user_counts = await db.execute(
+        select(User.role, func.count(User.id)).group_by(User.role)
+    )
+    users = {role.value: count for role, count in user_counts.all()}
+    total_users = sum(users.values())
 
-#     # Статистика заказов по статусам
-#     order_counts = await db.execute(
-#         select(Order.status, func.count(Order.id)).group_by(Order.status)
-#     )
-#     orders = {status.value: count for status, count in order_counts.all()}
-#     total_orders = sum(orders.values())
-#     completed_orders = orders.get(OrderStatus.COMPLETED.value, 0)
-#     cancelled_orders = orders.get(OrderStatus.CANCELLED.value, 0)
-#     active_orders = total_orders - completed_orders - cancelled_orders
+    # Статистика заказов по статусам
+    order_counts = await db.execute(
+        select(Order.status, func.count(Order.id)).group_by(Order.status)
+    )
+    orders = {status.value: count for status, count in order_counts.all()}
+    total_orders = sum(orders.values())
+    completed_orders = orders.get(OrderStatus.COMPLETED.value, 0)
+    cancelled_orders = orders.get(OrderStatus.CANCELLED.value, 0)
+    active_orders = total_orders - completed_orders - cancelled_orders
 
-#     # Статистика споров
-#     dispute_counts = await db.execute(
-#         select(Dispute.status, func.count(Dispute.id)).group_by(Dispute.status)
-#     )
-#     disputes = {status.value: count for status, count in dispute_counts.all()}
-#     total_disputes = sum(disputes.values())
-#     unresolved_disputes = (
-#         total_disputes
-#         # - disputes.get(DisputeStatus.CLOSED.value, 0)
-#         - disputes.get(DisputeStatus.RESOLVED.value, 0)
-#     )
+    # Статистика споров
+    dispute_counts = await db.execute(
+        select(Dispute.status, func.count(Dispute.id)).group_by(Dispute.status)
+    )
+    disputes = {status.value: count for status, count in dispute_counts.all()}
+    total_disputes = sum(disputes.values())
+    unresolved_disputes = total_disputes - disputes.get(DisputeStatus.RESOLVED.value, 0)
 
-#     return {
-#         "total_users": total_users,
-#         "total_admins": users.get(UserRole.ADMIN.value, 0),
-#         "total_shops": users.get(UserRole.SHOP.value, 0),
-#         "total_couriers": users.get(UserRole.COURIER.value, 0),
-#         "total_orders": total_orders,
-#         "active_orders": active_orders,
-#         "completed_orders": completed_orders,
-#         "cancelled_orders": cancelled_orders,
-#         "total_disputes": total_disputes,
-#         "unresolved_disputes": unresolved_disputes,
-#     }
+    return {
+        "total_users": total_users,
+        "total_admins": users.get(UserRole.ADMIN.value, 0),
+        "total_shops": users.get(UserRole.SHOP.value, 0),
+        "total_couriers": users.get(UserRole.COURIER.value, 0),
+        "total_orders": total_orders,
+        "active_orders": active_orders,
+        "completed_orders": completed_orders,
+        "cancelled_orders": cancelled_orders,
+        "total_disputes": total_disputes,
+        "unresolved_disputes": unresolved_disputes,
+    }
+
+
+async def get_order_by_id(db: AsyncSession, order_id: int) -> Order | None:
+    """
+    Получить заказ по ID с полной загрузкой связанных сущностей.
+    """
+    stmt = (
+        select(Order)
+        .where(Order.id == order_id)
+        .options(
+            selectinload(Order.shop),
+            selectinload(Order.courier),
+            selectinload(Order.history),
+            selectinload(Order.dispute),
+            selectinload(Order.rating),
+        )
+    )
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+
+async def resolve_dispute(
+    db: AsyncSession,
+    dispute_id: int,
+    resolution_type: str,
+    resolution_comment: str,
+    fine_amount: float | None = None,
+    fined_user_id: int | None = None,
+) -> Dispute | None:
+    """
+    Разрешить спор.
+    """
+    stmt = (
+        select(Dispute)
+        .where(Dispute.id == dispute_id)
+        .options(
+            selectinload(Dispute.order),
+            selectinload(Dispute.opened_by_user),
+            selectinload(Dispute.fined_user),
+        )
+    )
+    result = await db.execute(stmt)
+    dispute = result.scalars().first()
+
+    if not dispute:
+        return None
+
+    dispute.status = DisputeStatus.RESOLVED
+    dispute.resolution_type = resolution_type
+    dispute.resolution_comment = resolution_comment
+    dispute.resolved_at = datetime.now(UTC)
+
+    if fine_amount is not None and fined_user_id is not None:
+        dispute.fine_amount = fine_amount
+        dispute.fined_user_id = fined_user_id
+
+    await db.commit()
+    await db.refresh(dispute)
+    return dispute
 
 
 ModelType = TypeVar("ModelType")
@@ -289,7 +340,9 @@ async def get_all_couriers(
         sort_desc=False,
     )
 
-    response_items = [CourierCardResponse.model_validate(courier) for courier in couriers]
+    response_items = [
+        CourierCardResponse.model_validate(courier) for courier in couriers
+    ]
     return PaginatedResponse(total=total, items=response_items)
 
 

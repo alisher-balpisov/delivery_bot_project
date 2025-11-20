@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.src.common.enums import UserRole
+from backend.src.common.enums import DisputeResolutionType, UserRole
 
 
 class RegistrationCodeBase(BaseModel):
@@ -43,3 +43,18 @@ class CodeActivationResponse(BaseModel):
     detail: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SystemStatsResponse(BaseModel):
+    """Схема для системной статистики."""
+
+    total_users: int
+    total_admins: int
+    total_shops: int
+    total_couriers: int
+    total_orders: int
+    active_orders: int
+    completed_orders: int
+    cancelled_orders: int
+    total_disputes: int
+    unresolved_disputes: int

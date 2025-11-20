@@ -13,7 +13,11 @@ from backend.src.disputes.schemas import DisputeCardResponse
 from backend.src.shops.schemas import ShopCardResponse
 
 from . import service
-from .schemas import RegistrationCodeResponse
+from .schemas import (
+    RegistrationCodeResponse,
+    SystemStatsResponse,
+)
+from backend.src.orders.schemas import OrderResponseForAdmin
 
 logger = get_logger(__name__)
 
@@ -104,19 +108,23 @@ async def get_registration_codes_stats(current_user: RequireAdmin, db: DbSession
         raise HTTPException(status_code=500, detail=f"Не удалось получить статистику: {e!s}")
 
 
-# @router.get("/system-stats", response_model=dict, status_code=status.HTTP_200_OK)
-# async def get_system_stats(current_user: RequireAdmin, db: DbSession):
-#     """
-#     Получить системную статистику (общие метрики пользователей, заказов, споров).
-#     Доступно только администраторам.
-#     """
-#     logger.info(f"Администратор ID {current_user.id} запрашивает системную статистику")
-#     try:
-#         stats = await service.get_system_stats(db=db)
-#         return stats
-#     except Exception as e:
-#         logger.error(f"Ошибка при получении системной статистики: {e}", exc_info=True)
-#         raise HTTPException(status_code=500, detail=f"Не удалось получить статистику: {e!s}")
+@router.get(
+    "/system-stats", response_model=SystemStatsResponse, status_code=status.HTTP_200_OK
+)
+async def get_system_stats(current_user: RequireAdmin, db: DbSession):
+    """
+    Получить системную статистику (общие метрики пользователей, заказов, споров).
+    Доступно только администраторам.
+    """
+    logger.info(f"Администратор ID {current_user.id} запрашивает системную статистику")
+    try:
+        stats = await service.get_system_stats(db=db)
+        return stats
+    except Exception as e:
+        logger.error(f"Ошибка при получении системной статистики: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Не удалось получить статистику: {e!s}"
+        )
 
 
 @router.get(
