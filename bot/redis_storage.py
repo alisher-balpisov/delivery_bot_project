@@ -166,7 +166,8 @@ class UserDataStorage:
             key = self._make_user_key(telegram_id)
 
             # Обновляем метаданные
-            user_data.cached_at = datetime.now(UTC)
+            if user_data.cached_at is None:
+                user_data.cached_at = datetime.now(UTC)
             user_data.last_activity = datetime.now(UTC)
 
             # Сохраняем с TTL
@@ -334,10 +335,10 @@ class UserDataStorage:
 
     # === Вспомогательные методы ===
 
-    async def update_activity(self, telegram_id: int) -> bool:
+    async def update_activity(self, telegram_id: int, ttl: int | None = None) -> bool:
         """Обновляет время последней активности пользователя"""
         return await self.update_user_data(
-            telegram_id, {"last_activity": datetime.now(UTC).isoformat()}
+            telegram_id, {"last_activity": datetime.now(UTC).isoformat()}, ttl=ttl
         )
 
     async def get_field(self, telegram_id: int, field: str) -> Any:

@@ -26,19 +26,13 @@ class SpecialOrderType(str, Enum):
 PhoneFlexible = str
 
 
-class OrderBase(BaseModel):
-    """Базовая схема для заказа."""
+class OrderCreateRequest(BaseModel):
+    """Схема для создания нового заказа магазином (входные данные API)."""
 
     description: str | None = Field(None, max_length=1000)
     recipient_address: str = Field(..., max_length=500)
     recipient_phone: PhoneFlexible
     delivery_time: datetime | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class OrderCreateRequest(OrderBase):
-    """Схема для создания нового заказа магазином (входные данные API)."""
 
     courier_id: int | None = Field(None, description="ID курьера (только для special заказов)")
     order_type: OrderType = Field(OrderType.REGULAR, description="Тип заказа: regular или special")
@@ -82,15 +76,6 @@ class OrderCreateRequest(OrderBase):
         return self
 
 
-class OrderHistoryResponse(BaseModel):
-    id: int
-    order_id: int
-    status: str
-    changed_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class OrderCreate(OrderCreateRequest):
     """Схема для создания нового заказа (внутреннее использование в сервисах)."""
 
@@ -126,8 +111,13 @@ class CourierInfoForShop(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
-class OrderResponse(OrderBase):
+class OrderResponse(BaseModel):
     """Схема для полного представления заказа, включая все поля."""
+
+    description: str | None = Field(None, max_length=1000)
+    recipient_address: str
+    recipient_phone: str
+    delivery_time: datetime | None = None
 
     id: int
     status: OrderStatus
@@ -139,8 +129,6 @@ class OrderResponse(OrderBase):
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-
-    order_history: list[OrderHistoryResponse]
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -2,10 +2,10 @@ from collections.abc import Sequence
 from http import HTTPStatus
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from backend.src.common.enums import UserStatus
+from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.models.shop import Shop
@@ -46,20 +46,18 @@ async def get_shops_list(
     """
     Получение списка магазинов с пагинацией и фильтрацией.
     """
-    query = select(Shop).join(User).options(joinedload(Shop.user))
-
-    if status:
-        query = query.where(User.status == status)
-
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query) or 0
-
-    # Pagination
-    offset = (page - 1) * limit
-    query = query.offset(offset).limit(limit)
-
-    result = await db.execute(query)
-    shops = result.scalars().all()
+    total, shops = await get_paginated_list(
+        db=db,
+        model=Shop,
+        page=page,
+        limit=limit,
+        status=status,
+        status_field="status",
+        status_model=User,
+        joins=[(User, Shop.user_id == User.id)],
+        eager_load_options=[joinedload(Shop.user)],
+        sort_by_field="id",
+        sort_desc=False,
+    )
 
     return shops, total

@@ -8,9 +8,9 @@ from bot.clients.auth_client import AuthClient
 from bot.clients.users_client import UsersClient
 from bot.dto import UserDTO
 from bot.filters.filters import IsAuthenticatedFilter
-from bot.handlers.states import RegistrationStates
 from bot.messages import AuthMessages, AuthServiceMessages
 from bot.redis_storage import UserDataStorage
+from bot.states import RegistrationStates
 from bot.utils.token_manager import TokenManager
 
 from . import service
@@ -18,6 +18,7 @@ from . import service
 logger = get_logger(__name__)
 
 auth_router = Router(name="auth_handlers")
+
 
 @auth_router.message(Command("register"))
 async def register_handler(

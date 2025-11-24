@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot.handlers.admin.messages import AdminMainButtons, AdminRegistrationCodesMenuButtons
+from bot.messages import AdminKeyboardMessages
 
 
 def get_admin_main_keyboard() -> InlineKeyboardMarkup:
@@ -163,6 +164,40 @@ def get_back_to_registration_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=AdminRegistrationCodesMenuButtons.BACK,
                     callback_data="admin_back_to_registration_menu",
+                )
+            ]
+        ]
+    )
+
+
+def get_role_selection_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура выбора роли"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=AdminKeyboardMessages.SHOP, callback_data="admin_create_code_shop"
+                ),
+                InlineKeyboardButton(
+                    text=AdminKeyboardMessages.COURIER, callback_data="admin_create_code_courier"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=AdminKeyboardMessages.BACK, callback_data="admin_back_to_menu"
+                )
+            ],
+        ]
+    )
+
+
+def get_back_to_menu_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для возврата в главное меню."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=AdminKeyboardMessages.BACK, callback_data="admin_back_to_menu"
                 )
             ]
         ]

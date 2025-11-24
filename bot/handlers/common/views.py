@@ -1,9 +1,10 @@
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+from bot.clients.admin_client import AdminClient
 from bot.clients.auth_client import AuthClient
 from bot.clients.disputes_client import DisputesClient
 from bot.clients.users_client import UsersClient
@@ -13,9 +14,9 @@ from bot.handlers.admin import service as admin_service
 from bot.handlers.auth.service import get_user_profile_by_token
 from bot.handlers.courier.keyboards import get_courier_main_keyboard
 from bot.handlers.shop.keyboards import get_shop_main_keyboard
-from bot.handlers.states import RegistrationStates
 from bot.messages import AuthMessages, DisputeMessages
 from bot.redis_storage import UserDataStorage
+from bot.states import RegistrationStates
 from bot.utils.token_manager import TokenManager
 
 from . import service
@@ -35,6 +36,7 @@ async def start_handler(
     auth_client: AuthClient,
     users_client: UsersClient,
     user_storage: UserDataStorage,
+    admin_client: AdminClient,
 ):
     telegram_id = message.from_user.id
     logger.info(f"/start от пользователя {telegram_id}")
@@ -47,7 +49,7 @@ async def start_handler(
     if access_token:
         logger.info("Токен получен (из кэша или через login)")
         return await handle_authorized_user(
-            message, users_client, user_storage, telegram_id, access_token
+            message, users_client, user_storage, telegram_id, access_token, admin_client
         )
 
     # === 2. Токен не получен - проверяем, не незавершенная ли регистрация ===
@@ -69,13 +71,47 @@ async def start_handler(
     await message.answer(AuthMessages.WELCOME_NEW_USER)
 
 
-async def show_menu_by_role(message: Message, role: UserRole, name: str):
+async def show_menu_by_role(
+    event: Message | CallbackQuery,
+    role: UserRole,
+    name: str,
+    admin_client=None,
+    token: str | None = None,
+):
     if role == UserRole.ADMIN:
-        await admin_service.show_admin_main_menu(message, name)
+        await admin_service.show_admin_main_menu(event, name, admin_client, token)
     elif role == UserRole.SHOP:
-        await message.answer(f"📋 Привет, SHOP {name}!", reply_markup=get_courier_main_keyboard())
+        text = f"📋 Привет, SHOP {name}!"
+        keyboard = get_shop_main_keyboard()
+        if isinstance(event, CallbackQuery):
+            await event.message.edit_text(text, reply_markup=keyboard)
+        else:
+            await event.answer(text, reply_markup=keyboard)
     elif role == UserRole.COURIER:
-        await message.answer(f"👋 Привет, курьер {name}!", reply_markup=get_shop_main_keyboard())
+        text = f"👋 Привет, курьер {name}!"
+        keyboard = get_courier_main_keyboard()
+        if isinstance(event, CallbackQuery):
+            await event.message.edit_text(text, reply_markup=keyboard)
+        else:
+            await event.answer(text, reply_markup=keyboard)
+
+
+@common_router.callback_query(F.data == "show_main_menu")
+async def show_main_menu_handler(
+    callback: CallbackQuery,
+    user: UserDTO,
+    auth_client: AuthClient,
+    admin_client: AdminClient,
+    user_storage: UserDataStorage,
+):
+    """Возврат в главное меню."""
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(callback.from_user.id)
+
+    await show_menu_by_role(
+        event=callback, role=user.role, name=user.name, admin_client=admin_client, token=token
+    )
+    await callback.answer()
 
 
 async def handle_authorized_user(
@@ -84,6 +120,7 @@ async def handle_authorized_user(
     user_storage: UserDataStorage,
     telegram_id: int,
     access_token: str,
+    admin_client: AdminClient | None = None,
 ):
     """Общая логика для случаев, когда токен валиден."""
 
@@ -111,7 +148,12 @@ async def handle_authorized_user(
     role = UserRole(profile.get("role"))
     name = profile.get("name") or "пользователь"
 
-    await show_menu_by_role(message, role, name)
+    # Для администратора при наличии admin_client передаем его для получения статистики
+    if role == UserRole.ADMIN:
+        # admin_client передается через DI в start_handler, если None - показывается простое приветствие
+        await show_menu_by_role(message, role, name, admin_client, access_token)
+    else:
+        await show_menu_by_role(message, role, name)
 
 
 @common_router.message(Command("orders"))

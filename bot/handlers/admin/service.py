@@ -1,14 +1,13 @@
 import asyncio
 
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
 from bot.clients.system_client import SystemClient
 from bot.constants import STATS_TIMEOUT
 from bot.exceptions import ErrorMessages
-from bot.handlers.admin.keyboards import get_admin_main_keyboard
-from bot.handlers.keyboards import get_back_to_menu_keyboard
+from bot.keyboards.admin import get_admin_main_keyboard, get_back_to_menu_keyboard
 from bot.messages import AdminMessages, AdminServiceMessages, CommonMessages
 from bot.utils.formatters import format_codes_as_html_table
 from bot.utils.helpers import format_stats_message
@@ -16,21 +15,45 @@ from bot.utils.helpers import format_stats_message
 logger = get_logger(__name__)
 
 
-async def show_admin_main_menu(event: CallbackQuery | Message, admin_name: str):
-    """Показывает главное меню администратора."""
-    text = f"👑 Привет, администратор {admin_name}!\n"
+async def show_admin_main_menu(
+    event: CallbackQuery | Message,
+    admin_name: str,
+    admin_client: AdminClient | None = None,
+    token: str | None = None,
+):
+    """Показывает главное меню администратора с динамической статистикой."""
+    from bot.handlers.admin.messages import AdminMessages as AM
+
+    # Получаем статистику, если переданы клиент и токен
+    stats_text = ""
+    if admin_client and token:
+        try:
+            result = await admin_client.get_system_stats(token)
+            if result.success and isinstance(result.data, dict):
+                stats = result.data
+                stats_text = AM.ADMIN_MAIN_MENU.format(
+                    active_orders=stats.get("active_orders", 0),
+                    active_couriers=stats.get("active_couriers", 0),
+                    orders_today=stats.get("orders_today", 0),
+                    active_disputes=stats.get("unresolved_disputes", 0),
+                )
+            else:
+                # Если не удалось получить статистику, показываем простое приветствие
+                stats_text = f"👑 Привет, администратор {admin_name}!"
+        except Exception as e:
+            logger.error(f"Ошибка при получении статистики: {e}", exc_info=True)
+            stats_text = f"👑 Привет, администратор {admin_name}!"
+    else:
+        # Если клиент или токен не переданы, показываем простое приветствие
+        stats_text = f"👑 Привет, администратор {admin_name}!"
+
     keyboard = get_admin_main_keyboard()
 
     if isinstance(event, CallbackQuery):
-        await event.message.edit_text(text, reply_markup=keyboard)
+        await event.message.edit_text(stats_text, reply_markup=keyboard)
         await event.answer()
     else:
-        await event.answer(text, reply_markup=keyboard)
-
-
-def get_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
-    """Возвращает текст и клавиатуру для главного меню администратора."""
-    return AdminMessages.MENU, get_admin_main_keyboard()
+        await event.answer(stats_text, reply_markup=keyboard)
 
 
 async def create_registration_code(

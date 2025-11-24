@@ -2,6 +2,7 @@ from enum import Enum
 
 from backend.src.common.enums import UserRole
 
+BOT_NAME = "Delivery Bot"
 MAX_REGISTRATION_ATTEMPTS = 5
 STATS_TIMEOUT = 10  # секунды
 MAX_MESSAGE_LENGTH = 4000  # максимум Telegram

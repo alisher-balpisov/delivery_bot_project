@@ -251,7 +251,7 @@ async def get_system_stats(db: AsyncSession) -> dict:
     orders = {status.value: count for status, count in order_counts.all()}
     total_orders = sum(orders.values())
     completed_orders = orders.get(OrderStatus.COMPLETED.value, 0)
-    cancelled_orders = orders.get(OrderStatus.CANCELLED.value, 0)
+    cancelled_orders = orders.get(OrderStatus.CANCELED.value, 0)
     active_orders = total_orders - completed_orders - cancelled_orders
 
     # Статистика споров
@@ -261,6 +261,19 @@ async def get_system_stats(db: AsyncSession) -> dict:
     disputes = {status.value: count for status, count in dispute_counts.all()}
     total_disputes = sum(disputes.values())
     unresolved_disputes = total_disputes - disputes.get(DisputeStatus.RESOLVED.value, 0)
+
+    # Подсчет заказов за сегодня
+    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    orders_today_count = await db.scalar(
+        select(func.count(Order.id)).where(Order.created_at >= today_start)
+    )
+
+    # Подсчет активных курьеров (со статусом ACTIVE)
+    active_couriers_count = await db.scalar(
+        select(func.count(User.id)).where(
+            User.role == UserRole.COURIER, User.status == UserStatus.ACTIVE
+        )
+    )
 
     return {
         "total_users": total_users,
@@ -273,6 +286,8 @@ async def get_system_stats(db: AsyncSession) -> dict:
         "cancelled_orders": cancelled_orders,
         "total_disputes": total_disputes,
         "unresolved_disputes": unresolved_disputes,
+        "orders_today": orders_today_count or 0,
+        "active_couriers": active_couriers_count or 0,
     }
 
 

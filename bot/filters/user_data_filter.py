@@ -7,6 +7,7 @@
 - Улучшена логика определения статуса пользователя
 """
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aiogram.filters import BaseFilter
@@ -59,7 +60,44 @@ class UserDataFilter(BaseFilter):
             # Данные есть в кэше
             logger.debug(f"Данные пользователя {telegram_id} получены из Redis")
 
-            # Обновляем активность
+            # Если пользователь GUEST, проверяем, не пора ли обновить данные
+            if user_data.role == UserRole.GUEST:
+                should_retry_login = False
+                if not user_data.cached_at:
+                    should_retry_login = True
+                elif datetime.now(UTC) - user_data.cached_at > timedelta(seconds=30):
+                    should_retry_login = True
+
+                if should_retry_login:
+                    logger.debug(f"Кэш гостя устарел для {telegram_id}, пробуем login")
+                    login_result = await auth_client.login(telegram_id)
+
+                    if login_result.success and isinstance(login_result.data, dict):
+                        # Успешный login - обновляем данные
+                        user_dto = await self._handle_successful_login(
+                            telegram_id, username, login_result.data
+                        )
+                        return {"user": user_dto}
+                    else:
+                        # Login снова не удался - обновляем активность но держим короткий TTL
+                        # Обновляем cached_at чтобы не спамить попытками каждую секунду
+                        await self.storage.update_user_data(
+                            telegram_id,
+                            {
+                                "last_activity": datetime.now(UTC).isoformat(),
+                                "cached_at": datetime.now(UTC).isoformat(),
+                            },
+                            ttl=300,
+                        )
+                        user_dto = self._create_dto_from_cache(user_data, username)
+                        return {"user": user_dto}
+
+                # Если кэш свежий, просто обновляем активность с коротким TTL
+                await self.storage.update_activity(telegram_id, ttl=300)
+                user_dto = self._create_dto_from_cache(user_data, username)
+                return {"user": user_dto}
+
+            # Для обычных пользователей обновляем активность со стандартным TTL
             await self.storage.update_activity(telegram_id)
 
             # Создаем DTO
@@ -110,6 +148,7 @@ class UserDataFilter(BaseFilter):
             name=user_info.get("name"),
             role=parse_user_role(user_info.get("role")),
             username=username,
+            cached_at=datetime.now(UTC),  # Явно устанавливаем время кэширования
         )
 
         # Сохраняем токены
@@ -147,6 +186,7 @@ class UserDataFilter(BaseFilter):
             name=None,
             role=UserRole.GUEST,
             username=username,
+            cached_at=datetime.now(UTC),  # Явно устанавливаем время кэширования
         )
 
         # Сохраняем гостя в Redis с коротким TTL (5 минут)

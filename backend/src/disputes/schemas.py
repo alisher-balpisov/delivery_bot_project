@@ -5,48 +5,32 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from backend.src.common.constants import PaginatedResponse
 from backend.src.common.enums import DisputeStatus, UserRole
 from backend.src.models.dispute import Dispute
 
 
-class DisputeBase(BaseModel):
-    """Базовая схема для спора с общими полями."""
+class DisputeCreate(BaseModel):
+    """Схема для создания нового спора."""
 
     description: str = Field(
         ...,
         min_length=10,
         max_length=2000,
         description="Детальное описание проблемы",
-        examples=["Товар пришёл повреждённым, упаковка была нарушена"],
     )
+    order_id: int = Field(..., gt=0, description="ID заказа, по которому открывается спор")
 
     @field_validator("description")
     @classmethod
     def validate_and_sanitize_description(cls, v: str) -> str:
-        """
-        Валидация и санитизация описания.
-
-        Проверяет минимальное количество слов и экранирует HTML.
-        """
+        """Валидация и санитизация описания."""
         if not v:
             raise ValueError("Описание не может быть пустым")
-
-        # Санитизация HTML
         sanitized = html.escape(v.strip())
-
-        # Проверка минимального количества слов
         word_count = len(sanitized.split())
         if word_count < 3:
             raise ValueError(f"Описание должно содержать минимум 3 слова (сейчас: {word_count})")
-
         return sanitized
-
-
-class DisputeCreate(DisputeBase):
-    """Схема для создания нового спора."""
-
-    order_id: int = Field(..., gt=0, description="ID заказа, по которому открывается спор")
 
 
 class DisputeUpdate(BaseModel):
@@ -86,7 +70,7 @@ class DisputeUpdate(BaseModel):
         return self
 
 
-class DisputeResponse(DisputeBase):
+class DisputeResponse(BaseModel):
     """Полная схема ответа с данными спора."""
 
     id: int
@@ -95,41 +79,12 @@ class DisputeResponse(DisputeBase):
     shop_id: int
     status: DisputeStatus
     created_by_role: UserRole
+    description: str
     resolution_notes: str | None = None
     created_at: datetime
     resolved_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class DisputeListItem(BaseModel):
-    """Схема для отображения спора в списке (краткая информация)."""
-
-    id: int
-    order_id: int
-    shop_id: int
-    shop_name: str | None = Field(None, description="Название магазина")
-    courier_id: int
-    courier_name: str | None = Field(None, description="ФИО курьера")
-    status: DisputeStatus
-    created_by_role: UserRole
-    description: str = Field(..., description="Короткое описание проблемы")
-    created_at: datetime
-    resolved_at: datetime | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class DisputeFilters(BaseModel):
-    """Фильтры для списка споров."""
-
-    status: DisputeStatus | None = Field(None, description="Фильтр по статусу")
-    shop_id: int | None = Field(None, gt=0, description="Фильтр по ID магазина")
-    courier_id: int | None = Field(None, gt=0, description="Фильтр по ID курьера")
-    created_by_role: UserRole | None = Field(None, description="Фильтр по роли создателя")
-
-
-DisputeListResponse = PaginatedResponse[DisputeListItem]
 
 
 class DisputeCardResponse(BaseModel):

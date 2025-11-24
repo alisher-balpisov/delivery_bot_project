@@ -3,6 +3,7 @@ from aiogram.types import CallbackQuery
 from backend.src.common.enums import UserStatus
 from bot.clients.auth_client import AuthClient
 from bot.clients.shops_client import ShopsClient
+from bot.handlers.admin.couriers import logger  # импортируем общий логгер
 from bot.keyboards.shops import (
     ShopFilter,
     ShopsCallback,
@@ -42,7 +43,8 @@ async def show_shops_handler(
         current_filter=ShopFilter.ACTIVE,
     )
 
-    await callback.message.edit_text("Список магазинов:", reply_markup=keyboard)
+    text = f"🏪 <b>Список магазинов</b>\nВсего: {response.total}"
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
 
@@ -64,7 +66,7 @@ async def shops_navigation_handler(
         ShopFilter.INACTIVE: UserStatus.INACTIVE,
         ShopFilter.ALL: None,
     }
-    api_status = status_map.get(callback_data.filter)
+    api_status = status_map.get(callback_data.filter_type)
 
     response = await shops_client.get_shops(
         token=token,
@@ -77,15 +79,17 @@ async def shops_navigation_handler(
         shops=response.items,
         page=response.page,
         total_pages=response.pages,
-        current_filter=callback_data.filter,
+        current_filter=callback_data.filter_type,
     )
 
+    text = f"🏪 <b>Список магазинов</b>\nВсего: {response.total}"
+
     # Check if content changed to avoid "Message is not modified" error
-    # But here we usually just edit. If it's the same, aiogram might raise error, but it's fine.
+    # Но здесь обычно просто редактируем. Если сообщение не изменилось, aiogram может бросить ошибку.
     try:
-        await callback.message.edit_text("Список магазинов:", reply_markup=keyboard)
-    except Exception:
-        pass  # Ignore if not modified
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
+        logger.exception("Failed to edit shop list message: %s", e)
 
     await callback.answer()
 
@@ -113,32 +117,22 @@ async def open_shop_handler(
         status_emoji = "🟢" if shop.status == UserStatus.ACTIVE else "🔴"
         status_text = "Активен" if shop.status == UserStatus.ACTIVE else "Неактивен"
 
-        message_lines = [
-            "📍 <b>Карточка магазина</b>\n",
-            f"<b>Название:</b> {shop.name or 'Не указано'}",
-            f"<b>Статус:</b> {status_emoji} {status_text}",
-            f"<b>Telegram ID:</b> <code>{shop.telegram_id}</code>",
-        ]
+        username_text = f"@{shop.username}" if shop.username else "Нет"
+        phones = ", ".join(shop.phone_numbers) if shop.phone_numbers else "Нет"
 
-        if shop.username:
-            message_lines.append(f"<b>Username:</b> @{shop.username}")
-
-        if shop.address:
-            message_lines.append(f"<b>Адрес:</b> {shop.address}")
-
-        if shop.address_link:
-            message_lines.append(f"<b>Ссылка на адрес:</b> {shop.address_link}")
-
-        if shop.phone_numbers:
-            phones = "\n".join([f"  • {phone}" for phone in shop.phone_numbers])
-            message_lines.append(f"<b>Телефоны:</b>\n{phones}")
-
-        text = "\n".join(message_lines)
+        text = (
+            f"🏪 <b>Магазин: {shop.name or 'Не указано'}</b>\n\n"
+            f"📱 Телеграм: {username_text}\n"
+            f"📞 Телефон: {phones}\n"
+            f"📍 Адрес: {shop.address or 'Не указано'}\n"
+            f"🔗 Ссылка на адрес: {shop.address_link or 'Нет'}\n"
+            f"🔒 Статус: {status_emoji} {status_text}\n"
+        )
 
         # Генерируем клавиатуру с кнопкой "Назад"
         keyboard = get_shop_card_keyboard(
             page=callback_data.page,
-            current_filter=callback_data.filter,
+            current_filter=callback_data.filter_type,
         )
 
         await callback.message.edit_text(

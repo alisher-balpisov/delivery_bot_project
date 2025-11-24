@@ -6,9 +6,9 @@ from backend.src.common.enums import UserRole
 from bot.clients.auth_client import AuthClient
 from bot.clients.orders_client import OrdersClient
 from bot.filters.filters import RoleFilter
-from bot.handlers.states import OrderStates
 from bot.messages import OrderMessages
 from bot.redis_storage import UserDataStorage
+from bot.states import OrderStates
 from bot.utils.token_manager import TokenManager
 
 shop_router = Router(name="shop_handlers")

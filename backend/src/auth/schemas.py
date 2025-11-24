@@ -1,28 +1,5 @@
 from backend.src.common.enums import TokenType
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class Token(BaseModel):
-    """Схема для ответа с JWT токеном."""
-
-    access_token: str
-    token_type: str = TokenType.BEARER.value
-
-
-class TokenData(BaseModel):
-    """Схема для данных, закодированных в JWT."""
-
-    user_id: int | None = None
-    role: str | None = None
-    telegram_id: int | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class TokenRequest(BaseModel):
-    """Схема для запроса токена по telegram_id."""
-
-    telegram_id: int
+from pydantic import BaseModel, Field
 
 
 class AuthByCodeRequest(BaseModel):

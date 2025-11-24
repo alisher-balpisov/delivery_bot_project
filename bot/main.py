@@ -14,6 +14,7 @@ from bot.handlers import *
 from bot.middleware import setup_middlewares
 from bot.middleware.token_refresh_middleware import TokenRefreshMiddleware
 from bot.redis_storage import UserDataStorage
+from bot.utils.token_manager import TokenManager
 
 logger = get_logger(__name__)
 
@@ -119,7 +120,9 @@ async def lifespan():
             "shops_client": client_manager.shops,
             "system_client": client_manager.system,
             "users_client": client_manager.users,
+            "couriers_client": client_manager.couriers,
             "user_storage": user_data_storage,  # Передаем storage для TokenManager с другим именем
+            "token_manager": TokenManager(client_manager.auth, user_data_storage),
         }
         dp = create_dispatcher(**dp_kwargs)
         logger.info("✅ Диспетчер настроен")

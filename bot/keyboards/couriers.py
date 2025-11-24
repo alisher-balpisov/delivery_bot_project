@@ -2,41 +2,42 @@ from enum import StrEnum
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from backend.src.shops.schemas import ShopListItem
-from bot.messages import ShopMessages
+from backend.src.couriers.schemas import CourierListItem
 
 
-class ShopFilter(StrEnum):
+class CourierFilter(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
+    ON_SHIFT = "on_shift"
     ALL = "all"
 
 
-class ShopsCallback(CallbackData, prefix="shops"):
+class CouriersCallback(CallbackData, prefix="couriers"):
     action: str  # list, open
     page: int = 1
-    filter_type: ShopFilter = ShopFilter.ACTIVE
-    shop_id: int | None = None
+    filter_type: CourierFilter = CourierFilter.ACTIVE
+    courier_id: int | None = None
 
 
-def get_shops_list_keyboard(
-    shops: list[ShopListItem],
+def get_couriers_list_keyboard(
+    couriers: list[CourierListItem],
     page: int,
     total_pages: int,
-    current_filter: ShopFilter,
+    current_filter: CourierFilter,
 ) -> InlineKeyboardMarkup:
     keyboard = []
 
     # 1. Filter Buttons
     # Row 1: Active, Inactive
-    # Row 2: All
+    # Row 2: On Shift, All
     filter_rows = [
         [
-            (ShopFilter.ACTIVE, "Активные"),
-            (ShopFilter.INACTIVE, "Инактив"),
+            (CourierFilter.ACTIVE, "Активные"),
+            (CourierFilter.INACTIVE, "Инактив"),
         ],
         [
-            (ShopFilter.ALL, "Все"),
+            (CourierFilter.ON_SHIFT, "На смене"),
+            (CourierFilter.ALL, "Все"),
         ],
     ]
 
@@ -48,7 +49,7 @@ def get_shops_list_keyboard(
             keyboard_row.append(
                 InlineKeyboardButton(
                     text=display_text,
-                    callback_data=ShopsCallback(
+                    callback_data=CouriersCallback(
                         action="list",
                         page=1,  # Reset to page 1 on filter change
                         filter_type=filter_val,
@@ -57,16 +58,16 @@ def get_shops_list_keyboard(
             )
         keyboard.append(keyboard_row)
 
-    # 2. Shop List
-    for shop in shops:
-        status_emoji = "🟢" if shop.status == "active" else "🔴"
+    # 2. Courier List
+    for courier in couriers:
+        status_emoji = "🟢" if courier.is_active else "🔴"
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text=f"{status_emoji} {shop.name or 'Без названия'}",
-                    callback_data=ShopsCallback(
+                    text=f"{status_emoji} {courier.full_name}",
+                    callback_data=CouriersCallback(
                         action="open",
-                        shop_id=shop.id,
+                        courier_id=courier.id,
                         page=page,
                         filter_type=current_filter,
                     ).pack(),
@@ -80,7 +81,7 @@ def get_shops_list_keyboard(
         pagination_row.append(
             InlineKeyboardButton(
                 text="⬅️",
-                callback_data=ShopsCallback(
+                callback_data=CouriersCallback(
                     action="list",
                     page=page - 1,
                     filter_type=current_filter,
@@ -99,7 +100,7 @@ def get_shops_list_keyboard(
         pagination_row.append(
             InlineKeyboardButton(
                 text="➡️",
-                callback_data=ShopsCallback(
+                callback_data=CouriersCallback(
                     action="list",
                     page=page + 1,
                     filter_type=current_filter,
@@ -113,7 +114,7 @@ def get_shops_list_keyboard(
         [
             InlineKeyboardButton(
                 text="Назад",
-                callback_data="show_main_menu",  # Assuming this exists or handled
+                callback_data="show_main_menu",  # Assuming this exists
             )
         ]
     )
@@ -121,25 +122,18 @@ def get_shops_list_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def get_shop_card_keyboard(
+def get_courier_card_keyboard(
     page: int,
-    current_filter: ShopFilter,
+    current_filter: CourierFilter,
 ) -> InlineKeyboardMarkup:
     """
-    Генерация клавиатуры для карточки магазина.
-
-    Args:
-        page: Номер текущей страницы списка
-        current_filter: Текущий фильтр списка
-
-    Returns:
-        InlineKeyboardMarkup: Клавиатура с кнопками "Назад" и "Главное меню"
+    Генерация клавиатуры для карточки курьера.
     """
     keyboard = [
         [
             InlineKeyboardButton(
                 text="Назад",
-                callback_data=ShopsCallback(
+                callback_data=CouriersCallback(
                     action="list",
                     page=page,
                     filter_type=current_filter,
@@ -153,17 +147,3 @@ def get_shop_card_keyboard(
     ]
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
-def get_order_confirmation_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура подтверждения заказа"""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=ShopMessages.CONFIRM_ORDER, callback_data="order_confirm"
-                ),
-                InlineKeyboardButton(text=ShopMessages.CANCEL_ORDER, callback_data="order_cancel"),
-            ]
-        ]
-    )

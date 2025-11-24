@@ -1,6 +1,5 @@
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
-from backend.src.couriers.schemas import CourierResponse
 from backend.src.models.courier import Courier
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
@@ -82,23 +81,6 @@ async def update_my_profile(
 
     await db.refresh(user)
     return user
-
-
-async def get_all_couriers(db: AsyncSession) -> list[CourierResponse]:
-    """
-    Получение списка всех активных курьеров (для администраторов).
-
-    Args:
-        db: Сессия базы данных.
-
-    Returns:
-        Список всех курьеров.
-    """
-    logger.info("Запрос списка всех курьеров.")
-    result = await db.execute(select(Courier).join(User))
-    couriers = result.scalars().all()
-    logger.debug(f"Найдено {len(couriers)} курьеров.")
-    return [CourierResponse.model_validate(cour) for cour in couriers]
 
 
 async def complete_user_registration(

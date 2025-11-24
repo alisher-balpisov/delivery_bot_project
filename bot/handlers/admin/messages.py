@@ -21,3 +21,9 @@ class AdminRegistrationCodesMenuButtons:
 
 class AdminMessages:
     REGISTRATION_CODE_MENU = "Код регистрации позволяет зарегистрироваться новым пользователям."
+    ADMIN_MAIN_MENU = """Главное меню бота:
+
+Активные заказы: {active_orders}
+Активные курьеры: {active_couriers}
+Всего заказов сегодня: {orders_today}
+Активные споры: {active_disputes}"""

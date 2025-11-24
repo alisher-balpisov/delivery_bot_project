@@ -2,6 +2,7 @@ from bot.clients.base_client import ConnectionPool
 
 from .admin_client import AdminClient
 from .auth_client import AuthClient
+from .couriers_client import CouriersClient
 from .disputes_client import DisputesClient
 from .notifications_client import NotificationsClient
 from .orders_client import OrdersClient
@@ -22,12 +23,14 @@ class ClientManager:
         self.disputes = DisputesClient(pool=pool)
         self.system = SystemClient(pool=pool)
         self.shops = ShopsClient(pool=pool)
+        self.couriers = CouriersClient(pool=pool)
 
 
 __all__ = [
     "AdminClient",
     "AuthClient",
     "ClientManager",
+    "CouriersClient",
     "DisputesClient",
     "NotificationsClient",
     "OrdersClient",

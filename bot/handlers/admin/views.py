@@ -8,9 +8,8 @@ from bot.clients.auth_client import AuthClient
 from bot.clients.system_client import SystemClient
 from bot.dto import UserDTO
 from bot.filters.filters import RoleFilter
-from bot.handlers.admin.keyboards import get_registration_code_menu_keyboard
 from bot.handlers.admin.messages import AdminMessages as AM
-from bot.handlers.keyboards import get_role_selection_keyboard
+from bot.keyboards.admin import get_registration_code_menu_keyboard, get_role_selection_keyboard
 from bot.messages import AdminMessages, CommonMessages
 from bot.redis_storage import UserDataStorage
 from bot.utils.token_manager import TokenManager
@@ -46,16 +45,31 @@ async def admin_back_to_registration_menu_handler(callback: CallbackQuery):
 
 
 @admin_router.callback_query(F.data == "admin_back_to_menu")
-async def back_to_menu_handler(callback: CallbackQuery, user: UserDTO):
+async def back_to_menu_handler(
+    callback: CallbackQuery,
+    user: UserDTO,
+    auth_client: AuthClient,
+    admin_client: AdminClient,
+    user_storage: UserDataStorage,
+):
     """Возврат в главное меню админа."""
-    await service.show_admin_main_menu(callback, user.name)
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(callback.from_user.id)
+    await service.show_admin_main_menu(callback, user.name, admin_client, token)
 
 
 @admin_router.message(Command("admin"))
-async def admin_handler(message: Message, user: UserDTO):
+async def admin_handler(
+    message: Message,
+    user: UserDTO,
+    auth_client: AuthClient,
+    admin_client: AdminClient,
+    user_storage: UserDataStorage,
+):
     """Отображает главное меню администратора."""
-    text, keyboard = service.get_admin_menu()
-    await message.answer(text, reply_markup=keyboard)
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(message.from_user.id)
+    await service.show_admin_main_menu(message, user.name, admin_client, token)
 
 
 # @admin_router.callback_query(F.data == "admin_back_to_menu")
@@ -97,7 +111,7 @@ async def admin_create_code_for_role_handler(
         )
 
         # Импортируем клавиатуру для возврата
-        from bot.handlers.admin.keyboards import get_back_to_registration_menu_keyboard
+        from bot.keyboards.admin import get_back_to_registration_menu_keyboard
 
         # Редактируем текущее сообщение с результатом и кнопкой возврата
         await callback.message.edit_text(
@@ -175,7 +189,7 @@ async def admin_view_codes_handler(
     # Исправление: если total_count = 0, total_pages должен быть 1, а не 0
     total_pages = max(1, (total_count + CODES_PER_PAGE - 1) // CODES_PER_PAGE)
 
-    from bot.handlers.admin.keyboards import get_registration_codes_list_keyboard
+    from bot.keyboards.admin import get_registration_codes_list_keyboard
 
     keyboard = get_registration_codes_list_keyboard(
         codes=codes, page=page, total_pages=total_pages, filter_status=filter_status
@@ -234,7 +248,7 @@ async def admin_code_details_handler(
         f"⏳ **Истекает:** {code.get('expires_at')}\n"
     )
 
-    from bot.handlers.admin.keyboards import get_registration_code_details_keyboard
+    from bot.keyboards.admin import get_registration_code_details_keyboard
 
     keyboard = get_registration_code_details_keyboard(code_id, is_active)
 

@@ -5,7 +5,7 @@ from backend.src.common.enums import OrderStatus
 from backend.src.core.logging import get_logger
 from bot.clients.orders_client import OrdersClient
 from bot.exceptions import ErrorMessages
-from bot.handlers.keyboards import get_order_confirmation_keyboard
+from bot.keyboards.shops import get_order_confirmation_keyboard
 from bot.messages import OrderMessages, ShopMessages
 
 logger = get_logger(__name__)

@@ -5,12 +5,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 from backend.src.auth.dependencies import RequireAdmin
 from backend.src.auth.service import mask_sensitive_data
 from backend.src.common.constants import PaginatedResponse
-from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole, UserStatus
+from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
-from backend.src.couriers.schemas import CourierCardResponse
 from backend.src.disputes.schemas import DisputeCardResponse
-from backend.src.shops.schemas import ShopCardResponse
 
 from . import service
 from .schemas import CreateRegistrationCodeRequest, RegistrationCodeResponse, SystemStatsResponse
@@ -79,6 +77,21 @@ async def get_registration_codes(
     )
 
 
+@router.get("/registration-codes/stats", response_model=dict, status_code=status.HTTP_200_OK)
+async def get_registration_codes_stats(current_user: RequireAdmin, db: DbSession) -> dict[Any, int]:
+    """
+    Получить статистику кодов регистрации.
+    Доступно только администраторам.
+    """
+    logger.info(f"Администратор ID {current_user.id} запрашивает статистику по кодам регистрации")
+    try:
+        stats: dict[Any, int] = await service.get_unused_registration_codes_count(db=db)
+        return stats
+    except Exception as e:
+        logger.error(f"Ошибка при получении статистики кодов регистрации: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Не удалось получить статистику: {e!s}")
+
+
 @router.get(
     "/registration-codes/{code_id}",
     response_model=RegistrationCodeResponse,
@@ -117,21 +130,6 @@ async def deactivate_registration_code(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/registration-codes/stats", response_model=dict, status_code=status.HTTP_200_OK)
-async def get_registration_codes_stats(current_user: RequireAdmin, db: DbSession) -> dict[Any, int]:
-    """
-    Получить статистику кодов регистрации.
-    Доступно только администраторам.
-    """
-    logger.info(f"Администратор ID {current_user.id} запрашивает статистику по кодам регистрации")
-    try:
-        stats: dict[Any, int] = await service.get_unused_registration_codes_count(db=db)
-        return stats
-    except Exception as e:
-        logger.error(f"Ошибка при получении статистики кодов регистрации: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Не удалось получить статистику: {e!s}")
-
-
 @router.get("/system-stats", response_model=SystemStatsResponse, status_code=status.HTTP_200_OK)
 async def get_system_stats(current_user: RequireAdmin, db: DbSession):
     """
@@ -145,96 +143,6 @@ async def get_system_stats(current_user: RequireAdmin, db: DbSession):
     except Exception as e:
         logger.error(f"Ошибка при получении системной статистики: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Не удалось получить статистику: {e!s}")
-
-
-@router.get(
-    "/couriers",
-    response_model=PaginatedResponse[CourierCardResponse],
-    status_code=status.HTTP_200_OK,
-)
-async def get_all_couriers(
-    db: DbSession,
-    current_user: RequireAdmin,
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
-    status: UserStatus | None = Query(
-        None, description="Фильтр по статусу: active, inactive или blocked"
-    ),
-    search: str | None = Query(None, description="Поиск по имени курьера или имени пользователя"),
-):
-    """
-    Просмотреть всех курьеров.
-    """
-    logger.info(
-        f"Администратор {current_user} запрашивает список курьеров: "
-        f"{page=}, {limit=}, {status=}, {search=}"
-    )
-
-    try:
-        result = await service.get_all_couriers(
-            db=db,
-            page=page,
-            limit=limit,
-            status=status,
-            search=search,
-        )
-
-        logger.info(
-            f"Успешно получен список курьеров: {len(result.items)} элементов на странице {page}"
-        )
-        return result
-
-    except Exception as e:
-        logger.error(
-            f"Ошибка при получении списка курьеров для администратора {current_user}: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Не удалось получить список курьеров")
-
-
-@router.get(
-    "/shops",
-    response_model=PaginatedResponse[ShopCardResponse],
-    status_code=status.HTTP_200_OK,
-)
-async def get_all_shops(
-    db: DbSession,
-    current_user: RequireAdmin,
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
-    status: UserStatus | None = Query(
-        None, description="Фильтр по статусу: active, inactive или blocked"
-    ),
-    search: str | None = Query(None, description="Поиск по имени магазина или имени пользователя"),
-):
-    """
-    Просмотреть все магазины.
-    """
-    logger.info(
-        f"Администратор {current_user} запрашивает список магазинов: "
-        f"{page=}, {limit=}, {status=}, {search=}"
-    )
-
-    try:
-        result = await service.get_all_shops(
-            db=db,
-            page=page,
-            limit=limit,
-            status=status,
-            search=search,
-        )
-
-        logger.info(
-            f"Успешно получен список магазинов: {len(result.items)} элементов на странице {page}"
-        )
-        return result
-
-    except Exception as e:
-        logger.error(
-            f"Ошибка при получении списка магазинов для администратора {current_user}: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Не удалось получить список магазинов")
 
 
 @router.get(
@@ -253,7 +161,12 @@ async def get_all_orders(
     search: str | None = Query(None, description="Поиск по имени магазина или имени пользователя"),
 ):
     """
-    Просмотреть все текущие заказы.
+    Просмотреть все заказы системы (админ-панель).
+
+    Примечание:
+    - Этот эндпоинт предназначен для административного управления с текстовым поиском
+    - Для получения истории заказов пользователя используйте GET /orders/history
+    - Поддерживает поиск по названию магазина, имени курьера и описанию заказа
     """
     logger.info(
         f"Администратор {current_user} запрашивает список заказов: "
@@ -298,7 +211,12 @@ async def get_all_disputes(
     search: str | None = Query(None, description="Поиск по имени магазина или имени пользователя"),
 ):
     """
-    Просмотреть все текущие споры.
+    Просмотреть все споры системы (админ-панель).
+
+    Примечание:
+    - Этот эндпоинт предназначен для административного управления с текстовым поиском
+    - Позволяет искать споры по описанию, названию магазина, имени курьера и имени инициатора
+    - Для получения конкретного спора используйте GET /disputes/{dispute_id}
     """
     logger.info(
         f"Администратор {current_user} запрашивает список споров: "

@@ -5,11 +5,37 @@ from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 
 from . import service
-from .schemas import CourierCardResponse, CourierShiftResponse
+from .schemas import CourierCardResponse, CourierListItem, CourierListResponse, CourierShiftResponse
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/", response_model=CourierListResponse)
+async def get_couriers(
+    db: DbSession,
+    current_user: RequireAdminOrShop,
+    page: int = 1,
+    size: int = 10,
+    status: str = "active",
+):
+    """
+    Получение списка курьеров с фильтрацией и пагинацией.
+    """
+    couriers, total = await service.get_couriers(db=db, page=page, size=size, status_filter=status)
+
+    items = [
+        CourierListItem(
+            id=c.id,
+            full_name=c.full_name or "Без имени",
+            is_active=c.is_active,
+            user_status=c.user.status,
+        )
+        for c in couriers
+    ]
+
+    return CourierListResponse(items=items, total=total, page=page, size=size)
 
 
 @router.get("/shift")
