@@ -155,30 +155,64 @@ async def create_registration_code(
     raise RuntimeError("Не удалось сгенерировать уникальный код регистрации.")
 
 
-async def get_all_registration_codes(
+async def get_registration_codes(
     db: AsyncSession,
-) -> list[RegistrationCodeResponse]:
+    page: int,
+    limit: int,
+    role: UserRole | None = None,
+    is_used: bool | None = None,
+) -> PaginatedResponse[RegistrationCodeResponse]:
     """
-    Получить все коды регистрации (для администраторов).
+    Получить список кодов регистрации с пагинацией и фильтрацией.
     """
-    result = await db.execute(select(RegistrationCode).order_by(RegistrationCode.created_at.desc()))
-    codes = result.scalars().all()
-    return [RegistrationCodeResponse.model_validate(code) for code in codes]
+    query = select(RegistrationCode)
 
+    if role:
+        query = query.where(RegistrationCode.role == role)
 
-async def get_registration_codes_by_role(
-    db: AsyncSession, role: UserRole
-) -> list[RegistrationCodeResponse]:
-    """
-    Получить все коды регистрации для определенной роли.
-    """
-    result = await db.execute(
-        select(RegistrationCode)
-        .where(RegistrationCode.role == role)
-        .order_by(RegistrationCode.created_at.desc())
+    if is_used is not None:
+        query = query.where(RegistrationCode.is_used == is_used)
+
+    total_count = await db.scalar(select(func.count()).select_from(query.subquery()))
+
+    query = (
+        query.order_by(RegistrationCode.created_at.desc()).offset((page - 1) * limit).limit(limit)
     )
+    result = await db.execute(query)
     codes = result.scalars().all()
-    return [RegistrationCodeResponse.model_validate(code) for code in codes]
+
+    response_items = [RegistrationCodeResponse.model_validate(code) for code in codes]
+    return PaginatedResponse(total=total_count or 0, items=response_items)
+
+
+async def get_registration_code_by_id(db: AsyncSession, code_id: int) -> RegistrationCode | None:
+    """
+    Получить код регистрации по ID.
+    """
+    return await db.get(RegistrationCode, code_id)
+
+
+async def deactivate_registration_code(db: AsyncSession, code_id: int) -> RegistrationCode:
+    """
+    Деактивирует код регистрации (помечает как использованный или просроченный).
+    В текущей реализации мы просто помечаем его как использованный, но без привязки к пользователю,
+    либо можно установить expires_at в прошлое.
+    По требованию: "Деактивировать просрочен = true (менять expires at или is_used хз первый вариант больше нравится)"
+    Давайте менять expires_at на текущее время, чтобы он стал просроченным.
+    """
+    code = await get_registration_code_by_id(db, code_id)
+    if not code:
+        raise ValueError(f"Код с ID {code_id} не найден.")
+
+    if code.is_used:
+        raise ValueError("Код уже использован.")
+
+    # Делаем код просроченным
+    code.expires_at = datetime.now(UTC)
+    db.add(code)
+    await db.commit()
+    await db.refresh(code)
+    return code
 
 
 async def get_unused_registration_codes_count(db: AsyncSession) -> dict[Any, int]:

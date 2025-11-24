@@ -53,11 +53,13 @@ class TokenManager:
             logger.debug(f"Данные пользователя {telegram_id} отсутствуют, пробуем login")
             return await self._login_and_cache(telegram_id)
 
-        # Если refresh токен истек - требуется повторная авторизация
+        # Если refresh токен истек - пробуем повторную авторизацию
         if not user_data.refresh_token_valid:
-            logger.warning(f"Refresh токен истек для пользователя {telegram_id}")
+            logger.warning(
+                f"Refresh токен истек для пользователя {telegram_id}, пробуем повторный login"
+            )
             await self.storage.invalidate_tokens(telegram_id)
-            return None
+            return await self._login_and_cache(telegram_id)
 
         # Если access токен валиден и не требует обновления
         if not force_refresh and user_data.has_valid_token and not user_data.needs_token_refresh:
@@ -67,7 +69,14 @@ class TokenManager:
 
         # Обновляем токен через refresh
         logger.info(f"Обновляем токен для пользователя {telegram_id}")
-        return await self._refresh_and_cache(telegram_id, user_data)
+        new_token = await self._refresh_and_cache(telegram_id, user_data)
+
+        # Если обновление не удалось (например, refresh токен был отозван), пробуем login
+        if not new_token:
+            logger.warning(f"Не удалось обновить токен для {telegram_id}, пробуем повторный login")
+            return await self._login_and_cache(telegram_id)
+
+        return new_token
 
     async def save_token_from_response(
         self, response: dict, telegram_id: int, user_data: UserCacheData | None = None

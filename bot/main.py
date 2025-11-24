@@ -116,6 +116,7 @@ async def lifespan():
             "disputes_client": client_manager.disputes,
             "notifications_client": client_manager.notifications,
             "orders_client": client_manager.orders,
+            "shops_client": client_manager.shops,
             "system_client": client_manager.system,
             "users_client": client_manager.users,
             "user_storage": user_data_storage,  # Передаем storage для TokenManager с другим именем

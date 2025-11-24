@@ -15,6 +15,7 @@ from bot.utils.helpers import format_stats_message
 
 logger = get_logger(__name__)
 
+
 async def show_admin_main_menu(event: CallbackQuery | Message, admin_name: str):
     """Показывает главное меню администратора."""
     text = f"👑 Привет, администратор {admin_name}!\n"
@@ -25,6 +26,7 @@ async def show_admin_main_menu(event: CallbackQuery | Message, admin_name: str):
         await event.answer()
     else:
         await event.answer(text, reply_markup=keyboard)
+
 
 def get_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
     """Возвращает текст и клавиатуру для главного меню администратора."""

@@ -1,17 +1,51 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from backend.src.auth.dependencies import RequireAdminOrCourier
+from backend.src.common.enums import UserStatus
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.models.shop import Shop
 
 from . import service
-from .schemas import ShopCardResponse
+from .schemas import ShopCardResponse, ShopListItem, ShopListResponse
 
 logger = get_logger(__name__)
 
 
 router = APIRouter()
+
+
+@router.get("/", response_model=ShopListResponse)
+async def get_shops(
+    current_user: RequireAdminOrCourier,
+    db: DbSession,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    status: UserStatus | None = None,
+) -> ShopListResponse:
+    """
+    Получение списка магазинов.
+    """
+    shops, total = await service.get_shops_list(db, page, limit, status)
+
+    items = [
+        ShopListItem(
+            id=shop.id,
+            name=shop.name,
+            status=shop.user.status,
+            telegram_id=shop.user.telegram_id,
+        )
+        for shop in shops
+    ]
+
+    pages = (total + limit - 1) // limit
+
+    return ShopListResponse(
+        items=items,
+        total=total,
+        page=page,
+        pages=pages,
+    )
 
 
 @router.get("/{shop_id}", response_model=ShopCardResponse)

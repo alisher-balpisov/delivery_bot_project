@@ -24,13 +24,15 @@
             "showReturnValue": true,
         },
         {
+            // Конфигурация для отладки Telegram бота
             "name": "Telegram Bot",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "run_bot",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "justMyCode": true,
+            "showReturnValue": true
         }
     ],
     "compounds": [

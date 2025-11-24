@@ -27,9 +27,6 @@ COMMISSION: dict[str, Any] = {
 }
 
 
-AllowedRoles = Literal[UserRole.ADMIN, UserRole.SHOP, UserRole.COURIER]
-
-
 MIN_TELEGRAM_ID = 1
 MAX_TELEGRAM_ID = 2147483647
 SECONDS_IN_MINUTE = 60

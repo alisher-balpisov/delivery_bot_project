@@ -5,6 +5,7 @@ from .auth_client import AuthClient
 from .disputes_client import DisputesClient
 from .notifications_client import NotificationsClient
 from .orders_client import OrdersClient
+from .shops_client import ShopsClient
 from .system_client import SystemClient
 from .users_client import UsersClient
 
@@ -20,6 +21,7 @@ class ClientManager:
         self.admin = AdminClient(pool=pool)
         self.disputes = DisputesClient(pool=pool)
         self.system = SystemClient(pool=pool)
+        self.shops = ShopsClient(pool=pool)
 
 
 __all__ = [
@@ -29,6 +31,7 @@ __all__ = [
     "DisputesClient",
     "NotificationsClient",
     "OrdersClient",
+    "ShopsClient",
     "SystemClient",
     "UsersClient",
 ]

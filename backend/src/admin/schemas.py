@@ -22,6 +22,12 @@ class RegistrationCodeResponse(RegistrationCodeBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CreateRegistrationCodeRequest(BaseModel):
+    """Схема запроса для создания кода регистрации."""
+
+    role: UserRole
+
+
 class CodeActivationRequest(BaseModel):
     """Схема для активации одноразового кода регистрации."""
 

@@ -88,6 +88,7 @@ class BaseApiClient:
         endpoint: str,
         token: str | None = None,
         json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
         custom_headers: dict[str, str] | None = None,
         expected_status: int = 200,
         retry_count: int = 3,
@@ -99,7 +100,7 @@ class BaseApiClient:
             method, endpoint, token, custom_headers
         )
         return await self._execute_with_retry(
-            method_str, url, headers, json_data, expected_status, retry_count
+            method_str, url, headers, json_data, params, expected_status, retry_count
         )
 
     def _prepare_request_params(
@@ -126,19 +127,24 @@ class BaseApiClient:
 
         return method_str, url, headers
 
+    def _get_auth_headers(self, token: str) -> dict[str, str]:
+        """Возвращает заголовки авторизации."""
+        return {"Authorization": f"Bearer {token}"}
+
     async def _execute_with_retry(
         self,
         method: str,
         url: str,
         headers: dict[str, str],
         json_data: dict[str, Any] | None,
+        params: dict[str, Any] | None,
         expected_status: int,
         retry_count: int,
     ) -> RequestResult:
         """Выполняет запрос с логикой повторных попыток при сбоях."""
         for attempt in range(retry_count):
             try:
-                response = await self._execute_request(method, url, headers, json_data)
+                response = await self._execute_request(method, url, headers, json_data, params)
                 result = self._handle_response(response, expected_status)
 
                 if result.success or not self._should_retry(
@@ -166,12 +172,17 @@ class BaseApiClient:
         )
 
     async def _execute_request(
-        self, method: str, url: str, headers: dict[str, str], json_data: dict[str, Any] | None
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        json_data: dict[str, Any] | None,
+        params: dict[str, Any] | None,
     ) -> httpx.Response:
         """Непосредственно выполняет HTTP-запрос."""
         client = await self.pool.get_client()
         return await client.request(
-            method, url, headers=headers, json=json_data, timeout=self.timeout
+            method, url, headers=headers, json=json_data, params=params, timeout=self.timeout
         )
 
     def _validate_method(self, method: str | HttpMethod) -> str:

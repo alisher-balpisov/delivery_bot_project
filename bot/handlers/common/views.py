@@ -41,40 +41,26 @@ async def start_handler(
 
     token_manager = TokenManager(auth_client, user_storage)
 
-    # === 1. Проверяем токен в Redis ===
+    # === 1. Получаем валидный токен (проверяет Redis, делает login/refresh при необходимости) ===
     access_token = await token_manager.get_token(telegram_id)
 
     if access_token:
-        logger.info("Токен найден в кэше")
+        logger.info("Токен получен (из кэша или через login)")
         return await handle_authorized_user(
             message, users_client, user_storage, telegram_id, access_token
         )
 
-    # === 2. Пытаемся войти через API ===
+    # === 2. Токен не получен - проверяем, не незавершенная ли регистрация ===
+    # TokenManager.get_token() уже попытался сделать login через API
+    # Если вернулся None, нужно проверить статус через явный вызов
     login_result = await auth_client.login(telegram_id)
 
     if login_result.status_code == 403:
         # Пользователь существует, но не завершил регистрацию
+        logger.info(f"Пользователь {telegram_id} не завершил регистрацию")
         await state.set_state(RegistrationStates.waiting_for_code)
         return await message.answer(
             "⚠️ Вы начали регистрацию, но не завершили её.\n\n" + AuthMessages.ENTER_CODE
-        )
-
-    if login_result.status_code == 200:
-        logger.info("login() успешен — сохраняем токены")
-        tokens = login_result.data
-
-        # сохраняем токены в Redis
-        await user_storage.save_tokens(
-            telegram_id=telegram_id,
-            access_token=tokens["access_token"],
-            refresh_token=tokens["refresh_token"],
-            access_expires_in=tokens["expires_in"],
-            refresh_expires_in=tokens["refresh_expires_in"],
-        )
-
-        return await handle_authorized_user(
-            message, users_client, user_storage, telegram_id, tokens["access_token"]
         )
 
     # === 3. Совершенно новый пользователь ===
@@ -106,7 +92,7 @@ async def handle_authorized_user(
     if not profile:
         return await message.answer("Ошибка загрузки профиля. Попробуйте позже.")
 
-    # --- ВАЖНО: Унифицируем тип данных ---
+    # --- Унифицируем тип данных ---
     if isinstance(profile, UserDTO):
         profile = profile.model_dump()
 

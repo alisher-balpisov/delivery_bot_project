@@ -13,16 +13,39 @@ class AdminClient(BaseApiClient):
         """
         Создать новый регистрационный код для указанной роли.
         """
-        endpoint = f"/admin/create-code/{role.value}"
-        return await self._make_request("POST", endpoint, token=token, expected_status=201)
+        endpoint = "/admin/registration-codes"
+        return await self._make_request(
+            "POST", endpoint, token=token, json_data={"role": role}, expected_status=201
+        )
 
-    async def get_all_registration_codes(self, token: str) -> RequestResult:
-        """Получить все регистрационные коды."""
-        return await self._make_request("GET", "/admin/registration-codes", token=token)
+    async def get_registration_codes(
+        self,
+        token: str,
+        page: int = 1,
+        limit: int = 10,
+        role: str | None = None,
+        is_used: bool | None = None,
+    ) -> RequestResult:
+        """Получить список регистрационных кодов с пагинацией."""
+        params = {"page": page, "limit": limit}
+        if role:
+            params["role"] = role
+        if is_used is not None:
+            params["is_used"] = str(is_used).lower()
 
-    async def get_registration_codes_by_role(self, token: int, role: str) -> RequestResult:
-        """Получить регистрационные коды по роли."""
-        return await self._make_request("GET", f"/admin/registration-codes/{role}", token=token)
+        return await self._make_request(
+            "GET", "/admin/registration-codes", token=token, params=params
+        )
+
+    async def get_registration_code_details(self, token: str, code_id: int) -> RequestResult:
+        """Получить детали кода регистрации."""
+        return await self._make_request("GET", f"/admin/registration-codes/{code_id}", token=token)
+
+    async def deactivate_registration_code(self, token: str, code_id: int) -> RequestResult:
+        """Деактивировать код регистрации."""
+        return await self._make_request(
+            "POST", f"/admin/registration-codes/{code_id}/deactivate", token=token
+        )
 
     async def get_registration_codes_stats(self, token: int) -> RequestResult:
         """Получить статистику регистрационных кодов."""
