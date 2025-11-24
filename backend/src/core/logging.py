@@ -1,12 +1,18 @@
 import asyncio
+import functools
 import logging
 import logging.handlers
 import sys
+import time
+from collections.abc import Callable
 from copy import copy
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from .config import settings
+
+# Type variables для декоратора
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class ColoredFormatter(logging.Formatter):
@@ -43,11 +49,18 @@ class TelegramFormatter(logging.Formatter):
     Добавляет emoji в запись лога.
     """
 
+    EMOJI: ClassVar[dict[str, str]] = {
+        "DEBUG": "🐛",
+        "INFO": "📋",
+        "WARNING": "⚠️",
+        "ERROR": "❌",
+        "CRITICAL": "🚨",
+    }
+
     def format(self, record: logging.LogRecord) -> str:
-        emoji_map = {"DEBUG": "🐛", "INFO": "📋", "WARNING": "⚠️", "ERROR": "❌", "CRITICAL": "🚨"}
         # Используем copy, чтобы следовать лучшим практикам, как и в ColoredFormatter
         record_copy = copy(record)
-        record_copy.emoji = emoji_map.get(record_copy.levelname, "📋")
+        record_copy.emoji = self.EMOJI.get(record_copy.levelname, "📋")
         return super().format(record_copy)
 
 
@@ -139,7 +152,6 @@ def setup_error_handler() -> logging.Handler | None:
 
 def configure_third_party_loggers() -> None:
     """Настройка уровней логирования для сторонних библиотек."""
-    # Код остался без изменений, он и так был хорош
     loggers_config = {
         "sqlalchemy.engine": settings.logging.sqlalchemy_level,
         "sqlalchemy.pool": "WARNING",
@@ -230,7 +242,7 @@ class LogLevel:
 
 
 # Декоратор для логирования вызовов функций
-def log_function_calls(logger_name: str | None = None):
+def log_function_calls(logger_name: str | None = None) -> Callable[[F], F]:
     """
     Декоратор для автоматического логирования вызовов функций
 
@@ -238,48 +250,57 @@ def log_function_calls(logger_name: str | None = None):
         logger_name: Имя логгера (по умолчанию используется имя модуля функции)
     """
 
-    def decorator(func):
-        import functools
-        import time
-
+    def decorator(func: F) -> F:
         @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             logger = logging.getLogger(logger_name or func.__module__)
 
             start_time = time.time()
-            logger.debug(f"🔄 Вызов {func.__name__}(args={args}, kwargs={kwargs})")
+            logger.debug("🔄 Вызов %s(args=%s, kwargs=%s)", func.__name__, args, kwargs)
 
             try:
                 result = await func(*args, **kwargs)
                 execution_time = time.time() - start_time
-                logger.debug(f"✅ {func.__name__} выполнена за {execution_time:.3f}с")
+                logger.debug("✅ %s выполнена за %.3fс", func.__name__, execution_time)
                 return result
             except Exception as e:
                 execution_time = time.time() - start_time
-                logger.error(f"❌ Ошибка в {func.__name__} за {execution_time:.3f}с: {e}")
+                logger.error(
+                    "❌ Ошибка в %s за %.3fс: %s",
+                    func.__name__,
+                    execution_time,
+                    e,
+                    exc_info=True,
+                )
                 raise
 
         @functools.wraps(func)
-        def sync_wrapper(*args, **kwargs):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             logger = logging.getLogger(logger_name or func.__module__)
 
             start_time = time.time()
-            logger.debug(f"🔄 Вызов {func.__name__}(args={args}, kwargs={kwargs})")
+            logger.debug("🔄 Вызов %s(args=%s, kwargs=%s)", func.__name__, args, kwargs)
 
             try:
                 result = func(*args, **kwargs)
                 execution_time = time.time() - start_time
-                logger.debug(f"✅ {func.__name__} выполнена за {execution_time:.3f}с")
+                logger.debug("✅ %s выполнена за %.3fс", func.__name__, execution_time)
                 return result
             except Exception as e:
                 execution_time = time.time() - start_time
-                logger.error(f"❌ Ошибка в {func.__name__} за {execution_time:.3f}с: {e}")
+                logger.error(
+                    "❌ Ошибка в %s за %.3fс: %s",
+                    func.__name__,
+                    execution_time,
+                    e,
+                    exc_info=True,
+                )
                 raise
 
         if asyncio.iscoroutinefunction(func):
-            return async_wrapper
+            return async_wrapper  # type: ignore[return-value]
         else:
-            return sync_wrapper
+            return sync_wrapper  # type: ignore[return-value]
 
     return decorator
 

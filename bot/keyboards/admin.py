@@ -10,7 +10,7 @@ def get_admin_main_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=AdminMainButtons.REGISTARATION_CODE,
+                    text=AdminMainButtons.REGISTRATION_CODE,
                     callback_data="get_registration_code_menu",
                 )
             ],

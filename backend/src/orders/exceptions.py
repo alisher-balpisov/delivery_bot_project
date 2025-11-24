@@ -1,7 +1,27 @@
-from fastapi import HTTPException, status
+"""
+Исключения для модуля заказов.
+
+Все исключения наследуются от базового AppException для
+унифицированной обработки ошибок.
+"""
+
+from dataclasses import dataclass
+
+from backend.src.common.exceptions import (
+    AccessDeniedException,
+    AppException,
+    BusinessRuleException,
+    ResourceNotFoundException,
+    ValidationException,
+)
+
+# ==============================================================================
+# Исключения заказов
+# ==============================================================================
 
 
-class OrderException(HTTPException):
+@dataclass
+class OrderException(AppException):
     """
     Базовое исключение для всех ошибок, связанных с заказами.
 
@@ -9,26 +29,39 @@ class OrderException(HTTPException):
     для удобной обработки в exception handlers.
     """
 
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(status_code=status_code, detail=detail)
+    def __post_init__(self) -> None:
+        """Установка сообщения по умолчанию."""
+        if not self.detail:
+            self.detail = "Ошибка при работе с заказом"
+        super().__post_init__()
 
 
-class OrderNotFoundException(OrderException):
+@dataclass
+class OrderNotFoundException(ResourceNotFoundException):
     """
     Исключение для случаев, когда заказ не найден в БД.
+
+    Наследуется от ResourceNotFoundException (HTTP 404).
 
     Args:
         order_id: ID ненайденного заказа
     """
 
-    def __init__(self, order_id: int):
-        super().__init__(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Заказ с ID {order_id} не найден",
-        )
+    order_id: int | None = None
+
+    def __post_init__(self) -> None:
+        """Формирование сообщения на основе order_id."""
+        if not self.detail and self.order_id:
+            self.detail = f"Заказ с ID {self.order_id} не найден"
+        elif not self.detail:
+            self.detail = "Заказ не найден"
+        self.resource_type = "Заказ"
+        self.resource_id = self.order_id
+        super().__post_init__()
 
 
-class OrderUpdateForbiddenException(OrderException):
+@dataclass
+class OrderUpdateForbiddenException(AccessDeniedException):
     """
     Исключение для случаев, когда у пользователя нет прав на изменение заказа.
 
@@ -38,18 +71,20 @@ class OrderUpdateForbiddenException(OrderException):
     - Попытка изменить заказ в финальном статусе
     - Попытка установить недопустимый статус
 
-    Args:
-        detail: Описание причины отказа (по умолчанию: общее сообщение)
+    Наследуется от AccessDeniedException (HTTP 403).
     """
 
-    def __init__(self, detail: str = "У вас нет прав на изменение этого заказа"):
-        super().__init__(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=detail,
-        )
+    def __post_init__(self) -> None:
+        """Установка сообщения по умолчанию."""
+        if not self.detail:
+            self.detail = "У вас нет прав на изменение этого заказа"
+        self.resource_type = "заказ"
+        self.action = "изменение"
+        super().__post_init__()
 
 
-class OrderAccessForbiddenException(OrderException):
+@dataclass
+class OrderAccessForbiddenException(AccessDeniedException):
     """
     Исключение для случаев, когда у пользователя нет прав на просмотр заказа.
 
@@ -58,18 +93,20 @@ class OrderAccessForbiddenException(OrderException):
     - Курьер пытается просмотреть не назначенный ему заказ
     - Отсутствует профиль магазина/курьера
 
-    Args:
-        detail: Описание причины отказа (по умолчанию: общее сообщение)
+    Наследуется от AccessDeniedException (HTTP 403).
     """
 
-    def __init__(self, detail: str = "У вас нет прав на доступ к этому заказу"):
-        super().__init__(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=detail,
-        )
+    def __post_init__(self) -> None:
+        """Установка сообщения по умолчанию."""
+        if not self.detail:
+            self.detail = "У вас нет прав на доступ к этому заказу"
+        self.resource_type = "заказ"
+        self.action = "просмотр"
+        super().__post_init__()
 
 
-class OrderInvalidStatusTransitionException(OrderException):
+@dataclass
+class OrderInvalidStatusTransitionException(BusinessRuleException):
     """
     Исключение для недопустимых переходов между статусами заказа.
 
@@ -77,47 +114,72 @@ class OrderInvalidStatusTransitionException(OrderException):
     - Попытка завершить заказ, который еще не в доставке
     - Попытка отменить уже завершённый заказ
 
-    Args:
-        current_status: Текущий статус заказа
-        attempted_status: Статус, на который пытались перейти
+    Наследуется от BusinessRuleException (HTTP 422).
     """
 
-    def __init__(self, current_status: str, attempted_status: str):
-        super().__init__(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Невозможно изменить статус с '{current_status}' на '{attempted_status}'",
-        )
+    current_status: str | None = None
+    attempted_status: str | None = None
+
+    def __post_init__(self) -> None:
+        """Формирование сообщения на основе статусов."""
+        if not self.detail and self.current_status and self.attempted_status:
+            self.detail = (
+                f"Невозможно изменить статус с '{self.current_status}' на '{self.attempted_status}'"
+            )
+        elif not self.detail:
+            self.detail = "Недопустимый переход между статусами заказа"
+        self.rule_name = "status_transition"
+        super().__post_init__()
 
 
-class CourierNotActiveException(OrderException):
+@dataclass
+class CourierNotActiveException(ValidationException):
     """
     Исключение для случаев, когда курьер неактивен.
 
     Возникает при попытке назначить неактивного курьера на заказ.
 
-    Args:
-        courier_id: ID неактивного курьера
+    Наследуется от ValidationException (HTTP 422).
     """
 
-    def __init__(self, courier_id: int):
-        super().__init__(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Курьер с ID {courier_id} неактивен и не может принимать заказы",
-        )
+    courier_id: int | None = None
+
+    def __post_init__(self) -> None:
+        """Формирование сообщения на основе courier_id."""
+        if not self.detail and self.courier_id:
+            self.detail = f"Курьер с ID {self.courier_id} неактивен и не может принимать заказы"
+        elif not self.detail:
+            self.detail = "Курьер неактивен и не может принимать заказы"
+        super().__post_init__()
 
 
-class OrderValidationException(OrderException):
+@dataclass
+class OrderValidationException(ValidationException):
     """
     Исключение для ошибок валидации данных заказа.
 
     Используется для бизнес-правил, не покрытых Pydantic валидацией.
 
-    Args:
-        detail: Описание ошибки валидации
+    Наследуется от ValidationException (HTTP 422).
     """
 
-    def __init__(self, detail: str):
-        super().__init__(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=detail,
-        )
+    def __post_init__(self) -> None:
+        """Установка сообщения по умолчанию."""
+        if not self.detail:
+            self.detail = "Ошибка валидации данных заказа"
+        super().__post_init__()
+
+
+# ==============================================================================
+# Экспорт
+# ==============================================================================
+
+__all__ = [
+    "CourierNotActiveException",
+    "OrderAccessForbiddenException",
+    "OrderException",
+    "OrderInvalidStatusTransitionException",
+    "OrderNotFoundException",
+    "OrderUpdateForbiddenException",
+    "OrderValidationException",
+]

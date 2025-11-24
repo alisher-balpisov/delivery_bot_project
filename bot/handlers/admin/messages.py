@@ -1,7 +1,7 @@
 class AdminMainButtons:
     """Клавиатуры для админ-панели"""
 
-    REGISTARATION_CODE = "Код регистрации"
+    REGISTRATION_CODE = "Код регистрации"
     SHOPS = "Магазины"
     COURIERS = "Курьеры"
     ORDERS = "Заказы"

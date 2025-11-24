@@ -1,8 +1,16 @@
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any
 
 from backend.src.auth.dependencies import User
 from backend.src.common.enums import OrderStatus, UserRole
+
+# Импорт констант валидации из нового модуля
+from backend.src.common.validation import (
+    COMMISSION,  # deprecated, используйте CommissionRules
+    VALIDATION,  # deprecated, используйте ValidationRules
+    CommissionRules,
+    ValidationRules,
+)
 from backend.src.models.order import Order
 from backend.src.orders.schemas import (
     OrderResponseForAdmin,
@@ -11,39 +19,43 @@ from backend.src.orders.schemas import (
 )
 from pydantic import BaseModel, Field
 
-VALIDATION = {
-    "min_order_price": 100,  # минимальная цена заказа в тенге
-    "max_order_price": 1000000,  # максимальная цена заказа
-    "max_description_length": 500,
-    "max_address_length": 200,
-    "dispute_time_limit": 86400,  # 24 часа для открытия спора
-}
+# ==============================================================================
+# Deprecated константы (используйте ValidationRules и CommissionRules)
+# ==============================================================================
+# VALIDATION и COMMISSION остаются для обратной совместимости
+# Рекомендуется мигрировать на ValidationRules и CommissionRules
 
-# Комиссии и платежи
-COMMISSION: dict[str, Any] = {
-    "platform_fee_percent": 10,  # комиссия платформы в процентах
-    "min_commission": 50,  # минимальная комиссия в тенге
-    "payment_methods": ["cash", "card", "kaspi"],
-}
-
-
-MIN_TELEGRAM_ID = 1
-MAX_TELEGRAM_ID = 2147483647
+# ==============================================================================
+# Константы времени
+# ==============================================================================
 SECONDS_IN_MINUTE = 60
+MINUTES_IN_HOUR = 60
+HOURS_IN_DAY = 24
 
+# ==============================================================================
+# Типы
+# ==============================================================================
 
 type OrderResponseSchema = OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier
-
 type UpdatePayload = dict[str, Any]
+
+# ==============================================================================
+# Type Aliases для проверок прав доступа
+# ==============================================================================
 
 UpdatePermissionCheck = Callable[[User, Order, UpdatePayload], Awaitable[None]]
 RetrievePermissionCheck = Callable[[User, Order], Awaitable[None]]
 
+# ==============================================================================
+# Константы для заказов
+# ==============================================================================
 
 COURIER_ALLOWED_FIELDS = {"status", "courier_notes", "completion_notes"}
-
 FINAL_STATUSES = {OrderStatus.COMPLETED, OrderStatus.CANCELED}
 
+# ==============================================================================
+# Маппинг схем ответов по ролям
+# ==============================================================================
 
 RESPONSE_SCHEMAS: dict[UserRole, type[OrderResponseSchema]] = {
     UserRole.ADMIN: OrderResponseForAdmin,
@@ -51,7 +63,36 @@ RESPONSE_SCHEMAS: dict[UserRole, type[OrderResponseSchema]] = {
     UserRole.COURIER: OrderResponseForCourier,
 }
 
+# ==============================================================================
+# Общая модель пагинированного ответа
+# ==============================================================================
+
 
 class PaginatedResponse[T](BaseModel):
+    """Универсальная модель для пагинированных ответов."""
+
     total: int = Field(..., description="Общее количество элементов")
     items: list[T] = Field(..., description="Список элементов на текущей странице")
+
+
+# ==============================================================================
+# Экспорт
+# ==============================================================================
+
+__all__ = [
+    "COMMISSION",
+    "COURIER_ALLOWED_FIELDS",
+    "FINAL_STATUSES",
+    "HOURS_IN_DAY",
+    "MINUTES_IN_HOUR",
+    "RESPONSE_SCHEMAS",
+    "SECONDS_IN_MINUTE",
+    "VALIDATION",
+    "CommissionRules",
+    "OrderResponseSchema",
+    "PaginatedResponse",
+    "RetrievePermissionCheck",
+    "UpdatePayload",
+    "UpdatePermissionCheck",
+    "ValidationRules",
+]

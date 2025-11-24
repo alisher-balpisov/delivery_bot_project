@@ -1,9 +1,83 @@
+# ==============================================================================
+# Pre-commit Configuration
+# ==============================================================================
+# Автоматические проверки кода перед коммитом
+#
+# Установка:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Ручной запуск:
+#   pre-commit run --all-files
+#
+# Документация: https://pre-commit.com/
+
+# Остановить выполнение при первой ошибке
+fail_fast: false
+
 repos:
+  # Ruff
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.11
     hooks:
-      # Запускаем линтер
-      - id: ruff-check
-        args: [--fix]
-      # Запускаем форматер
+      # Линтер:
+      - id: ruff
+        name: Ruff Linter
+        args:
+          - --fix              # Автоматически исправлять проблемы
+          - --exit-non-zero-on-fix  # Возвращать код ошибки если были исправления
+        types_or: [python, pyi]
+
+      # Форматтер:
       - id: ruff-format
+        name: Ruff Formatter
+        types_or: [python, pyi]
+
+  # Базовые проверки файлов
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Проверка синтаксиса YAML файлов
+      - id: check-yaml
+        name: Check YAML Syntax
+        args: [--safe]
+
+      # Проверка синтаксиса TOML файлов
+      - id: check-toml
+        name: Check TOML Syntax
+
+      # Проверка на случайное добавление больших файлов
+      - id: check-added-large-files
+        name: Check for Large Files
+        args: [--maxkb=1000]
+
+      # Проверка корректности слияния Git
+      - id: check-merge-conflict
+        name: Check for Merge Conflicts
+
+      # Проверка на отладочные операторы
+      - id: debug-statements
+        name: Check for Debug Statements
+
+      # Проверка окончания файлов
+      - id: end-of-file-fixer
+        name: Fix End of Files
+        exclude: ^\.idea/
+
+      # Удаление пробелов в конце строк
+      - id: trailing-whitespace
+        name: Trim Trailing Whitespace
+        exclude: ^\.idea/
+
+      # Проверка уникальности ключей в JSON
+      - id: check-json
+        name: Check JSON Syntax
+
+      # Проверка правильности PYTHONPATH
+      - id: fix-byte-order-marker
+        name: Fix UTF-8 BOM
+
+      # Проверка правильного именования файлов
+      - id: mixed-line-ending
+        name: Fix Mixed Line Endings
+        args: [--fix=lf]

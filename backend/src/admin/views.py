@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from backend.src.auth.dependencies import RequireAdmin
 from backend.src.auth.service import mask_sensitive_data
 from backend.src.common.constants import PaginatedResponse
+from backend.src.common.dependencies import PaginationParams
 from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
@@ -64,14 +65,14 @@ async def create_registration_code(
 async def get_registration_codes(
     current_user: RequireAdmin,
     db: DbSession,
-    page: int = Query(1, ge=1, description="Номер страницы"),
-    limit: int = Query(10, ge=1, le=100, description="Количество элементов на странице"),
+    pagination: PaginationParams,
     role: UserRole | None = None,
     is_used: bool | None = None,
 ):
     """
     Получить список кодов регистрации с пагинацией и фильтрацией.
     """
+    page, limit = pagination
     return await service.get_registration_codes(
         db=db, page=page, limit=limit, role=role, is_used=is_used
     )
@@ -153,8 +154,7 @@ async def get_system_stats(current_user: RequireAdmin, db: DbSession):
 async def get_all_orders(
     db: DbSession,
     current_user: RequireAdmin,
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
+    pagination: PaginationParams,
     status: OrderStatus | None = Query(
         None, description="Фильтр по статусу: active, inactive или blocked"
     ),
@@ -168,6 +168,7 @@ async def get_all_orders(
     - Для получения истории заказов пользователя используйте GET /orders/history
     - Поддерживает поиск по названию магазина, имени курьера и описанию заказа
     """
+    page, limit = pagination
     logger.info(
         f"Администратор {current_user} запрашивает список заказов: "
         f"{page=}, {limit=}, {status=}, {search=}"
@@ -203,8 +204,7 @@ async def get_all_orders(
 async def get_all_disputes(
     db: DbSession,
     current_user: RequireAdmin,
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
+    pagination: PaginationParams,
     status: DisputeStatus | None = Query(
         None, description="Фильтр по статусу: active, inactive или blocked"
     ),
@@ -218,6 +218,7 @@ async def get_all_disputes(
     - Позволяет искать споры по описанию, названию магазина, имени курьера и имени инициатора
     - Для получения конкретного спора используйте GET /disputes/{dispute_id}
     """
+    page, limit = pagination
     logger.info(
         f"Администратор {current_user} запрашивает список споров: "
         f"{page=}, {limit=}, {status=}, {search=}"

@@ -1,8 +1,8 @@
-
 class ShopMainKeyboardsButtons:
-    """Клавиатуры для админ-панели"""
-    REGISTARATION_CODE = "Код регистрации"
-    SHOPS ="Магазины"
+    """Клавиши главного меню магазина"""
+
+    REGISTRATION_CODE = "Код регистрации"
+    SHOPS = "Магазины"
     COURIERS = "Курьеры"
     ORDERS = "Заказы"
     DISPUTES = "Споры"

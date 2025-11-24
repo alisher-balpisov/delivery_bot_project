@@ -5,6 +5,7 @@ from fastapi import status as http_status
 
 from backend.src.auth.dependencies import RequireAllRoles, RequireCourier, RequireShop
 from backend.src.common.constants import PaginatedResponse
+from backend.src.common.dependencies import PaginationParams
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 
@@ -268,8 +269,7 @@ async def get_order(
 async def get_orders_history(
     current_user: RequireAllRoles,
     db: DbSession,
-    page: Annotated[int, Query(ge=1, description="Номер страницы")] = 1,
-    limit: Annotated[int, Query(ge=1, le=100, description="Элементов на странице")] = 20,
+    pagination: PaginationParams,
     status: Annotated[OrderStatus | None, Query(description="Фильтр по статусу")] = None,
     shop_id: Annotated[int | None, Query(description="Фильтр по магазину (только админ)")] = None,
     courier_id: Annotated[int | None, Query(description="Фильтр по курьеру (только админ)")] = None,
@@ -312,6 +312,7 @@ async def get_orders_history(
     - **401**: не авторизован
     - **403**: попытка использовать запрещённый фильтр
     """
+    page, limit = pagination
     logger.info(
         f"Запрос истории заказов: пользователем {current_user},"
         f"{page=}, {limit=}, {status=}, {shop_id=}, "

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 
 from backend.src.auth.dependencies import RequireAdminOrCourier
+from backend.src.common.dependencies import PaginationParams
 from backend.src.common.enums import UserStatus
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
@@ -19,13 +20,13 @@ router = APIRouter()
 async def get_shops(
     current_user: RequireAdminOrCourier,
     db: DbSession,
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
+    pagination: PaginationParams,
     status: UserStatus | None = None,
 ) -> ShopListResponse:
     """
     Получение списка магазинов.
     """
+    page, limit = pagination
     shops, total = await service.get_shops_list(db, page, limit, status)
 
     items = [

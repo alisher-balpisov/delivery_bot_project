@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from backend.src.auth.dependencies import RequireAdminOrShop, RequireCourier
+from backend.src.common.dependencies import PaginationParams
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 
@@ -16,14 +17,14 @@ router = APIRouter()
 async def get_couriers(
     db: DbSession,
     current_user: RequireAdminOrShop,
-    page: int = 1,
-    size: int = 10,
+    pagination: PaginationParams,
     status: str = "active",
 ):
     """
     Получение списка курьеров с фильтрацией и пагинацией.
     """
-    couriers, total = await service.get_couriers(db=db, page=page, size=size, status_filter=status)
+    page, limit = pagination
+    couriers, total = await service.get_couriers(db=db, page=page, size=limit, status_filter=status)
 
     items = [
         CourierListItem(
@@ -35,7 +36,7 @@ async def get_couriers(
         for c in couriers
     ]
 
-    return CourierListResponse(items=items, total=total, page=page, size=size)
+    return CourierListResponse(items=items, total=total, page=page, size=limit)
 
 
 @router.get("/shift")

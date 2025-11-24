@@ -1,6 +1,7 @@
 # Переменные окружения
 .env
-.env.*
+.env.test
+!.env.example
 
 # Виртуальные окружения Python
 .venv/

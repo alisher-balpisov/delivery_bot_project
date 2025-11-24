@@ -1,19 +1,69 @@
-"""Custom exceptions for the disputes module."""
+"""
+Исключения для модуля споров.
+
+Все исключения наследуются от базового AppException для
+унифицированной обработки ошибок.
+"""
+
+from dataclasses import dataclass
+
+from backend.src.common.exceptions import AccessDeniedException, AppException
+
+# ==============================================================================
+# Исключения споров
+# ==============================================================================
 
 
-class DisputeError(Exception):
-    """Base exception for dispute-related errors."""
+@dataclass
+class DisputeError(AppException):
+    """Базовый класс для ошибок, связанных со спорами."""
 
-    pass
+    def __post_init__(self) -> None:
+        """Установка сообщения по умолчанию."""
+        if not self.detail:
+            self.detail = "Ошибка при работе со спором"
+        super().__post_init__()
 
 
-class DisputeAccessDenied(DisputeError):
-    """Raised when a user tries to access a dispute without permission."""
+@dataclass
+class DisputeAccessDenied(AccessDeniedException):
+    """
+    Выбрасывается, когда пользователь пытается получить доступ к спору без разрешения.
 
-    pass
+    Наследуется от AccessDeniedException (HTTP 403).
+    """
+
+    def __post_init__(self) -> None:
+        """Установка сообщения по умолчанию."""
+        if not self.detail:
+            self.detail = "У вас нет прав на доступ к этому спору"
+        super().__post_init__()
 
 
+@dataclass
 class DisputeActionError(DisputeError):
-    """Raised for invalid actions on a dispute (e.g., creating a duplicate)."""
+    """
+    Выбрасывается при недопустимых действиях со спором.
 
-    pass
+    Примеры:
+    - Создание дубликата спора
+    - Изменение закрытого спора
+    - Разрешение спора без необходимых прав
+    """
+
+    def __post_init__(self) -> None:
+        """Установка сообщения по умолчанию."""
+        if not self.detail:
+            self.detail = "Недопустимое действие со спором"
+        super().__post_init__()
+
+
+# ==============================================================================
+# Экспорт
+# ==============================================================================
+
+__all__ = [
+    "DisputeAccessDenied",
+    "DisputeActionError",
+    "DisputeError",
+]
