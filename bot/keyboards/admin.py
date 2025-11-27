@@ -5,28 +5,29 @@ from bot.messages import AdminKeyboardMessages
 
 
 def get_admin_main_keyboard() -> InlineKeyboardMarkup:
-    """Возвращает клавиатуру главного меню администратора."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text=AdminMainButtons.REGISTRATION_CODE,
                     callback_data="get_registration_code_menu",
-                )
+                ),
+                InlineKeyboardButton(text=AdminMainButtons.ORDERS, callback_data="show_orders"),
             ],
-            [InlineKeyboardButton(text=AdminMainButtons.SHOPS, callback_data="show_shops")],
-            [InlineKeyboardButton(text=AdminMainButtons.COURIERS, callback_data="show_couriers")],
-            [InlineKeyboardButton(text=AdminMainButtons.ORDERS, callback_data="show_orders")],
-            [InlineKeyboardButton(text=AdminMainButtons.DISPUTES, callback_data="show_disputes")],
             [
+                InlineKeyboardButton(text=AdminMainButtons.COURIERS, callback_data="show_couriers"),
+                InlineKeyboardButton(text=AdminMainButtons.SHOPS, callback_data="show_shops"),
+            ],
+            [
+                InlineKeyboardButton(text=AdminMainButtons.DISPUTES, callback_data="show_disputes"),
                 InlineKeyboardButton(
                     text=AdminMainButtons.STATISTICS, callback_data="show_statistics"
-                )
+                ),
             ],
             [
                 InlineKeyboardButton(
                     text=AdminMainButtons.EDIT_PROFILE, callback_data="get_edit_profile_menu"
-                )
+                ),
             ],
         ]
     )
@@ -128,7 +129,11 @@ def get_registration_codes_list_keyboard(
         InlineKeyboardButton(
             text=AdminRegistrationCodesMenuButtons.BACK,
             callback_data="admin_back_to_registration_menu",
-        )
+        ),
+        InlineKeyboardButton(
+            text="Главное меню",
+            callback_data="show_main_menu",
+        ),
     )
 
     return builder.as_markup()
@@ -150,7 +155,11 @@ def get_registration_code_details_keyboard(code_id: int, is_active: bool) -> Inl
         InlineKeyboardButton(
             text=AdminRegistrationCodesMenuButtons.BACK,
             callback_data="admin_view_codes",  # Возврат к списку
-        )
+        ),
+        InlineKeyboardButton(
+            text="Главное меню",
+            callback_data="show_main_menu",
+        ),
     )
 
     return builder.as_markup()
@@ -164,7 +173,11 @@ def get_back_to_registration_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=AdminRegistrationCodesMenuButtons.BACK,
                     callback_data="admin_back_to_registration_menu",
-                )
+                ),
+                InlineKeyboardButton(
+                    text="Главное меню",
+                    callback_data="show_main_menu",
+                ),
             ]
         ]
     )

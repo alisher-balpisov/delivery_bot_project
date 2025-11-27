@@ -13,10 +13,11 @@ class CourierFilter(StrEnum):
 
 
 class CouriersCallback(CallbackData, prefix="couriers"):
-    action: str  # list, open
+    action: str  # list, open, history
     page: int = 1
     filter_type: CourierFilter = CourierFilter.ACTIVE
     courier_id: int | None = None
+    order_id: int | None = None
 
 
 def get_couriers_list_keyboard(
@@ -125,11 +126,28 @@ def get_couriers_list_keyboard(
 def get_courier_card_keyboard(
     page: int,
     current_filter: CourierFilter,
+    courier_id: int,
 ) -> InlineKeyboardMarkup:
     """
     Генерация клавиатуры для карточки курьера.
+
+    Args:
+        page: Номер текущей страницы списка
+        current_filter: Текущий фильтр списка
+        courier_id: ID курьера
     """
     keyboard = [
+        [
+            InlineKeyboardButton(
+                text="📜 История заказов",
+                callback_data=CouriersCallback(
+                    action="history",
+                    page=1,
+                    filter_type=current_filter,
+                    courier_id=courier_id,
+                ).pack(),
+            )
+        ],
         [
             InlineKeyboardButton(
                 text="Назад",
@@ -143,7 +161,7 @@ def get_courier_card_keyboard(
                 text="Главное меню",
                 callback_data="show_main_menu",
             ),
-        ]
+        ],
     ]
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

@@ -1,27 +1,10 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
-from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
-class OrderStatus(str, Enum):
-    PENDING = "pending"
-    ACCEPTED = "accepted"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    CANCELED = "canceled"
-
-
-class OrderType(str, Enum):
-    REGULAR = "regular"
-    SPECIAL = "special"
-
-
-class SpecialOrderType(str, Enum):
-    VIP = "vip"
-    TIME = "time"
-
+from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
 
 PhoneFlexible = str
 
@@ -70,7 +53,7 @@ class OrderCreateRequest(BaseModel):
             raise ValueError("Для заказа типа TIME необходимо указать время доставки")
 
         # Опционально: проверить, что время доставки в будущем (если указано)
-        if self.delivery_time is not None and self.delivery_time <= datetime.now():
+        if self.delivery_time is not None and self.delivery_time <= datetime.now(UTC):
             raise ValueError("Время доставки должно быть в будущем")
 
         return self
@@ -106,9 +89,9 @@ class CourierInfoForShop(BaseModel):
     """Информация о курьере для магазина."""
 
     id: int
-    name: str
+    name: str = Field(alias="full_name")
 
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
+    model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True)
 
 
 class OrderResponse(BaseModel):
@@ -163,6 +146,30 @@ class OrderCardResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def flatten_names(cls, v: Any) -> Any:
+        """Извлекает имена магазина и курьера из связанных объектов."""
+        if not isinstance(v, dict):
+            # Если это ORM объект, преобразуем его в dict с нужными полями
+            shop_name = v.shop.name if v.shop else None
+            courier_name = v.courier.full_name if v.courier else None
+
+            return {
+                "id": v.id,
+                "shop_id": v.shop_id,
+                "shop_name": shop_name,
+                "courier_id": v.courier_id,
+                "courier_name": courier_name,
+                "status": v.status,
+                "order_type": v.order_type,
+                "special_type": v.special_type,
+                "price": v.price,
+                "recipient_address": v.recipient_address,
+                "created_at": v.created_at,
+            }
+        return v
 
 
 class OrderListFilters(BaseModel):

@@ -1,4 +1,5 @@
 import html
+from datetime import datetime
 from typing import Any
 
 from bot.constants import MAX_CODES_DISPLAY
@@ -35,3 +36,24 @@ def format_codes_as_html_table(codes: list[dict[str, Any]]) -> str:
         text += AdminServiceMessages.MORE_CODES.format(len(codes) - MAX_CODES_DISPLAY)
 
     return text
+
+
+def format_dt(dt: str) -> str:
+    if not dt:
+        return "—"
+    try:
+        return datetime.fromisoformat(dt.replace("Z", "")).strftime("%d.%m.%Y  %H:%M")
+    except Exception:
+        return dt
+
+
+def format_dt_short(dt: str) -> str:
+    """
+    Форматирует дату и время в короткий формат (dd.mm HH:MM).
+    """
+    if not dt:
+        return "—"
+    try:
+        return datetime.fromisoformat(dt.replace("Z", "")).strftime("%d.%m %H:%M")
+    except Exception:
+        return dt

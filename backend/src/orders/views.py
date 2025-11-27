@@ -204,66 +204,11 @@ async def complete_order(
 
 
 @router.get(
-    "/{order_id}",
-    response_model=OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier,
-    summary="Получить заказ",
-    tags=["Orders - All Roles"],
-)
-async def get_order(
-    order_id: int,
-    current_user: RequireAllRoles,
-    db: DbSession,
-):
-    """
-    Возвращает детальную информацию о заказе.
-
-    ## Права доступа
-    - **Администратор**: доступ ко всем заказам с полной информацией
-    - **Магазин**: доступ только к своим заказам
-    - **Курьер**: доступ только к назначенным ему заказам
-
-    ## Форматы ответа
-    Формат зависит от роли:
-    - Администратор получает полную информацию
-    - Магазин видит данные курьера
-    - Курьер видит данные магазина
-
-    ## Коды ответа
-    - **200**: заказ успешно получен
-    - **401**: не авторизован
-    - **403**: нет прав на просмотр
-    - **404**: заказ не найден
-    """
-    logger.info(f"Запрос заказа {order_id=}: пользователем {current_user}")
-
-    try:
-        order = await service.get_order(
-            db=db,
-            user_id=current_user.id,
-            order_id=order_id,
-        )
-
-        logger.info(f"✓ Заказ {order_id=} получен пользователем {current_user}")
-        return order
-
-    except OrderException:
-        raise
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка при получении заказа {order_id=}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось получить заказ",
-        )
-
-
-@router.get(
     "/history",
     response_model=PaginatedResponse[
         OrderListItemForAdmin | OrderListItemForShop | OrderListItemForCourier
     ],
-    summary="История заказов",
+    summary="Получить историю заказов",
     tags=["Orders - All Roles"],
 )
 async def get_orders_history(
@@ -350,4 +295,59 @@ async def get_orders_history(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Не удалось получить историю заказов",
+        )
+
+
+@router.get(
+    "/{order_id}",
+    response_model=OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier,
+    summary="Получить заказ",
+    tags=["Orders - All Roles"],
+)
+async def get_order(
+    order_id: int,
+    current_user: RequireAllRoles,
+    db: DbSession,
+):
+    """
+    Возвращает детальную информацию о заказе.
+
+    ## Права доступа
+    - **Администратор**: доступ ко всем заказам с полной информацией
+    - **Магазин**: доступ только к своим заказам
+    - **Курьер**: доступ только к назначенным ему заказам
+
+    ## Форматы ответа
+    Формат зависит от роли:
+    - Администратор получает полную информацию
+    - Магазин видит данные курьера
+    - Курьер видит данные магазина
+
+    ## Коды ответа
+    - **200**: заказ успешно получен
+    - **401**: не авторизован
+    - **403**: нет прав на просмотр
+    - **404**: заказ не найден
+    """
+    logger.info(f"Запрос заказа {order_id=}: пользователем {current_user}")
+
+    try:
+        order = await service.get_order(
+            db=db,
+            user_id=current_user.id,
+            order_id=order_id,
+        )
+
+        logger.info(f"✓ Заказ {order_id=} получен пользователем {current_user}")
+        return order
+
+    except OrderException:
+        raise
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при получении заказа {order_id=}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось получить заказ",
         )

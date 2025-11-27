@@ -54,3 +54,28 @@ class AdminClient(BaseApiClient):
     async def get_system_stats(self, token: str) -> RequestResult:
         """Получить системную статистику (общие метрики)."""
         return await self._make_request("GET", "/admin/system-stats", token=token)
+
+    async def get_all_orders(
+        self,
+        token: str,
+        page: int = 1,
+        limit: int = 10,
+        status: str | None = None,
+        search: str | None = None,
+    ) -> RequestResult:
+        """Получить список всех заказов (админ)."""
+        params = {"page": page, "limit": limit}
+        if status:
+            params["status"] = status
+        if search:
+            params["search"] = search
+
+        return await self._make_request("GET", "/admin/orders", token=token, params=params)
+
+    async def get_order_details(self, token: str, order_id: int) -> RequestResult:
+        """Получить детали заказа."""
+        return await self._make_request("GET", f"/orders/{order_id}", token=token)
+
+    async def update_order(self, token: str, order_id: int, data: dict) -> RequestResult:
+        """Обновить заказ."""
+        return await self._make_request("PATCH", f"/orders/{order_id}", token=token, json_data=data)

@@ -9,7 +9,8 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from icecream.builtins import install
+
+# from icecream.builtins import install
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -20,7 +21,7 @@ from backend.src.core.config import ensure_upload_dir_exists, settings
 from backend.src.core.database import close_db, init_db
 from backend.src.core.logging import get_logger, setup_logging
 
-install()
+# install()
 
 logger = get_logger(__name__)
 

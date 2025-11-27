@@ -1,8 +1,9 @@
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.couriers_client import CouriersClient
+from bot.clients.orders_client import OrdersClient
 from bot.dto import UserDTO
 from bot.filters.filters import RoleFilter
 from bot.keyboards.couriers import (
@@ -11,6 +12,8 @@ from bot.keyboards.couriers import (
     get_courier_card_keyboard,
     get_couriers_list_keyboard,
 )
+from bot.keyboards.orders import get_order_details_keyboard, get_orders_list_keyboard
+from bot.utils.order_formatters import format_order_details
 from bot.utils.token_manager import TokenManager
 
 logger = get_logger(__name__)
@@ -176,7 +179,121 @@ async def open_courier_card(
     keyboard = get_courier_card_keyboard(
         page=callback_data.page,
         current_filter=callback_data.filter_type,
+        courier_id=callback_data.courier_id,
     )
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(CouriersCallback.filter(F.action == "history"))
+async def courier_history_handler_impl(
+    callback: CallbackQuery,
+    callback_data: CouriersCallback,
+    token_manager: TokenManager,
+    orders_client: OrdersClient,
+    user: UserDTO,
+):
+    token = await token_manager.get_token(user.telegram_id)
+    courier_id = callback_data.courier_id
+    page = callback_data.page
+    limit = 5
+
+    result = await orders_client.get_orders_history(
+        token=token,
+        page=page,
+        limit=limit,
+        courier_id=courier_id,
+    )
+
+    if not result.success:
+        await callback.answer("Не удалось загрузить историю заказов", show_alert=True)
+        return
+
+    data = result.data
+    orders = data.get("items", [])
+    total = data.get("total", 0)
+    total_pages = (total + limit - 1) // limit if limit > 0 else 1
+
+    if not orders:
+        text = "📭 История заказов пуста"
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Назад",
+                        callback_data=CouriersCallback(
+                            action="open",
+                            courier_id=courier_id,
+                            page=1,
+                            filter_type=callback_data.filter_type,
+                        ).pack(),
+                    )
+                ]
+            ]
+        )
+    else:
+        text = f"📜 <b>История заказов (Всего: {total})</b>\nВыберите заказ для просмотра деталей:"
+
+        def callback_factory(action: str, page: int, order_id: int | None) -> str:
+            return CouriersCallback(
+                action=action,
+                courier_id=courier_id,
+                page=page,
+                filter_type=callback_data.filter_type,
+                order_id=order_id,
+            ).pack()
+
+        back_callback = CouriersCallback(
+            action="open",
+            courier_id=courier_id,
+            page=1,
+            filter_type=callback_data.filter_type,
+        ).pack()
+
+        keyboard = get_orders_list_keyboard(
+            orders=orders,
+            page=page,
+            total_pages=total_pages,
+            back_callback_data=back_callback,
+            callback_factory=callback_factory,
+        )
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(CouriersCallback.filter(F.action == "order_detail"))
+async def courier_order_detail_handler(
+    callback: CallbackQuery,
+    callback_data: CouriersCallback,
+    token_manager: TokenManager,
+    orders_client: OrdersClient,
+    user: UserDTO,
+):
+    """Показать детали заказа."""
+    token = await token_manager.get_token(user.telegram_id)
+    order_id = callback_data.order_id
+
+    result = await orders_client.get_order_details(token, order_id)
+
+    if not result.success:
+        await callback.answer("Не удалось загрузить детали заказа", show_alert=True)
+        return
+
+    order = result.data
+
+    # Формирование текста деталей заказа с использованием унифицированного форматтера
+    text = format_order_details(order)
+
+    back_callback = CouriersCallback(
+        action="history",
+        courier_id=callback_data.courier_id,
+        page=callback_data.page,
+        filter_type=callback_data.filter_type,
+    ).pack()
+
+    keyboard = get_order_details_keyboard(back_callback_data=back_callback)
 
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()

@@ -13,10 +13,11 @@ class ShopFilter(StrEnum):
 
 
 class ShopsCallback(CallbackData, prefix="shops"):
-    action: str  # list, open
+    action: str  # list, open, history
     page: int = 1
     filter_type: ShopFilter = ShopFilter.ACTIVE
     shop_id: int | None = None
+    order_id: int | None = None
 
 
 def get_shops_list_keyboard(
@@ -124,6 +125,7 @@ def get_shops_list_keyboard(
 def get_shop_card_keyboard(
     page: int,
     current_filter: ShopFilter,
+    shop_id: int,
 ) -> InlineKeyboardMarkup:
     """
     Генерация клавиатуры для карточки магазина.
@@ -131,11 +133,23 @@ def get_shop_card_keyboard(
     Args:
         page: Номер текущей страницы списка
         current_filter: Текущий фильтр списка
+        shop_id: ID магазина
 
     Returns:
         InlineKeyboardMarkup: Клавиатура с кнопками "Назад" и "Главное меню"
     """
     keyboard = [
+        [
+            InlineKeyboardButton(
+                text="📜 История заказов",
+                callback_data=ShopsCallback(
+                    action="history",
+                    page=1,
+                    filter_type=current_filter,
+                    shop_id=shop_id,
+                ).pack(),
+            )
+        ],
         [
             InlineKeyboardButton(
                 text="Назад",
@@ -149,7 +163,7 @@ def get_shop_card_keyboard(
                 text="Главное меню",
                 callback_data="show_main_menu",
             ),
-        ]
+        ],
     ]
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

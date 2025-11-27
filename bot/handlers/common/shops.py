@@ -1,9 +1,11 @@
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from backend.src.common.enums import UserStatus
 from bot.clients.auth_client import AuthClient
+from bot.clients.orders_client import OrdersClient
 from bot.clients.shops_client import ShopsClient
-from bot.handlers.admin.couriers import logger  # импортируем общий логгер
+from bot.handlers.admin.couriers import logger
+from bot.keyboards.orders import get_order_details_keyboard, get_orders_list_keyboard
 from bot.keyboards.shops import (
     ShopFilter,
     ShopsCallback,
@@ -11,6 +13,7 @@ from bot.keyboards.shops import (
     get_shops_list_keyboard,
 )
 from bot.redis_storage import UserDataStorage
+from bot.utils.order_formatters import format_order_details
 from bot.utils.token_manager import TokenManager
 
 shops_router = Router(name="shops_handlers")
@@ -133,6 +136,7 @@ async def open_shop_handler(
         keyboard = get_shop_card_keyboard(
             page=callback_data.page,
             current_filter=callback_data.filter_type,
+            shop_id=callback_data.shop_id,
         )
 
         await callback.message.edit_text(
@@ -144,3 +148,121 @@ async def open_shop_handler(
 
     except Exception as e:
         await callback.answer(f"❌ Ошибка при загрузке информации: {e!s}", show_alert=True)
+
+
+@shops_router.callback_query(ShopsCallback.filter(F.action == "history"))
+async def shop_history_handler(
+    callback: CallbackQuery,
+    callback_data: ShopsCallback,
+    auth_client: AuthClient,
+    orders_client: OrdersClient,
+    user_storage: UserDataStorage,
+):
+    """Показать историю заказов магазина."""
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(callback.from_user.id)
+
+    shop_id = callback_data.shop_id
+    page = callback_data.page
+    limit = 5
+
+    result = await orders_client.get_orders_history(
+        token=token,
+        page=page,
+        limit=limit,
+        shop_id=shop_id,
+    )
+
+    if not result.success:
+        await callback.answer("Не удалось загрузить историю заказов", show_alert=True)
+        return
+
+    data = result.data
+    orders = data.get("items", [])
+    total = data.get("total", 0)
+    total_pages = (total + limit - 1) // limit if limit > 0 else 1
+
+    if not orders:
+        text = "📭 История заказов пуста"
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Назад",
+                        callback_data=ShopsCallback(
+                            action="open",
+                            shop_id=shop_id,
+                            page=1,
+                            filter_type=callback_data.filter_type,
+                        ).pack(),
+                    )
+                ]
+            ]
+        )
+    else:
+        text = f"📜 <b>История заказов (Всего: {total})</b>\nВыберите заказ для просмотра деталей:"
+
+        def callback_factory(action: str, page: int, order_id: int | None) -> str:
+            return ShopsCallback(
+                action=action,
+                shop_id=shop_id,
+                page=page,
+                filter_type=callback_data.filter_type,
+                order_id=order_id,
+            ).pack()
+
+        back_callback = ShopsCallback(
+            action="open",
+            shop_id=shop_id,
+            page=1,
+            filter_type=callback_data.filter_type,
+        ).pack()
+
+        keyboard = get_orders_list_keyboard(
+            orders=orders,
+            page=page,
+            total_pages=total_pages,
+            back_callback_data=back_callback,
+            callback_factory=callback_factory,
+        )
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@shops_router.callback_query(ShopsCallback.filter(F.action == "order_detail"))
+async def shop_order_detail_handler(
+    callback: CallbackQuery,
+    callback_data: ShopsCallback,
+    auth_client: AuthClient,
+    orders_client: OrdersClient,
+    user_storage: UserDataStorage,
+):
+    """Показать детали заказа."""
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(callback.from_user.id)
+
+    order_id = callback_data.order_id
+
+    result = await orders_client.get_order_details(token, order_id)
+
+    if not result.success:
+        await callback.answer("Не удалось загрузить детали заказа", show_alert=True)
+        return
+
+    order = result.data
+
+    # Формирование текста деталей заказа с использованием унифицированного форматтера
+    text = format_order_details(order)
+
+    back_callback = ShopsCallback(
+        action="history",
+        shop_id=callback_data.shop_id,
+        page=callback_data.page,
+        filter_type=callback_data.filter_type,
+    ).pack()
+
+    keyboard = get_order_details_keyboard(back_callback_data=back_callback)
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()

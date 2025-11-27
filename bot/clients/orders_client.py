@@ -33,3 +33,26 @@ class OrdersClient(BaseApiClient):
     async def get_available_orders(self, token: str) -> RequestResult:
         """Получить доступные заказы (для курьеров)."""
         return await self._make_request("GET", "/orders/available", token=token)
+
+    async def get_orders_history(
+        self,
+        token: str,
+        page: int = 1,
+        limit: int = 10,
+        status: str | None = None,
+        shop_id: int | None = None,
+        courier_id: int | None = None,
+        current: bool | None = None,
+    ) -> RequestResult:
+        """Получить историю заказов с фильтрами."""
+        params = {"page": page, "limit": limit}
+        if status:
+            params["status"] = status
+        if shop_id:
+            params["shop_id"] = shop_id
+        if courier_id:
+            params["courier_id"] = courier_id
+        if current is not None:
+            params["current"] = str(current).lower()
+
+        return await self._make_request("GET", "/orders/history", token=token, params=params)

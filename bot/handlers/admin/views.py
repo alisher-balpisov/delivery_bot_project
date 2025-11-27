@@ -12,13 +12,16 @@ from bot.handlers.admin.messages import AdminMessages as AM
 from bot.keyboards.admin import get_registration_code_menu_keyboard, get_role_selection_keyboard
 from bot.messages import AdminMessages, CommonMessages
 from bot.redis_storage import UserDataStorage
+from bot.utils.formatters import format_dt
 from bot.utils.token_manager import TokenManager
 
-from . import service
+from . import orders, service
 
 admin_router = Router(name="admin_handlers")
 admin_router.message.filter(RoleFilter(UserRole.ADMIN))
 admin_router.callback_query.filter(RoleFilter(UserRole.ADMIN))
+
+admin_router.include_router(orders.router)
 
 logger = get_logger(__name__)
 
@@ -230,22 +233,21 @@ async def admin_code_details_handler(
         await callback.answer("Ошибка при получении деталей кода", show_alert=True)
         return
 
-    code = result.data
-    is_active = not code.get("is_used") and not code.get(
-        "is_expired"
-    )  # is_expired нет в модели, но логика может быть на бэке
-    # В модели есть expires_at, проверим его на клиенте или просто доверимся is_used
-    # Для простоты UI считаем активным если !is_used. Деактивация делает его used/expired.
+    code_data = result.data
+    is_active = not code_data.get("is_used") and not code_data.get("is_expired")
 
-    status_text = "🔴 Использован/Просрочен" if code.get("is_used") else "🟢 Активен"
-    role_name = "Курьер" if code.get("role") == "courier" else "Магазин"
+    code = code_data.get("code")
+    role_name = "Курьер" if code_data.get("role") == "courier" else "Магазин"
+    status_text = "🔴 Использован/Просрочен" if code_data.get("is_used") else "🟢 Активен"
+    created_at = format_dt(code_data.get("created_at"))
+    expires_at = format_dt(code_data.get("expires_at"))
 
     text = (
-        f"🎫 **Код:** `{code.get('code')}`\n"
+        f"🎫 **Код:** `{code}`\n"
         f"👤 **Роль:** {role_name}\n"
         f"📊 **Статус:** {status_text}\n"
-        f"📅 **Создан:** {code.get('created_at')}\n"
-        f"⏳ **Истекает:** {code.get('expires_at')}\n"
+        f"📅 **Создан:** {created_at}\n"
+        f"⏳ **Истекает:** {expires_at}\n"
     )
 
     from bot.keyboards.admin import get_registration_code_details_keyboard
@@ -281,6 +283,26 @@ async def admin_code_deactivate_handler(
         await admin_code_details_handler(callback, auth_client, admin_client, user_storage)
     else:
         await callback.answer(f"Ошибка: {result.detail}", show_alert=True)
+
+
+@admin_router.callback_query(F.data == "show_statistics")
+async def show_statistics_handler(
+    callback: CallbackQuery,
+    user: UserDTO,
+    auth_client: AuthClient,
+    admin_client: AdminClient,
+    user_storage: UserDataStorage,
+) -> None:
+    """Отображает детальную системную статистику при нажатии на кнопку."""
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(user.telegram_id)
+
+    logger.info(f"Обработка запроса статистики от пользователя {user.telegram_id}")
+    try:
+        await service._handle_callback_stats(callback, token, admin_client)
+        logger.info(f"Успешно отправлена статистика пользователю {user.telegram_id}")
+    except Exception as e:
+        await service._handle_stats_error(callback, user.telegram_id, e)
 
 
 @admin_router.message(Command("system_stats"))

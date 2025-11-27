@@ -78,14 +78,20 @@ def _build_filters(
 
 def _apply_joins(
     query: Select,
-    joins: Sequence[tuple[type, ColumnElement[bool]]] | None,
+    joins: Sequence[tuple[type, ColumnElement[bool]] | tuple[type, ColumnElement[bool], bool]]
+    | None,
 ) -> Select:
     """Применяет JOIN'ы к запросу."""
     if not joins:
         return query
 
-    for join_model, join_condition in joins:
-        query = query.join(join_model, join_condition)
+    for join_item in joins:
+        if len(join_item) == 3:
+            join_model, join_condition, isouter = join_item  # type: ignore
+            query = query.join(join_model, join_condition, isouter=isouter)
+        else:
+            join_model, join_condition = join_item  # type: ignore
+            query = query.join(join_model, join_condition)
 
     return query
 
@@ -132,7 +138,8 @@ async def _get_total_count(
     db: AsyncSession,
     model: type,
     filters: list[ColumnElement[bool]] | None,
-    joins: Sequence[tuple[type, ColumnElement[bool]]] | None,
+    joins: Sequence[tuple[type, ColumnElement[bool]] | tuple[type, ColumnElement[bool], bool]]
+    | None,
 ) -> int:
     """Получает общее количество записей с учетом фильтров."""
     count_query = select(func.count()).select_from(model)
@@ -151,7 +158,8 @@ async def _get_paginated_items[ModelType](
     page: int,
     limit: int,
     filters: list[ColumnElement[bool]] | None,
-    joins: Sequence[tuple[type, ColumnElement[bool]]] | None,
+    joins: Sequence[tuple[type, ColumnElement[bool]] | tuple[type, ColumnElement[bool], bool]]
+    | None,
     eager_load_options: list[ORMOption] | None,
     sort_by_field: str,
     sort_desc: bool,
@@ -181,7 +189,8 @@ async def get_paginated_list[ModelType](
     status_model: type | None = None,
     search: str | None = None,
     search_fields: list[InstrumentedAttribute] | None = None,
-    joins: Sequence[tuple[type, ColumnElement[bool]]] | None = None,
+    joins: Sequence[tuple[type, ColumnElement[bool]] | tuple[type, ColumnElement[bool], bool]]
+    | None = None,
     eager_load_options: list[ORMOption] | None = None,
     sort_by_field: str = "id",
     sort_desc: bool = False,

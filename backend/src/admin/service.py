@@ -384,8 +384,8 @@ async def get_all_orders(
     Получает пагинированный список заказов с возможностью фильтрации и поиска.
     """
     search_fields = [
-        Order.shop.name,
-        Order.courier.full_name,
+        Shop.name,
+        Courier.full_name,
         Order.description,
     ]
 
@@ -398,6 +398,10 @@ async def get_all_orders(
         status_field="status",
         search=search,
         search_fields=search_fields,
+        joins=[
+            (Shop, Order.shop_id == Shop.id, True),  # type: ignore
+            (Courier, Order.courier_id == Courier.id, True),  # type: ignore
+        ],
         eager_load_options=[
             selectinload(Order.shop).options(load_only(Shop.name)),
             selectinload(Order.courier).options(load_only(Courier.full_name)),
@@ -423,9 +427,9 @@ async def get_all_disputes(
     """
     search_fields = [
         Dispute.description,
-        Dispute.order.shop.name,
-        Dispute.order.courier.full_name,
-        Dispute.opened_by_user.username,
+        Shop.name,
+        Courier.full_name,
+        User.username,
     ]
 
     total, disputes = await get_paginated_list(
@@ -439,8 +443,9 @@ async def get_all_disputes(
         search_fields=search_fields,
         joins=[
             (Order, Dispute.order_id == Order.id),
-            (Shop, Order.shop_id == Shop.id),
-            (Courier, Order.courier_id == Courier.id),
+            (Shop, Order.shop_id == Shop.id, True),  # type: ignore
+            (Courier, Order.courier_id == Courier.id, True),  # type: ignore
+            (User, Dispute.opened_by_user_id == User.id),
         ],
         eager_load_options=[
             selectinload(Dispute.order).selectinload(Order.shop),

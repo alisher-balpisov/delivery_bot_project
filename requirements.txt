@@ -30,7 +30,7 @@ httpcore==1.0.9
 
 # --- Authentication & Security ---
 python-jose[cryptography]==3.3.0
-python-multipart==0.0.22
+python-multipart==0.0.20
 
 # --- Caching & Rate Limiting ---
 redis==5.0.7

@@ -68,7 +68,7 @@ async def create_registration_code(
         result = await admin_client.create_registration_code(token, role)
         if result.success and isinstance(result.data, dict) and result.data.get("code"):
             code = result.data["code"]
-            return AdminMessages.CODE_CREATED.format(role.value.upper(), code)
+            return AdminMessages.CODE_CREATED.format(role=role.value.upper(), code=code)
         else:
             error_detail = result.detail or AdminServiceMessages.CONNECTION_ERROR
             return ErrorMessages.Codes.CODE_CREATION_ERROR(detail=error_detail)

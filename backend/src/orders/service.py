@@ -392,7 +392,7 @@ async def _fetch_order_with_relations(db: AsyncSession, order_id: int) -> Order:
     )
 
     result = await db.execute(stmt)
-    order = result.scalar_one_or_none()
+    order = result.unique().scalar_one_or_none()
 
     if not order:
         raise OrderNotFoundException(order_id)
