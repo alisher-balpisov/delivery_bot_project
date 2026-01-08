@@ -191,7 +191,7 @@ async def admin_code_details_handler(
     is_active = not code_data.get("is_used") and not code_data.get("is_expired")
 
     code = code_data.get("code")
-    role_name = "Курьер" if code_data.get("role") == "courier" else "Магазин"
+    role_name = "Курьер" if code_data.get("role") == UserRole.COURIER else "Магазин"
     status_text = "🔴 Использован/Просрочен" if code_data.get("is_used") else "🟢 Активен"
     created_at = format_dt(code_data.get("created_at"))
     expires_at = format_dt(code_data.get("expires_at"))

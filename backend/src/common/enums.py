@@ -9,17 +9,17 @@ class TokenType(StrEnum):
 
 
 class UserRole(StrEnum):
-    GUEST = "GUEST"
-    ADMIN = "ADMIN"
-    SHOP = "SHOP"
-    COURIER = "COURIER"
+    GUEST = "guest"
+    ADMIN = "admin"
+    SHOP = "shop"
+    COURIER = "courier"
 
 
 class UserStatus(StrEnum):
-    PENDING_REGISTRATION = "PENDING_REGISTRATION"
-    ACTIVE = "ACTIVE"
-    BLOCKED = "BLOCKED"
-    INACTIVE = "INACTIVE"
+    PENDING_REGISTRATION = "pending_registration"
+    ACTIVE = "active"
+    BLOCKED = "blocked"
+    INACTIVE = "inactive"
 
 
 class DeliveryTimeType(StrEnum):

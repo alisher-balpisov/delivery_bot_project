@@ -126,10 +126,6 @@ def get_orders_list_keyboard(
             text="Назад",
             callback_data=back_callback_data,
         ),
-        InlineKeyboardButton(
-            text="Главное меню",
-            callback_data="show_main_menu",
-        ),
     )
 
     return builder.as_markup()

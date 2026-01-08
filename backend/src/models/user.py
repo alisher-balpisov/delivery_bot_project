@@ -65,12 +65,12 @@ class User(Base):
         nullable=False, default=0, comment="Количество попыток регистрации"
     )
 
-    # Связи один-к-одному
+    # Связи один-к-одному (используем selectin для списков)
     shop: Mapped[Shop | None] = relationship(
-        back_populates="user", cascade="all, delete-orphan", uselist=False, lazy="joined"
+        back_populates="user", cascade="all, delete-orphan", uselist=False, lazy="selectin"
     )
     courier: Mapped[Courier | None] = relationship(
-        back_populates="user", cascade="all, delete-orphan", uselist=False, lazy="joined"
+        back_populates="user", cascade="all, delete-orphan", uselist=False, lazy="selectin"
     )
 
     # Связи один-ко-многим

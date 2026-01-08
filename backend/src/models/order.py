@@ -107,8 +107,8 @@ class Order(Base):
     )
 
     # Связи многие-к-одному (родительские)
-    shop: Mapped[Shop] = relationship(back_populates="orders", lazy="joined")
-    courier: Mapped[Courier | None] = relationship(back_populates="orders", lazy="joined")
+    shop: Mapped[Shop] = relationship(back_populates="orders", lazy="selectin")
+    courier: Mapped[Courier | None] = relationship(back_populates="orders", lazy="selectin")
 
     # Связи один-ко-многим и один-к-одному (дочерние)
     history: Mapped[list[OrderHistory]] = relationship(

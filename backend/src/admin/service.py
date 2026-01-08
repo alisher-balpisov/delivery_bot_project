@@ -2,7 +2,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
@@ -257,21 +257,43 @@ async def get_system_stats(db: AsyncSession) -> dict:
         logger.debug("Используем кэшированную системную статистику")
         return _stats_cache["data"]
 
-    logger.info("Рассчитываем свежую системную статистику")
-    # Статистика пользователей по ролям
-    user_counts = await db.execute(select(User.role, func.count(User.id)).group_by(User.role))
-    users = {role.value: count for role, count in user_counts.all()}
-    total_users = sum(users.values())
+    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Статистика заказов по статусам
-    order_counts = await db.execute(
-        select(Order.status, func.count(Order.id)).group_by(Order.status)
-    )
-    orders = {status.value: count for status, count in order_counts.all()}
+    # Статистика в один проход по таблице заказов
+    order_stats_stmt = select(
+        Order.status,
+        func.count(Order.id).label("count"),
+        func.sum(case((Order.created_at >= today_start, 1), else_=0)).label("today_count"),
+    ).group_by(Order.status)
+
+    order_counts_res = await db.execute(order_stats_stmt)
+    orders_data = order_counts_res.all()
+
+    orders = {row[0].value: row[1] for row in orders_data}
+    orders_today_count = sum(row[2] or 0 for row in orders_data)
+
     total_orders = sum(orders.values())
     completed_orders = orders.get(OrderStatus.COMPLETED.value, 0)
     cancelled_orders = orders.get(OrderStatus.CANCELED.value, 0)
     active_orders = total_orders - completed_orders - cancelled_orders
+
+    # Статистика пользователей и курьеров одним запросом
+    user_stats_stmt = select(User.role, User.status, func.count(User.id)).group_by(
+        User.role, User.status
+    )
+
+    user_counts_res = await db.execute(user_stats_stmt)
+    users_data = user_counts_res.all()
+
+    users = {}
+    active_couriers_count = 0
+    total_users = 0
+
+    for role, status, count in users_data:
+        users[role.value] = users.get(role.value, 0) + count
+        total_users += count
+        if role == UserRole.COURIER and status == UserStatus.ACTIVE:
+            active_couriers_count += count
 
     # Статистика споров
     dispute_counts = await db.execute(
@@ -280,19 +302,6 @@ async def get_system_stats(db: AsyncSession) -> dict:
     disputes = {status.value: count for status, count in dispute_counts.all()}
     total_disputes = sum(disputes.values())
     unresolved_disputes = total_disputes - disputes.get(DisputeStatus.RESOLVED.value, 0)
-
-    # Подсчет заказов за сегодня
-    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    orders_today_count = await db.scalar(
-        select(func.count(Order.id)).where(Order.created_at >= today_start)
-    )
-
-    # Подсчет активных курьеров (со статусом ACTIVE)
-    active_couriers_count = await db.scalar(
-        select(func.count(User.id)).where(
-            User.role == UserRole.COURIER, User.status == UserStatus.ACTIVE
-        )
-    )
 
     stats_data = {
         "total_users": total_users,
@@ -483,9 +492,9 @@ async def get_all_disputes(
             (User, Dispute.opened_by_user_id == User.id),
         ],
         eager_load_options=[
-            selectinload(Dispute.order).selectinload(Order.shop),
-            selectinload(Dispute.order).selectinload(Order.courier),
-            selectinload(Dispute.opened_by_user),
+            contains_eager(Dispute.order).contains_eager(Order.shop),
+            contains_eager(Dispute.order).contains_eager(Order.courier),
+            contains_eager(Dispute.opened_by_user),
         ],
         sort_by_field="created_at",
         sort_desc=True,

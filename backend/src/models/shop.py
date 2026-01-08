@@ -45,7 +45,7 @@ class Shop(Base):
     )
 
     # Связи
-    user: Mapped[User] = relationship(back_populates="shop", uselist=False, lazy="joined")
+    user: Mapped[User] = relationship(back_populates="shop", uselist=False, lazy="selectin")
     orders: Mapped[list[Order]] = relationship(back_populates="shop", lazy="selectin")
     ratings_given: Mapped[list[CourierRating]] = relationship(
         back_populates="shop", lazy="selectin"

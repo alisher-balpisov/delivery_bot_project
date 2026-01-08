@@ -24,6 +24,17 @@ from backend.src.core.logging import get_logger, setup_logging
 # install()
 
 logger = get_logger(__name__)
+# Паттерны для потенциально опасных данных (компилируем заранее для скорости)
+DANGEROUS_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r";\s*--",  # SQL комментарии
+        r";\s*/\*",  # Начало SQL блока комментариев
+        r"<\s*script",  # XSS script tags
+        r"javascript\s*:",  # JavaScript URI
+        r"on\w+\s*=",  # XSS event handlers
+    ]
+]
 
 
 @asynccontextmanager
@@ -93,39 +104,34 @@ def create_app() -> FastAPI:
     # Middleware для санитизации и валидации входных данных
     @app.middleware("http")
     async def sanitize_input(request: Request, call_next):
-        # Паттерны для потенциально опасных данных
-        dangerous_patterns = [
-            r";\s*--",  # SQL комментарии
-            r";\s*/\*",  # Начало SQL блока комментариев
-            r"<\s*script",  # XSS script tags
-            r"javascript\s*:",  # JavaScript URI
-            r"on\w+\s*=",  # XSS event handlers
-        ]
+        # Проверяем только POST/PUT/PATCH с текстовым содержимым
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_type = request.headers.get("content-type", "")
+            if "application/json" in content_type or "text/" in content_type:
+                try:
+                    # Ограничиваем размер проверяемых данных для скорости
+                    body = await request.body()
+                    if (
+                        len(body) > 1024 * 64
+                    ):  # Не проверяем тела больше 64Кб (там обычно легальные данные или файлы)
+                        return await call_next(request)
 
-        try:
-            # Получаем тело запроса если это POST/PUT/PATCH
-            if request.method in ["POST", "PUT", "PATCH"]:
-                body = await request.body()
-                body_str = body.decode("utf-8", errors="ignore")
+                    body_str = body.decode("utf-8", errors="ignore")
+                    for pattern in DANGEROUS_PATTERNS:
+                        if pattern.search(body_str):
+                            logger.warning(
+                                f"🚨 Обнаружен подозрительный ввод в запросе: {request.url}"
+                            )
+                            raise HTTPException(
+                                status_code=400,
+                                detail="Обнаружен неверный ввод. Запрос заблокирован по соображениям безопасности.",
+                            )
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.error(f"Ошибка в промежуточном ПО санитизации: {e}")
 
-                for pattern in dangerous_patterns:
-                    if re.search(pattern, body_str, re.IGNORECASE):
-                        logger.warning(f"🚨 Обнаружен подозрительный ввод в запросе: {request.url}")
-                        raise HTTPException(
-                            status_code=400,
-                            detail="Обнаружен неверный ввод. Запрос заблокирован по соображениям безопасности.",
-                        )
-
-            response = await call_next(request)
-            return response
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            # Если не HTTPException, пропускаем и логируем
-            logger.error(f"Ошибка в промежуточном ПО санитизации: {e}")
-            response = await call_next(request)
-            return response
+        return await call_next(request)
 
     # CORS middleware
     app.add_middleware(CORSMiddleware, **settings.middleware.cors_kwargs())

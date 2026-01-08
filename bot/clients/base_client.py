@@ -48,8 +48,12 @@ class ConnectionPool:
         """Возвращает активный экземпляр httpx.AsyncClient, создавая его при необходимости."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0),
-                limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
+                timeout=httpx.Timeout(5.0, connect=2.0),
+                limits=httpx.Limits(
+                    max_keepalive_connections=50,
+                    max_connections=100,
+                    keepalive_expiry=30.0,
+                ),
                 headers={"User-Agent": "DeliveryBot/1.0"},
             )
         return self._client
@@ -163,7 +167,8 @@ class BaseApiClient:
             except (httpx.TimeoutException, httpx.RequestError) as e:
                 if self._should_retry_on_exception(e, attempt, retry_count):
                     self._log_retry_exception(e, url, attempt, retry_count)
-                    await asyncio.sleep(1.0 + self.rng.uniform(0, 0.1))
+                    # Уменьшаем задержку для более быстрой реакции на сетевые "чихи"
+                    await asyncio.sleep(0.2 * (2**attempt) + self.rng.uniform(0, 0.1))
                     continue
                 return self._handle_final_exception(e, method, url)
 

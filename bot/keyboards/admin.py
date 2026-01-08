@@ -1,5 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from backend.src.common.enums import UserRole
 from bot.handlers.admin.messages import AdminMainButtons, AdminRegistrationCodesMenuButtons
 from bot.messages import AdminKeyboardMessages
 
@@ -90,7 +91,7 @@ def get_registration_codes_list_keyboard(
     # Список кодов
     for code in codes:
         status_icon = "🔴" if code.get("is_used") else "🟢"
-        role_name = "Курьер" if code.get("role") == "courier" else "Магазин"
+        role_name = "Курьер" if code.get("role") == UserRole.COURIER else "Магазин"
         # Выравниваем роль пробелами, чтобы длина строки была одинаковой (имитация колонок)
         role_name = role_name.center(9)
 

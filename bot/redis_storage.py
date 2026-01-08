@@ -247,16 +247,7 @@ class UserDataStorage:
         access_expires_in: int,
         refresh_expires_in: int,
     ) -> bool:
-        """
-        Сохраняет токены пользователя.
-
-        Args:
-            telegram_id: Telegram ID
-            access_token: Access токен
-            refresh_token: Refresh токен
-            access_expires_in: Время жизни access токена в секундах
-            refresh_expires_in: Время жизни refresh токена в секундах
-        """
+        """Сохраняет токены пользователя."""
         now = datetime.now(UTC)
         updates = {
             "access_token": access_token,
@@ -264,8 +255,17 @@ class UserDataStorage:
             "token_expires_at": (now + timedelta(seconds=access_expires_in)).timestamp(),
             "refresh_expires_at": (now + timedelta(seconds=refresh_expires_in)).timestamp(),
         }
-
         return await self.update_user_data(telegram_id, updates, ttl=refresh_expires_in)
+
+    async def update_activity_optimized(self, telegram_id: int, ttl: int | None = None) -> bool:
+        """Продлевает время жизни ключа без переписывания данных."""
+        try:
+            client = await self.get_redis_client()
+            key = self._make_user_key(telegram_id)
+            await client.expire(key, ttl or self.DEFAULT_TTL)
+            return True
+        except Exception:
+            return False
 
     async def get_access_token(self, telegram_id: int) -> str | None:
         """Получает access токен пользователя если он валиден"""

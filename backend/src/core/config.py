@@ -15,19 +15,19 @@ class DatabaseConfig(BaseModel):
     url: SecretStr
 
     # --- Общие настройки движка SQLAlchemy ---
-    # Логировать все SQL-запросы, выполняемые движком. Полезно для отладки.
+    # Логировать все SQL-запросы, выполняемые движком. Включено только для отладки.
     echo: bool = False
     # Использовать новое API SQLAlchemy 2.0.
     future: bool = True
 
     # --- Настройки пула соединений ---
     # Количество соединений, которые постоянно поддерживаются в пуле.
-    pool_size: int = 20
+    pool_size: int = 50
     # Максимальное количество дополнительных соединений сверх pool_size при пиковой нагрузке.
-    max_overflow: int = 10
+    max_overflow: int = 20
     # Проверять "живучесть" соединения перед его использованием.
-    # Помогает избежать ошибок "MySQL server has gone away" или аналогичных.
-    pool_pre_ping: bool = True
+    # Помогает избежать ошибок, но добавляет лишний запрос SELECT 1 на каждое соединение.
+    pool_pre_ping: bool = False
     # Время в секундах, по истечении которого соединение будет пересоздано.
     # Предотвращает проблемы с устаревшими или закрытыми сетью соединениями.
     pool_recycle: int = 300  # 5 минут
@@ -260,10 +260,10 @@ class JwtConfig(BaseModel):
 class RedisConfig(BaseModel):
     """Конфигурация для подключения к Redis."""
 
-    host: str = "localhost"
+    host: str = "127.0.0.1"
     port: int = 6379
     db: int = 0
-    state_ttl: int | None = None
+    state_ttl: int | None = 86400  # 24 часа для состояний по умолчанию
     data_ttl: int | None = None
 
 

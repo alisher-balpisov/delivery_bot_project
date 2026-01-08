@@ -48,9 +48,7 @@ def _build_search_filter(
     _validate_search_term(search)
     search_term = _escape_like_pattern(search)
 
-    search_conditions = [
-        func.lower(field).like(search_term, escape="\\") for field in search_fields
-    ]
+    search_conditions = [field.ilike(search_term) for field in search_fields]
     return or_(*search_conditions)
 
 
