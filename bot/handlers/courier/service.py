@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from backend.src.common.enums import OrderStatus
 from backend.src.core.logging import get_logger
 from bot.clients.orders_client import OrdersClient
+from bot.constants import OrderStatus
 from bot.dto import UserDTO
 from bot.exceptions import ErrorMessages
 from bot.messages import CourierMessages, OrderMessages, ShopMessages

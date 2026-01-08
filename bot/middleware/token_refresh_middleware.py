@@ -4,10 +4,10 @@ from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 
 from bot.clients.auth_client import AuthClient
+from bot.constants import UserRole
 from bot.dto import UserDTO
 from bot.redis_storage import UserCacheData, UserDataStorage
 

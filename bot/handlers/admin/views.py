@@ -1,11 +1,11 @@
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
 from bot.clients.auth_client import AuthClient
 from bot.clients.system_client import SystemClient
+from bot.constants import UserRole
 from bot.dto import UserDTO
 from bot.filters.filters import RoleFilter
 from bot.handlers.admin.messages import AdminMessages as AM

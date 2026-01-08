@@ -2,9 +2,9 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from backend.src.common.enums import UserRole
 from bot.clients.auth_client import AuthClient
 from bot.clients.orders_client import OrdersClient
+from bot.constants import UserRole
 from bot.filters.filters import RoleFilter
 from bot.messages import OrderMessages
 from bot.redis_storage import UserDataStorage

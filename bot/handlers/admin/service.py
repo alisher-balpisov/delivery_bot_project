@@ -1,11 +1,10 @@
 import asyncio
 
 from aiogram.types import CallbackQuery, Message
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
 from bot.clients.system_client import SystemClient
-from bot.constants import STATS_TIMEOUT
+from bot.constants import STATS_TIMEOUT, UserRole
 from bot.exceptions import ErrorMessages
 from bot.keyboards.admin import get_admin_main_keyboard, get_back_to_menu_keyboard
 from bot.messages import AdminMessages, AdminServiceMessages, CommonMessages

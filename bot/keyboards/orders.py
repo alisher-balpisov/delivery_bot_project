@@ -2,7 +2,7 @@ from collections.abc import Callable
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from backend.src.common.enums import OrderStatus
+from bot.constants import OrderStatus
 from bot.utils.formatters import format_dt_short
 
 

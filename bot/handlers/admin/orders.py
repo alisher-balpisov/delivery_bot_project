@@ -1,9 +1,9 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
 from bot.clients.auth_client import AuthClient
+from bot.constants import UserRole
 from bot.filters.filters import RoleFilter
 from bot.handlers.admin.messages import AdminMessages as AM
 from bot.keyboards.orders import get_order_details_keyboard, get_orders_list_keyboard

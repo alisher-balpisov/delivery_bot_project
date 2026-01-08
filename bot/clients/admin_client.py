@@ -1,5 +1,6 @@
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+
+from bot.constants import UserRole
 
 from .base_client import BaseApiClient, RequestResult
 

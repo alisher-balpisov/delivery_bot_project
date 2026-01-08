@@ -1,5 +1,6 @@
-from backend.src.common.enums import UserRole
 from pydantic import BaseModel, ConfigDict
+
+from bot.constants import UserRole
 
 
 class UserDTO(BaseModel):

@@ -1,9 +1,9 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.couriers_client import CouriersClient
 from bot.clients.orders_client import OrdersClient
+from bot.constants import UserRole
 from bot.dto import UserDTO
 from bot.filters.filters import RoleFilter
 from bot.keyboards.couriers import (

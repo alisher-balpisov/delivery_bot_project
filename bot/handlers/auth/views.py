@@ -2,10 +2,10 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.auth_client import AuthClient
 from bot.clients.users_client import UsersClient
+from bot.constants import UserRole
 from bot.dto import UserDTO
 from bot.filters.filters import IsAuthenticatedFilter
 from bot.messages import AuthMessages, AuthServiceMessages

@@ -4,11 +4,10 @@ import httpx
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.auth_client import AuthClient
 from bot.clients.users_client import UsersClient
-from bot.constants import ROLE_EMOJI_MAP
+from bot.constants import ROLE_EMOJI_MAP, UserRole
 from bot.dto import UserDTO
 from bot.exceptions import ErrorMessages
 from bot.messages import AuthMessages, AuthServiceMessages

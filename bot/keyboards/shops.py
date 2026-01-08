@@ -2,7 +2,7 @@ from enum import StrEnum
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from backend.src.shops.schemas import ShopListItem
+from bot.constants import ShopListItem
 from bot.messages import ShopMessages
 
 

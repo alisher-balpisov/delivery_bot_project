@@ -2,7 +2,7 @@ from enum import StrEnum
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from backend.src.couriers.schemas import CourierListItem
+from bot.constants import CourierListItem
 
 
 class CourierFilter(StrEnum):

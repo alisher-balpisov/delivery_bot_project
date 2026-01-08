@@ -1,8 +1,7 @@
 from typing import Any
 
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
-from bot.constants import MAX_MESSAGE_LENGTH, ROLE_EMOJI_MAP, STATS_EMOJIS
+from bot.constants import MAX_MESSAGE_LENGTH, ROLE_EMOJI_MAP, STATS_EMOJIS, UserRole
 from bot.exceptions import ErrorMessages
 from bot.messages import AdminServiceMessages
 

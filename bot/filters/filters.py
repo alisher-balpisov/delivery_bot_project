@@ -2,8 +2,8 @@ import abc
 
 from aiogram.filters import BaseFilter
 from aiogram.types import CallbackQuery, Message, TelegramObject
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+from bot.constants import UserRole
 from bot.dto import UserDTO
 
 logger = get_logger(__name__)

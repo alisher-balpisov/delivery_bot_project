@@ -4,10 +4,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import redis.asyncio as redis
-from backend.src.common.enums import UserRole
 from backend.src.core.config import RedisConfig
 from backend.src.core.logging import get_logger
 from redis.asyncio import Redis
+
+from bot.constants import UserRole
 
 logger = get_logger(__name__)
 

@@ -2,12 +2,12 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 from bot.clients.admin_client import AdminClient
 from bot.clients.auth_client import AuthClient
 from bot.clients.disputes_client import DisputesClient
 from bot.clients.users_client import UsersClient
+from bot.constants import UserRole
 from bot.dto import UserDTO
 from bot.filters.filters import IsAuthenticatedFilter
 from bot.handlers.admin import service as admin_service

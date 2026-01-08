@@ -1,9 +1,9 @@
 from typing import Any
 
 from aiogram.types import InlineKeyboardMarkup
-from backend.src.common.enums import OrderStatus
 from backend.src.core.logging import get_logger
 from bot.clients.orders_client import OrdersClient
+from bot.constants import OrderStatus
 from bot.exceptions import ErrorMessages
 from bot.keyboards.shops import get_order_confirmation_keyboard
 from bot.messages import OrderMessages, ShopMessages
