@@ -1,9 +1,11 @@
+# handlers.py — /register, ввод кода, /logout, /me
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+
 from bot.clients.auth_client import AuthClient
 from bot.clients.users_client import UsersClient
 from bot.dto import UserDTO
@@ -17,10 +19,10 @@ from . import service
 
 logger = get_logger(__name__)
 
-auth_router = Router(name="auth_handlers")
+router = Router(name="auth_handlers")
 
 
-@auth_router.message(Command("register"))
+@router.message(Command("register"))
 async def register_handler(
     message: Message,
     state: FSMContext,
@@ -34,7 +36,7 @@ async def register_handler(
         await message.answer(AuthMessages.ENTER_CODE)
 
 
-@auth_router.message(RegistrationStates.waiting_for_code)
+@router.message(RegistrationStates.waiting_for_code)
 async def register_code_handler(
     message: Message,
     state: FSMContext,
@@ -79,7 +81,7 @@ async def register_code_handler(
         await loading_msg.delete()
 
 
-@auth_router.message(Command("me"), IsAuthenticatedFilter())
+@router.message(Command("me"), IsAuthenticatedFilter())
 async def user_stats_handler(
     message: Message,
     auth_client: AuthClient,
@@ -87,7 +89,6 @@ async def user_stats_handler(
     user_storage: UserDataStorage,
 ):
     """Получить статистику пользователя (требует авторизации)."""
-    # Создаем TokenManager
     token_manager = TokenManager(auth_client, user_storage)
     token = await token_manager.get_token(message.from_user.id)
 
@@ -95,7 +96,7 @@ async def user_stats_handler(
     await message.answer(response_text)
 
 
-@auth_router.message(Command("logout"), IsAuthenticatedFilter())
+@router.message(Command("logout"), IsAuthenticatedFilter())
 async def logout_handler(
     message: Message,
     state: FSMContext,

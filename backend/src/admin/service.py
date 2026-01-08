@@ -5,7 +5,7 @@ from typing import Any, TypeVar
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import contains_eager, load_only, selectinload
+from sqlalchemy.orm import contains_eager, selectinload
 
 from backend.src.auth.service import mask_sensitive_data
 from backend.src.common.constants import PaginatedResponse
@@ -173,7 +173,13 @@ async def get_registration_codes(
     if is_used is not None:
         query = query.where(RegistrationCode.is_used == is_used)
 
-    total_count = await db.scalar(select(func.count()).select_from(query.subquery()))
+    # Используем чистый запрос для подсчета без лишних данных
+    count_query = select(func.count()).select_from(RegistrationCode)
+    if role:
+        count_query = count_query.where(RegistrationCode.role == role)
+    if is_used is not None:
+        count_query = count_query.where(RegistrationCode.is_used == is_used)
+    total_count = await db.scalar(count_query)
 
     query = (
         query.order_by(RegistrationCode.created_at.desc()).offset((page - 1) * limit).limit(limit)
@@ -234,11 +240,24 @@ async def get_unused_registration_codes_count(db: AsyncSession) -> dict[Any, int
     }
 
 
+# Кэш для системной статистики
+_stats_cache = {"data": None, "expires_at": datetime.min.replace(tzinfo=UTC)}
+
+
 async def get_system_stats(db: AsyncSession) -> dict:
     """
     Получить системную статистику для администраторов.
     Включает счетчики пользователей, заказов и споров.
+    Использует кэширование на 30 секунд.
     """
+    global _stats_cache
+    now = datetime.now(UTC)
+
+    if _stats_cache["data"] and _stats_cache["expires_at"] > now:
+        logger.debug("Используем кэшированную системную статистику")
+        return _stats_cache["data"]
+
+    logger.info("Рассчитываем свежую системную статистику")
     # Статистика пользователей по ролям
     user_counts = await db.execute(select(User.role, func.count(User.id)).group_by(User.role))
     users = {role.value: count for role, count in user_counts.all()}
@@ -275,20 +294,28 @@ async def get_system_stats(db: AsyncSession) -> dict:
         )
     )
 
-    return {
+    stats_data = {
         "total_users": total_users,
         "total_admins": users.get(UserRole.ADMIN.value, 0),
         "total_shops": users.get(UserRole.SHOP.value, 0),
         "total_couriers": users.get(UserRole.COURIER.value, 0),
         "total_orders": total_orders,
-        "active_orders": active_orders,
+        "orders_by_status": orders,
         "completed_orders": completed_orders,
         "cancelled_orders": cancelled_orders,
+        "active_orders": active_orders,
         "total_disputes": total_disputes,
         "unresolved_disputes": unresolved_disputes,
         "orders_today": orders_today_count or 0,
         "active_couriers": active_couriers_count or 0,
     }
+
+    _stats_cache = {
+        "data": stats_data,
+        "expires_at": now + timedelta(seconds=30),
+    }
+
+    return stats_data
 
 
 async def get_order_by_id(db: AsyncSession, order_id: int) -> Order | None:
@@ -379,6 +406,7 @@ async def get_all_orders(
     limit: int,
     status: OrderStatus | None,
     search: str | None,
+    current: bool | None = None,
 ) -> PaginatedResponse[OrderCardResponse]:
     """
     Получает пагинированный список заказов с возможностью фильтрации и поиска.
@@ -388,6 +416,12 @@ async def get_all_orders(
         Courier.full_name,
         Order.description,
     ]
+
+    additional_filters = []
+    if current is True:
+        additional_filters.append(Order.status.in_(OrderStatus.active_statuses()))
+    elif current is False:
+        additional_filters.append(Order.status.in_(OrderStatus.completed_statuses()))
 
     total, orders = await get_paginated_list(
         db=db,
@@ -399,15 +433,16 @@ async def get_all_orders(
         search=search,
         search_fields=search_fields,
         joins=[
-            (Shop, Order.shop_id == Shop.id, True),  # type: ignore
-            (Courier, Order.courier_id == Courier.id, True),  # type: ignore
+            (Shop, Order.shop_id == Shop.id, True),
+            (Courier, Order.courier_id == Courier.id, True),
         ],
         eager_load_options=[
-            selectinload(Order.shop).options(load_only(Shop.name)),
-            selectinload(Order.courier).options(load_only(Courier.full_name)),
+            contains_eager(Order.shop),
+            contains_eager(Order.courier),
         ],
         sort_by_field="created_at",
         sort_desc=True,
+        additional_filters=additional_filters,
     )
 
     response_items = [OrderCardResponse.model_validate(order) for order in orders]

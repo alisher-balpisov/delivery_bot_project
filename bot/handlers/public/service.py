@@ -1,4 +1,5 @@
 from backend.src.common.enums import UserRole
+
 from bot.constants import ROLE_COMMANDS, ROLE_EMOJI_MAP
 from bot.dto import UserDTO
 from bot.messages import CommonMessages, PublicMessages

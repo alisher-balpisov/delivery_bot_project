@@ -60,8 +60,8 @@ def create_dispatcher(
         router.message.filter(user_data_provider)
         router.callback_query.filter(user_data_provider)
     # Регистрируем роутеры
-    dp.include_router(auth_router)
     dp.include_router(protected_router)
+    dp.include_router(auth_router)
     dp.include_router(orders_router)
     dp.include_router(public_router)
 

@@ -49,7 +49,7 @@ class ConnectionPool:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(10.0),
-                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
                 headers={"User-Agent": "DeliveryBot/1.0"},
             )
         return self._client

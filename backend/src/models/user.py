@@ -38,14 +38,24 @@ class User(Base):
         String(255), nullable=True, comment="Username пользователя в Telegram"
     )
     role: Mapped[UserRole] = mapped_column(
-        ENUM(UserRole, name="userrole", create_type=True),
+        ENUM(
+            UserRole,
+            name="userrole",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=UserRole.GUEST,
         index=True,
         comment="Роль пользователя в системе",
     )
     status: Mapped[UserStatus] = mapped_column(
-        ENUM(UserStatus, name="userstatus", create_type=True),
+        ENUM(
+            UserStatus,
+            name="userstatus",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=UserStatus.PENDING_REGISTRATION,
         index=True,

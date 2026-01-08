@@ -62,6 +62,7 @@ class AdminClient(BaseApiClient):
         limit: int = 10,
         status: str | None = None,
         search: str | None = None,
+        current: bool | None = None,
     ) -> RequestResult:
         """Получить список всех заказов (админ)."""
         params = {"page": page, "limit": limit}
@@ -69,6 +70,8 @@ class AdminClient(BaseApiClient):
             params["status"] = status
         if search:
             params["search"] = search
+        if current is not None:
+            params["current"] = str(current).lower()
 
         return await self._make_request("GET", "/admin/orders", token=token, params=params)
 

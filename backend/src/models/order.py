@@ -8,7 +8,7 @@ from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Index, St
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
+from backend.src.common.enums import DeliveryTimeType, OrderStatus, OrderType, SpecialOrderType
 from backend.src.core.database import Base
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .courier_rating import CourierRating
     from .dispute import Dispute
     from .order_history import OrderHistory
+    from .order_note import OrderNote
     from .shop import Shop
 
 
@@ -41,17 +42,33 @@ class Order(Base):
     )
 
     status: Mapped[OrderStatus] = mapped_column(
-        ENUM(OrderStatus, name="orderstatus", create_type=True),
+        ENUM(
+            OrderStatus,
+            name="orderstatus",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=OrderStatus.PENDING,
     )
     order_type: Mapped[OrderType] = mapped_column(
-        ENUM(OrderType, name="ordertype", create_type=True),
+        ENUM(
+            OrderType,
+            name="ordertype",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=OrderType.REGULAR,
     )
     special_type: Mapped[SpecialOrderType | None] = mapped_column(
-        ENUM(SpecialOrderType, name="specialordertype", create_type=True), nullable=True
+        ENUM(
+            SpecialOrderType,
+            name="specialordertype",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=True,
     )
 
     price: Mapped[Decimal] = mapped_column(
@@ -66,6 +83,18 @@ class Order(Base):
     )
     delivery_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True, comment="Желаемое время доставки"
+    )
+    delivery_time_type: Mapped[DeliveryTimeType] = mapped_column(
+        ENUM(
+            DeliveryTimeType,
+            name="deliverytimetype",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=DeliveryTimeType.TODAY,
+        index=True,
+        comment="Тип времени доставки (asap/today/scheduled)",
     )
     description: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Описание/комментарии к заказу"
@@ -91,6 +120,9 @@ class Order(Base):
     rating: Mapped[CourierRating | None] = relationship(
         back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="select"
     )
+    notes: Mapped[list[OrderNote]] = relationship(
+        back_populates="order", cascade="all, delete-orphan", lazy="select"
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -114,4 +146,6 @@ class Order(Base):
         ),
         Index("ix_orders_shop_status", "shop_id", "status"),
         Index("ix_orders_courier_status", "courier_id", "status"),
+        Index("ix_orders_delivery_type_status", "delivery_time_type", "status"),
+        Index("ix_orders_status", "status"),
     )

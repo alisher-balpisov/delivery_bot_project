@@ -1,6 +1,6 @@
 from enum import Enum
 
-from backend.src.common.enums import UserRole
+from backend.src.common.enums import OrderStatus, UserRole
 
 BOT_NAME = "Delivery Bot"
 MAX_REGISTRATION_ATTEMPTS = 5
@@ -23,6 +23,18 @@ STATS_EMOJIS = {
     "cancelled_orders": "❌",
     "disputes": "⚠️",
     "unresolved_disputes": "🟡",
+}
+
+
+ORDER_STATUS_EMOJIS = {
+    OrderStatus.PENDING: "⏳",
+    OrderStatus.COURIER_EN_ROUTE: "🏃‍♂️",
+    OrderStatus.DELIVERING: "🚗",
+    OrderStatus.AWAITING_CONFIRMATION: "📍",
+    OrderStatus.COMPLETED: "✅",
+    OrderStatus.PENDING_COURIER: "👤",
+    OrderStatus.DISPUTED: "⚠️",
+    OrderStatus.CANCELED: "❌",
 }
 
 

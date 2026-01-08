@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from backend.src.common.enums import OrderStatus
 from backend.src.core.logging import get_logger
+
 from bot.clients.orders_client import OrdersClient
 from bot.dto import UserDTO
 from bot.exceptions import ErrorMessages
@@ -74,7 +75,7 @@ async def take_order(
         logger.error(CourierMessages.MISSING_USER_ID.format(user.telegram_id))
         return ErrorMessages.UserData.USER_DATA_ERROR
 
-    payload = {"status": OrderStatus.ACCEPTED.value}
+    payload = {"status": OrderStatus.COURIER_EN_ROUTE.value}
 
     try:
         result = await orders_client.update_order_status(token, order_id, payload)

@@ -28,6 +28,18 @@ class AuthClient(BaseApiClient):
             expected_status=200,
         )
 
+    async def register_guest(self, telegram_id: int, username: str | None = None) -> RequestResult:
+        """
+        Регистрирует пользователя как гостя (создает в БД).
+        """
+        logger.debug(f"Регистрация гостя telegram_id={telegram_id}")
+        return await self._make_request(
+            "POST",
+            "/auth/register-guest",
+            json_data={"telegram_id": telegram_id, "username": username},
+            expected_status=200,
+        )
+
     async def auth_by_code(
         self,
         telegram_id: int,

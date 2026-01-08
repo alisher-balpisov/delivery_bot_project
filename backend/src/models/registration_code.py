@@ -29,7 +29,11 @@ class RegistrationCode(Base):
         String(16), unique=True, nullable=False, index=True, comment="Уникальный код регистрации"
     )
     role: Mapped[UserRole] = mapped_column(
-        ENUM(UserRole, create_type=False),
+        ENUM(
+            UserRole,
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         index=True,
         comment="Роль, которую получит пользователь при использовании кода",

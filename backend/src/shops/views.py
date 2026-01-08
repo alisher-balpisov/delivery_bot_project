@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from backend.src.auth.dependencies import RequireAdminOrCourier
+from backend.src.auth.dependencies import RequireAdminOrCourier, RequireShop
 from backend.src.common.dependencies import PaginationParams
 from backend.src.common.enums import UserStatus
 from backend.src.core.database import DbSession
@@ -8,12 +8,52 @@ from backend.src.core.logging import get_logger
 from backend.src.models.shop import Shop
 
 from . import service
-from .schemas import ShopCardResponse, ShopListItem, ShopListResponse
+from .schemas import ShopCardResponse, ShopListItem, ShopListResponse, ShopStatsResponse, ShopUpdate
 
 logger = get_logger(__name__)
 
 
 router = APIRouter()
+
+
+@router.get("/stats", response_model=ShopStatsResponse)
+async def get_shop_stats(
+    current_user: RequireShop,
+    db: DbSession,
+) -> ShopStatsResponse:
+    """
+    Получение статистики магазина.
+    """
+    stats = await service.get_shop_stats(db, current_user.shop.id)
+    stats = await service.get_shop_stats(db, current_user.shop.id)
+    return ShopStatsResponse(**stats)
+
+
+@router.patch("/me", response_model=ShopCardResponse)
+async def update_current_shop(
+    current_user: RequireShop,
+    shop_update: ShopUpdate,
+    db: DbSession,
+) -> ShopCardResponse:
+    """
+    Обновление профиля текущего магазина.
+    """
+    shop = await service.update_shop_profile(
+        db,
+        current_user.shop.id,
+        shop_update.model_dump(exclude_unset=True),
+    )
+
+    return ShopCardResponse(
+        id=shop.id,
+        telegram_id=shop.user.telegram_id,
+        username=shop.user.username,
+        name=shop.name,
+        status=shop.user.status,
+        address=shop.address,
+        address_link=shop.address_link,
+        phone_numbers=shop.phone_number,
+    )
 
 
 @router.get("/", response_model=ShopListResponse)

@@ -403,6 +403,30 @@ async def auth_by_code(
         raise exceptions.AuthError("Произошла внутренняя ошибка при аутентификации.") from e
 
 
+async def register_guest(
+    db: AsyncSession,
+    telegram_id: int,
+    username: str | None,
+) -> UserInfo:
+    """
+    Регистрирует пользователя как гостя (если не существует).
+    """
+    try:
+        async with db.begin():
+            user = await _get_or_create_user(db, telegram_id)
+
+            # Обновляем username если есть
+            if username and user.username != username:
+                user.username = username
+                await db.flush()
+
+            role_name = getattr(user.role, "value", str(user.role))
+            return UserInfo(id=user.id, role=role_name)
+    except Exception as e:
+        logger.exception(f"Ошибка при регистрации гостя telegram_id={telegram_id}")
+        raise exceptions.AuthError("Ошибка регистрации гостя") from e
+
+
 async def login(db: AsyncSession, telegram_id: int) -> AuthSuccessResponse:
     """
     Аутентификация существующего пользователя по telegram_id.

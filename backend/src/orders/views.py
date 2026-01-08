@@ -162,7 +162,7 @@ async def complete_order(
     - Доступно только курьерам, назначенным на заказ
 
     ## Требования
-    - Заказ должен быть в статусе **DELIVERING** или **SEMI_COMPLETED**
+    - Заказ должен быть в статусе **DELIVERING** или **AWAITING_CONFIRMATION**
     - Необходимо предоставить photo_report_id (ID фото в Telegram)
 
     ## Результат

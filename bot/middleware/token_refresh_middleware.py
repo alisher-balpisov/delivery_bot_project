@@ -38,6 +38,8 @@ class TokenRefreshMiddleware(BaseMiddleware):
         # Локи для предотвращения параллельных refresh для одного пользователя
         self._refresh_locks: dict[int, asyncio.Lock] = {}
         self._lock_cleanup_task: asyncio.Task | None = None
+        # Хранилище для активных фоновых задач (чтобы избежать garbage collection)
+        self._active_refresh_tasks: set[asyncio.Task] = set()
 
     async def __call__(
         self,
@@ -47,31 +49,29 @@ class TokenRefreshMiddleware(BaseMiddleware):
     ) -> Any:
         """Основная логика middleware"""
 
-        # Получаем пользователя из data (должен быть предоставлен UserDataFilter)
+        # Получаем пользователя и полные данные из data
         user: UserDTO | None = data.get("user")
+        user_data: UserCacheData | None = data.get("user_data")
 
         # Обрабатываем только аутентифицированных пользователей
-        if user and user.role != UserRole.GUEST and user.telegram_id:
-            await self._check_and_refresh_token(user.telegram_id, data)
+        if user and user.role != UserRole.GUEST and user.telegram_id and user_data:
+            await self._check_and_refresh_token(user_data, data)
 
         # Продолжаем обработку
         return await handler(event, data)
 
-    async def _check_and_refresh_token(self, telegram_id: int, data: dict[str, Any]) -> None:
+    async def _check_and_refresh_token(
+        self, user_data: UserCacheData, data: dict[str, Any]
+    ) -> None:
         """
         Проверяет необходимость обновления токена и обновляет его если нужно.
 
         Args:
-            telegram_id: ID пользователя в Telegram
+            user_data: Полные данные пользователя из Redis (уже загружены в фильтре)
             data: Словарь данных для хендлера (может обновить user)
         """
         try:
-            # Получаем полные данные пользователя из Redis
-            user_data = await self.storage.get_user_data(telegram_id)
-
-            if not user_data:
-                logger.debug(f"Нет данных пользователя {telegram_id} для проверки токена")
-                return
+            telegram_id = user_data.telegram_id
 
             # Проверяем, нужно ли обновлять токен
             if not user_data.needs_token_refresh:
@@ -84,12 +84,23 @@ class TokenRefreshMiddleware(BaseMiddleware):
                 await self._handle_expired_refresh_token(telegram_id, data)
                 return
 
-            # Обновляем токен с использованием lock
-            await self._refresh_token_with_lock(telegram_id, user_data, data)
+            # ОПТИМИЗАЦИЯ: Если токен еще валиден (хотя и близок к истечению),
+            # выполняем обновление фоном, не блокируя хендлер.
+            if user_data.has_valid_token:
+                logger.info(f"Запуск фонового обновления токена для {telegram_id}")
+                task = asyncio.create_task(
+                    self._refresh_token_with_lock(telegram_id, user_data, data)
+                )
+                self._active_refresh_tasks.add(task)
+                task.add_done_callback(self._active_refresh_tasks.discard)
+            else:
+                # Если токен уже истек - блокируем и ждем обновления
+                logger.info(f"Срочное (блокирующее) обновление токена для {telegram_id}")
+                await self._refresh_token_with_lock(telegram_id, user_data, data)
 
         except Exception as e:
             logger.error(
-                f"Ошибка при проверке/обновлении токена для {telegram_id}: {e}",
+                f"Ошибка при проверке/обновлении токена для {user_data.telegram_id}: {e}",
                 exc_info=True,
             )
 
@@ -110,7 +121,8 @@ class TokenRefreshMiddleware(BaseMiddleware):
 
         lock = self._refresh_locks[telegram_id]
 
-        # Если кто-то уже обновляет токен - ждем
+        # Если кто-то уже обновляет токен - ждем (только если мы в блокирующем режиме)
+        # Если мы в фоновом режиме (через create_task), то lock.locked() просто вернет управление.
         if lock.locked():
             logger.debug(f"Refresh токена для {telegram_id} уже выполняется, ожидаем")
             async with lock:

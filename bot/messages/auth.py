@@ -69,4 +69,4 @@ class AuthService:
     REGISTRATION_CRITICAL_ERROR: Final = "Критическая ошибка при регистрации {}"
     GENERIC_ERROR: Final = "Произошла ошибка. Попробуйте перезапустить бота командой /start."
     CRITICAL_REGISTRATION_ERROR: Final = "Произошла критическая ошибка при регистрации."
-    TOKEN_FETCH_ERROR: Final = "Не удалось получить или обновить токен доступа."
+    TOKEN_FETCH_ERROR: Final = "Не удалось получить или обновить токен доступа."  # noqa: S105

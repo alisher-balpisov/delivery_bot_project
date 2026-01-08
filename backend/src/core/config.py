@@ -22,9 +22,9 @@ class DatabaseConfig(BaseModel):
 
     # --- Настройки пула соединений ---
     # Количество соединений, которые постоянно поддерживаются в пуле.
-    pool_size: int = 10
+    pool_size: int = 20
     # Максимальное количество дополнительных соединений сверх pool_size при пиковой нагрузке.
-    max_overflow: int = 5
+    max_overflow: int = 10
     # Проверять "живучесть" соединения перед его использованием.
     # Помогает избежать ошибок "MySQL server has gone away" или аналогичных.
     pool_pre_ping: bool = True
@@ -297,7 +297,7 @@ class Settings(BaseSettings):
     jwt: JwtConfig = Field(default_factory=JwtConfig)  # type: ignore
 
     # --- Настройки API (FastAPI) ---
-    api_host: str = "localhost"
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_prefix: str = "/api/v1"
 

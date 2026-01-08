@@ -1,3 +1,4 @@
+from backend.src.auth.schemas import GuestRegistrationRequest
 from backend.src.common.enums import TokenType
 from backend.src.core.database import DbSession, settings
 from backend.src.core.logging import get_logger
@@ -12,6 +13,7 @@ from .schemas import (
     LoginRequest,
     RefreshTokenRequest,
     RefreshTokenResponse,
+    UserInfo,
 )
 
 router = APIRouter()
@@ -72,6 +74,28 @@ async def auth_by_code(
         handle_generic_auth_error(e, form_data.telegram_id)
     except Exception:
         handle_unexpected_error(form_data.telegram_id, "auth_by_code")
+
+
+@router.post("/register-guest", response_model=UserInfo)
+async def register_guest(
+    request: GuestRegistrationRequest,
+    db: DbSession,
+):
+    """
+    Регистрация пользователя как гостя.
+    Создает пользователя в БД, если он не существует.
+    """
+    logger.info(f"Регистрация гостя telegram_id={request.telegram_id}")
+    try:
+        return await service.register_guest(
+            db=db,
+            telegram_id=request.telegram_id,
+            username=request.username,
+        )
+    except exceptions.AuthError as e:
+        handle_generic_auth_error(e, request.telegram_id)
+    except Exception:
+        handle_unexpected_error(request.telegram_id, "register_guest")
 
 
 @router.post("/login", response_model=AuthSuccessResponse)

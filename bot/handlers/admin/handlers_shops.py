@@ -1,10 +1,13 @@
+# handlers_shops.py — Хендлеры списка магазинов (для админа)
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from backend.src.common.enums import UserStatus
+from backend.src.common.enums import UserRole, UserStatus
+from backend.src.core.logging import get_logger
+
 from bot.clients.auth_client import AuthClient
 from bot.clients.orders_client import OrdersClient
 from bot.clients.shops_client import ShopsClient
-from bot.handlers.admin.couriers import logger
+from bot.filters.filters import RoleFilter
 from bot.keyboards.orders import get_order_details_keyboard, get_orders_list_keyboard
 from bot.keyboards.shops import (
     ShopFilter,
@@ -16,10 +19,14 @@ from bot.redis_storage import UserDataStorage
 from bot.utils.order_formatters import format_order_details
 from bot.utils.token_manager import TokenManager
 
-shops_router = Router(name="shops_handlers")
+logger = get_logger(__name__)
+
+router = Router(name="admin_shops_handlers")
+router.message.filter(RoleFilter(UserRole.ADMIN))
+router.callback_query.filter(RoleFilter(UserRole.ADMIN))
 
 
-@shops_router.callback_query(F.data == "show_shops")
+@router.callback_query(F.data == "show_shops")
 async def show_shops_handler(
     callback: CallbackQuery,
     shops_client: ShopsClient,
@@ -27,7 +34,6 @@ async def show_shops_handler(
     user_storage: UserDataStorage,
 ):
     """Показать список магазинов (первая страница, активные)."""
-    # Get token
     token_manager = TokenManager(auth_client, user_storage)
     token = await token_manager.get_token(callback.from_user.id)
 
@@ -51,7 +57,7 @@ async def show_shops_handler(
     await callback.answer()
 
 
-@shops_router.callback_query(ShopsCallback.filter(F.action == "list"))
+@router.callback_query(ShopsCallback.filter(F.action == "list"))
 async def shops_navigation_handler(
     callback: CallbackQuery,
     callback_data: ShopsCallback,
@@ -87,8 +93,6 @@ async def shops_navigation_handler(
 
     text = f"🏪 <b>Список магазинов</b>\nВсего: {response.total}"
 
-    # Check if content changed to avoid "Message is not modified" error
-    # Но здесь обычно просто редактируем. Если сообщение не изменилось, aiogram может бросить ошибку.
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception as e:
@@ -97,7 +101,7 @@ async def shops_navigation_handler(
     await callback.answer()
 
 
-@shops_router.callback_query(ShopsCallback.filter(F.action == "open"))
+@router.callback_query(ShopsCallback.filter(F.action == "open"))
 async def open_shop_handler(
     callback: CallbackQuery,
     callback_data: ShopsCallback,
@@ -150,7 +154,7 @@ async def open_shop_handler(
         await callback.answer(f"❌ Ошибка при загрузке информации: {e!s}", show_alert=True)
 
 
-@shops_router.callback_query(ShopsCallback.filter(F.action == "history"))
+@router.callback_query(ShopsCallback.filter(F.action == "history"))
 async def shop_history_handler(
     callback: CallbackQuery,
     callback_data: ShopsCallback,
@@ -230,7 +234,7 @@ async def shop_history_handler(
     await callback.answer()
 
 
-@shops_router.callback_query(ShopsCallback.filter(F.action == "order_detail"))
+@router.callback_query(ShopsCallback.filter(F.action == "order_detail"))
 async def shop_order_detail_handler(
     callback: CallbackQuery,
     callback_data: ShopsCallback,

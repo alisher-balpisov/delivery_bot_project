@@ -1,6 +1,6 @@
 from typing import Any
 
-from backend.src.shops.schemas import ShopCardResponse, ShopListResponse
+from backend.src.shops.schemas import ShopCardResponse, ShopListResponse, ShopStatsResponse
 
 from bot.clients.base_client import BaseApiClient
 
@@ -64,6 +64,49 @@ class ShopsClient(BaseApiClient):
             method="GET",
             endpoint=f"/shops/{shop_id}",
             custom_headers=self._get_auth_headers(token),
+        )
+        if not response.success:
+            raise Exception(response.detail)
+
+        return ShopCardResponse.model_validate(response.data)
+
+    async def get_shop_stats(self, token: str) -> ShopStatsResponse:
+        """
+        Получение статистики магазина.
+
+        Args:
+            token: Токен доступа
+
+        Returns:
+            ShopStatsResponse: Статистика магазина
+        """
+        response = await self._make_request(
+            method="GET",
+            endpoint="/shops/stats",
+            custom_headers=self._get_auth_headers(token),
+        )
+        if not response.success:
+            raise Exception(response.detail)
+
+        return ShopStatsResponse.model_validate(response.data)
+
+    async def update_shop_profile(
+        self,
+        token: str,
+        data: dict,
+    ) -> ShopCardResponse:
+        """
+        Обновление профиля магазина.
+
+        Args:
+            token: Токен доступа
+            data: Данные для обновления
+        """
+        response = await self._make_request(
+            method="PATCH",
+            endpoint="/shops/me",
+            custom_headers=self._get_auth_headers(token),
+            json_data=data,
         )
         if not response.success:
             raise Exception(response.detail)

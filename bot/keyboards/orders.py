@@ -3,6 +3,7 @@ from collections.abc import Callable
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from backend.src.common.enums import OrderStatus
+from bot.constants import ORDER_STATUS_EMOJIS
 from bot.utils.formatters import format_dt_short
 
 
@@ -55,32 +56,20 @@ def get_orders_list_keyboard(
         order_id = order.get("id")
         status = order.get("status", "unknown")
         address = order.get("recipient_address", "Нет адреса")
-        price = order.get("price", 0)
 
         # Форматируем дату
         date = format_dt_short(order.get("created_at", ""))
 
         # Эмодзи статусов
-        status_emojis = {
-            OrderStatus.PENDING: "⏳",
-            OrderStatus.COURIER_EN_ROUTE: "🏃‍♂️",
-            OrderStatus.DELIVERING: "🚗",
-            OrderStatus.SEMI_COMPLETED: "📍",
-            OrderStatus.COMPLETED: "✅",
-            OrderStatus.PENDING_COURIER: "👤",
-            OrderStatus.DISPUTED: "⚠️",
-            OrderStatus.CANCELED: "❌",
-            "ACTIVE": "🟢",  # Для админов
-        }
+
         # Пробуем получить по Enum, если нет - по строке, иначе первая буква
-        status_icon = status_emojis.get(status)
-        if not status_icon:
-            # Попытка найти по значению Enum если status это строка
-            try:
-                status_enum = OrderStatus(status)
-                status_icon = status_emojis.get(status_enum, status[:1].upper())
-            except ValueError:
-                status_icon = status[:1].upper()
+        # Если status - это строка, пробуем преобразовать в Enum
+        try:
+            status_enum = OrderStatus(status)
+            status_icon = ORDER_STATUS_EMOJIS.get(status_enum, status[:1].upper())
+        except ValueError:
+            # Если не Enum, проверяем напрямую в словаре или берем первую букву
+            status_icon = ORDER_STATUS_EMOJIS.get(status, status[:1].upper())
 
         # Умное сокращение адреса
         max_address_len = 20

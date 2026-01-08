@@ -1,12 +1,3 @@
-"""
-Упрощенный фильтр для предоставления UserDTO.
-
-Ключевые изменения:
-- Убрана зависимость от UsersClient для получения профиля
-- Используется только Redis для кэширования
-- Улучшена логика определения статуса пользователя
-"""
-
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -45,7 +36,7 @@ class UserDataFilter(BaseFilter):
         Основной метод фильтра.
 
         Returns:
-            Словарь с user (UserDTO) для использования в хендлерах
+            Словарь с user (UserDTO) и user_data (UserCacheData) для использования в хендлерах
         """
         if not isinstance(event, (Message, CallbackQuery)) or not event.from_user:
             return False
@@ -65,7 +56,8 @@ class UserDataFilter(BaseFilter):
                 should_retry_login = False
                 if not user_data.cached_at:
                     should_retry_login = True
-                elif datetime.now(UTC) - user_data.cached_at > timedelta(seconds=30):
+                # ОПТИМИЗАЦИЯ: увеличиваем интервал проверки до 5 минут
+                elif datetime.now(UTC) - user_data.cached_at > timedelta(minutes=5):
                     should_retry_login = True
 
                 if should_retry_login:
@@ -77,7 +69,9 @@ class UserDataFilter(BaseFilter):
                         user_dto = await self._handle_successful_login(
                             telegram_id, username, login_result.data
                         )
-                        return {"user": user_dto}
+                        # Получаем обновленные полные данные для консистентности
+                        new_user_data = await self.storage.get_user_data(telegram_id)
+                        return {"user": user_dto, "user_data": new_user_data}
                     else:
                         # Login снова не удался - обновляем активность но держим короткий TTL
                         # Обновляем cached_at чтобы не спамить попытками каждую секунду
@@ -90,19 +84,26 @@ class UserDataFilter(BaseFilter):
                             ttl=300,
                         )
                         user_dto = self._create_dto_from_cache(user_data, username)
-                        return {"user": user_dto}
+                        return {"user": user_dto, "user_data": user_data}
 
-                # Если кэш свежий, просто обновляем активность с коротким TTL
-                await self.storage.update_activity(telegram_id, ttl=300)
+                # Если кэш свежий, проверяем нужно ли обновлять активность (троттлинг 1 минута)
+                if not user_data.last_activity or (
+                    datetime.now(UTC) - user_data.last_activity > timedelta(minutes=1)
+                ):
+                    await self.storage.update_activity(telegram_id, ttl=300)
+
                 user_dto = self._create_dto_from_cache(user_data, username)
-                return {"user": user_dto}
+                return {"user": user_dto, "user_data": user_data}
 
-            # Для обычных пользователей обновляем активность со стандартным TTL
-            await self.storage.update_activity(telegram_id)
+            # Для обычных пользователей проверяем нужно ли обновлять активность (троттлинг 1 минута)
+            if not user_data.last_activity or (
+                datetime.now(UTC) - user_data.last_activity > timedelta(minutes=1)
+            ):
+                await self.storage.update_activity(telegram_id)
 
             # Создаем DTO
             user_dto = self._create_dto_from_cache(user_data, username)
-            return {"user": user_dto}
+            return {"user": user_dto, "user_data": user_data}
 
         # Данных нет - пытаемся получить через login
         logger.debug(f"Данные пользователя {telegram_id} отсутствуют, пробуем login")
@@ -112,14 +113,18 @@ class UserDataFilter(BaseFilter):
         if login_result.success and isinstance(login_result.data, dict):
             # Успешный login - сохраняем данные и создаем DTO
             user_dto = await self._handle_successful_login(telegram_id, username, login_result.data)
-            return {"user": user_dto}
+            # Получаем обновленные полные данные
+            new_user_data = await self.storage.get_user_data(telegram_id)
+            return {"user": user_dto, "user_data": new_user_data}
 
         # Login не удался - создаем гостя
         status_code = login_result.status_code
         logger.info(f"Login не удался для {telegram_id} (код: {status_code}), создаем гостя")
 
         user_dto = await self._create_guest(telegram_id, username)
-        return {"user": user_dto}
+        # Получаем созданные данные гостя
+        guest_user_data = await self.storage.get_user_data(telegram_id)
+        return {"user": user_dto, "user_data": guest_user_data}
 
     def _create_dto_from_cache(self, user_data: UserCacheData, username: str | None) -> UserDTO:
         """Создает UserDTO из кэшированных данных"""

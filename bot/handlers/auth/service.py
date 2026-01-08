@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+
 from bot.clients.auth_client import AuthClient
 from bot.clients.users_client import UsersClient
 from bot.constants import ROLE_EMOJI_MAP
@@ -13,6 +14,7 @@ from bot.dto import UserDTO
 from bot.exceptions import ErrorMessages
 from bot.messages import AuthMessages, AuthServiceMessages
 from bot.redis_storage import UserCacheData, UserDataStorage
+from bot.states import RegistrationStates
 from bot.utils.helpers import parse_user_role
 from bot.utils.token_manager import TokenManager
 
@@ -62,6 +64,14 @@ async def handle_registration_success(
 
     # Определяем приветственное сообщение
     role = user_data.role
+    if role == UserRole.SHOP:
+        await state.set_state(RegistrationStates.waiting_for_shop_name)
+        await message.answer(
+            "✅ Код принят! Теперь давайте заполним профиль вашего магазина.\n\n"
+            "🏪 Введите название магазина:"
+        )
+        return
+
     if role == UserRole.ADMIN:
         text = AuthMessages.WELCOME_ADMIN
     else:
@@ -116,7 +126,7 @@ async def handle_registration_failure(
             match = re.search(r"(\d+)", result_detail)
             if match:
                 attempts = int(match.group(1))
-                await message.answer(AuthMessages.INVALID_CODE_ATTEMPTS.format(attempts))
+                await message.answer(AuthMessages.INVALID_CODE_ATTEMPTS.format(attempts=attempts))
                 return
 
     # Общая ошибка - неверный код

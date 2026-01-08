@@ -46,15 +46,32 @@ class Dispute(Base):
         index=True,
         comment="ID пользователя, которому назначен штраф",
     )
+    resolved_by_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+        comment="ID администратора, разрешившего спор",
+    )
 
     description: Mapped[str] = mapped_column(Text, nullable=False, comment="Описание причины спора")
     status: Mapped[DisputeStatus] = mapped_column(
-        ENUM(DisputeStatus, name="disputestatus", create_type=True),
+        ENUM(
+            DisputeStatus,
+            name="disputestatus",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=DisputeStatus.PENDING_REVIEW,
     )
     resolution_type: Mapped[DisputeResolutionType | None] = mapped_column(
-        ENUM(DisputeResolutionType, name="disputeresolutiontype", create_type=True), nullable=True
+        ENUM(
+            DisputeResolutionType,
+            name="disputeresolutiontype",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=True,
     )
     resolution_comment: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Комментарий администратора по разрешению спора"
@@ -73,6 +90,9 @@ class Dispute(Base):
     )
     fined_user: Mapped[User | None] = relationship(
         back_populates="fined_in_disputes", foreign_keys=[fined_user_id], lazy="joined"
+    )
+    resolved_by_admin: Mapped[User | None] = relationship(
+        foreign_keys=[resolved_by_admin_id], lazy="joined"
     )
 
     __table_args__ = (

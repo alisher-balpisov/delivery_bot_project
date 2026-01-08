@@ -28,3 +28,16 @@ class ShopListResponse(BaseModel):
     total: int
     page: int
     pages: int
+
+
+class ShopStatsResponse(BaseModel):
+    active_orders: int
+    orders_today: int
+    active_disputes: int
+
+
+class ShopUpdate(BaseModel):
+    name: str | None = None
+    address: str | None = None
+    address_link: str | None = None
+    phone_number: list[str] | None = None

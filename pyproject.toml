@@ -29,6 +29,8 @@ dependencies = [
     "sqlalchemy>=2.0.43",
     "uvicorn>=0.35.0",
     "watchfiles>=1.1.0",
+    "aiodns>=3.6.1",
+    "faker>=40.1.0",
 ]
 
 # Зависимости, которые нужны только для разработки и тестирования
@@ -44,3 +46,24 @@ dev = [
 # Ссылки
 [project.urls]
 "Repository" = "https://github.com/alisher-balpisov/delivery_bot_project.git"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E: pycodestyle errors
+# F: Pyflakes
+# I: isort
+# B: flake8-bugbear
+# S: flake8-bandit (security)
+# UP: pyupgrade
+# N: pep8-naming
+# RUF: Ruff-specific rules
+select = ["E", "F", "I", "B", "S", "UP", "N", "RUF"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore assert (S101) and hardcoded passwords (S105, S106) in tests
+"tests/*" = ["S101", "S105", "S106"]
+"backend/tests/*" = ["S101", "S105", "S106"]

@@ -1,7 +1,11 @@
+# handlers_couriers.py — Хендлеры списка курьеров (для админа)
+from types import SimpleNamespace
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+
 from bot.clients.couriers_client import CouriersClient
 from bot.clients.orders_client import OrdersClient
 from bot.dto import UserDTO
@@ -30,9 +34,7 @@ async def show_couriers_handler(
     couriers_client: CouriersClient,
     user: UserDTO,
 ):
-    """
-    Показать список курьеров (первая страница, активные).
-    """
+    """Показать список курьеров (первая страница, активные)."""
     await list_couriers(
         callback=callback,
         token_manager=token_manager,
@@ -51,9 +53,7 @@ async def list_couriers_callback(
     couriers_client: CouriersClient,
     user: UserDTO,
 ):
-    """
-    Обработка пагинации и фильтрации списка курьеров.
-    """
+    """Обработка пагинации и фильтрации списка курьеров."""
     await list_couriers(
         callback=callback,
         token_manager=token_manager,
@@ -72,9 +72,7 @@ async def list_couriers(
     page: int,
     filter_val: CourierFilter,
 ):
-    """
-    Общая логика получения и отображения списка курьеров.
-    """
+    """Общая логика получения и отображения списка курьеров."""
     token = await token_manager.get_token(user.telegram_id)
 
     # Маппинг фильтра UI на параметры API
@@ -103,15 +101,8 @@ async def list_couriers(
     total = data.get("total", 0)
     size = data.get("size", 10)
 
-    # Конвертируем dict в объекты (так как Pydantic модели не всегда доступны/удобны здесь)
-    # Но лучше использовать валидацию. В данном случае items - это список dict.
-    # Для клавиатуры нам нужны объекты с атрибутами.
-    # Создадим простой класс-обертку или используем SimpleNamespace
-    from types import SimpleNamespace
-
-    courier_objects = []
-    for item in items:
-        courier_objects.append(SimpleNamespace(**item))
+    # Конвертируем dict в объекты с атрибутами
+    courier_objects = [SimpleNamespace(**item) for item in items]
 
     total_pages = (total + size - 1) // size if size > 0 else 1
 
@@ -141,9 +132,7 @@ async def open_courier_card(
     couriers_client: CouriersClient,
     user: UserDTO,
 ):
-    """
-    Открыть карточку курьера.
-    """
+    """Открыть карточку курьера."""
     token = await token_manager.get_token(user.telegram_id)
     courier_id = callback_data.courier_id
 
@@ -155,9 +144,8 @@ async def open_courier_card(
 
     courier = result.data
     # Формируем текст карточки
-    # Предполагаем поля: full_name, username, phone_numbers, is_active, rating
 
-    full_name = courier.get("full_name", "Не указано")
+    full_name = courier.get("full_name")
     username = courier.get("username")
     username_text = f"@{username}" if username else "Нет"
     phones = ", ".join(courier.get("phone_numbers", [])) or "Нет"
@@ -168,7 +156,7 @@ async def open_courier_card(
     user_status = courier.get("status", "unknown")
 
     text = (
-        f"👤 <b>Курьер: {full_name}</b>\n\n"
+        f"👤 <b>Курьер: {full_name.split()[1] if full_name else 'Не указано'}</b>\n\n"
         f"📱 Телеграм: {username_text}\n"
         f"📞 Телефон: {phones}\n"
         f"⭐️ Рейтинг: {rating_text}\n"
@@ -194,6 +182,7 @@ async def courier_history_handler_impl(
     orders_client: OrdersClient,
     user: UserDTO,
 ):
+    """Показать историю заказов курьера."""
     token = await token_manager.get_token(user.telegram_id)
     courier_id = callback_data.courier_id
     page = callback_data.page

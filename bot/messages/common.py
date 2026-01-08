@@ -2,7 +2,7 @@
 Модуль общих сообщений.
 """
 
-from typing import Final
+from typing import ClassVar, Final
 
 
 class CommonMessages:
@@ -30,8 +30,8 @@ class CommonMessages:
 class PublicMessages:
     """Сообщения для публичных команд."""
 
-    MENU_KEYWORDS = {"меню", "команды", "помощь", "help", "menu", "commands"}
-    STATUS_KEYWORDS = {"статус", "status", "мой статус", "my status"}
+    MENU_KEYWORDS: ClassVar[set[str]] = {"меню", "команды", "помощь", "help", "menu", "commands"}
+    STATUS_KEYWORDS: ClassVar[set[str]] = {"статус", "status", "мой статус", "my status"}
 
     HELP_HEADER: Final = "🤖 Доступные команды бота:"
     MAIN_COMMANDS: Final = "📋 Основные команды:"

@@ -1,22 +1,24 @@
+# handlers.py — Обработка help и текстового мусора
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
+
 from bot.dto import UserDTO
 from bot.messages import CommonMessages, PublicMessages
 
 from . import service
 
-public_router = Router(name="public_handlers")
+router = Router(name="public_handlers")
 
 
-@public_router.message(Command("help"))
+@router.message(Command("help"))
 async def help_handler(message: Message, user: UserDTO):
     """Показать доступные команды."""
     help_text = service.generate_help_text(user.role)
     await message.answer(help_text)
 
 
-@public_router.message(F.text)
+@router.message(F.text)
 async def handle_plain_text(message: Message, user: UserDTO):
     """Обработчик обычных текстовых сообщений."""
     text_lower = (message.text or "").lower()

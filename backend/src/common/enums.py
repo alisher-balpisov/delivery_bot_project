@@ -9,59 +9,89 @@ class TokenType(StrEnum):
 
 
 class UserRole(StrEnum):
-    GUEST = "guest"
-    ADMIN = "admin"
-    SHOP = "shop"
-    COURIER = "courier"
+    GUEST = "GUEST"
+    ADMIN = "ADMIN"
+    SHOP = "SHOP"
+    COURIER = "COURIER"
 
 
 class UserStatus(StrEnum):
-    PENDING_REGISTRATION = "pending_registration"
-    ACTIVE = "active"
-    BLOCKED = "blocked"
-    INACTIVE = "inactive"
+    PENDING_REGISTRATION = "PENDING_REGISTRATION"
+    ACTIVE = "ACTIVE"
+    BLOCKED = "BLOCKED"
+    INACTIVE = "INACTIVE"
+
+
+class DeliveryTimeType(StrEnum):
+    """Тип времени доставки заказа."""
+
+    ASAP = "ASAP"  # Срочная доставка (как можно быстрее)
+    TODAY = "TODAY"  # В течение дня (по умолчанию)
+    SCHEDULED = "SCHEDULED"  # К конкретному времени (delivery_time)
 
 
 class OrderStatus(StrEnum):
-    PENDING = "pending"  # Заказ создан и ожидает назначения свободного курьера
-    COURIER_EN_ROUTE = "courier_en_route"  # Курьер назначен и едет за заказом
-    DELIVERING = "delivering"  # Курьер доставляет заказ
-    SEMI_COMPLETED = "semi_completed"  # Заказ доставлен, но ожидает подтверждения
-    COMPLETED = "completed"  # Заказ завершён
+    """Статусы заказа согласно DBML-схеме."""
 
-    PENDING_COURIER = (
-        "pending_courier"  # (только для special_type), заказ ждёт подтверждения курьера
+    # ВАЖНО: Значения должны соответствовать тем, что в базе данных (часто в верхнем регистре)
+    PENDING = "PENDING"  # Заказ создан и ожидает назначения курьера
+    PENDING_COURIER = "PENDING_COURIER"  # Ожидает подтверждения курьера (special orders)
+    COURIER_EN_ROUTE = "COURIER_EN_ROUTE"  # Курьер назначен и едет за заказом
+    DELIVERING = "DELIVERING"  # Курьер доставляет заказ
+    AWAITING_CONFIRMATION = (
+        "SEMI_COMPLETED"  # Доставлен, ожидает подтверждения (в БД SEMI_COMPLETED)
     )
-    DISPUTED = "disputed"  # Возник спор
-    CANCELED = "canceled"  # Заказ отменён
+    COMPLETED = "COMPLETED"  # Заказ завершён
+    DISPUTED = "DISPUTED"  # Возник спор
+    CANCELED = "CANCELED"  # Заказ отменён
+
+    @classmethod
+    def active_statuses(cls) -> set[str]:
+        """Возвращает множество активных статусов заказа."""
+        return {
+            cls.PENDING.value,
+            cls.PENDING_COURIER.value,
+            cls.COURIER_EN_ROUTE.value,
+            cls.DELIVERING.value,
+            cls.AWAITING_CONFIRMATION.value,
+            cls.DISPUTED.value,
+        }
+
+    @classmethod
+    def completed_statuses(cls) -> set[str]:
+        """Возвращает множество завершённых статусов заказа."""
+        return {
+            cls.COMPLETED.value,
+            cls.CANCELED.value,
+        }
 
 
 class OrderType(StrEnum):
-    REGULAR = "regular"
-    SPECIAL = "special"
+    REGULAR = "REGULAR"
+    SPECIAL = "SPECIAL"
 
 
 class SpecialOrderType(StrEnum):
-    TIME = "time"
-    DISTANCE = "distance"
-    CUSTOM = "custom"
-    SUPPLY = "supply"
+    TIME = "TIME"
+    DISTANCE = "DISTANCE"
+    CUSTOM = "CUSTOM"
+    SUPPLY = "SUPPLY"
 
 
 class DisputeStatus(StrEnum):
-    PENDING_REVIEW = "pending_review"  # Спор открыт и ожидает рассмотрения
-    IN_REVIEW = "in_review"  # Спор находится в процессе активного рассмотрения
-    RESOLVED = "resolved"  # Спор был разрешён
+    PENDING_REVIEW = "PENDING_REVIEW"  # Спор открыт и ожидает рассмотрения
+    IN_REVIEW = "IN_REVIEW"  # Спор находится в процессе активного рассмотрения
+    RESOLVED = "RESOLVED"  # Спор был разрешён
 
 
 class DisputeResolutionType(StrEnum):
-    IN_FAVOR_OF_SHOP = "in_favor_of_shop"  # Спор решён в пользу магазина
-    IN_FAVOR_OF_COURIER = "in_favor_of_courier"  # Спор решён в пользу курьера
-    COMPROMISE = "compromise"  # Найдено компромиссное решение
-    OTHER = "other"  # Другой тип разрешения спора
+    IN_FAVOR_OF_SHOP = "IN_FAVOR_OF_SHOP"  # Спор решён в пользу магазина
+    IN_FAVOR_OF_COURIER = "IN_FAVOR_OF_COURIER"  # Спор решён в пользу курьера
+    COMPROMISE = "COMPROMISE"  # Найдено компромиссное решение
+    OTHER = "OTHER"  # Другой тип разрешения спора
 
 
 class ChangeType(StrEnum):
-    STATUS_UPDATE = "status_update"
-    DETAILS_UPDATE = "details_update"
-    COURIER_REASSIGN = "courier_reassign"  # Переназначение курьера на заказ
+    STATUS_UPDATE = "STATUS_UPDATE"
+    DETAILS_UPDATE = "DETAILS_UPDATE"
+    COURIER_REASSIGN = "COURIER_REASSIGN"  # Переназначение курьера на заказ

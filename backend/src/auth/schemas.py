@@ -10,6 +10,13 @@ class AuthByCodeRequest(BaseModel):
     username: str | None
 
 
+class GuestRegistrationRequest(BaseModel):
+    """Схема для регистрации гостя."""
+
+    telegram_id: int
+    username: str | None = None
+
+
 class UserInfo(BaseModel):
     id: int
     role: str

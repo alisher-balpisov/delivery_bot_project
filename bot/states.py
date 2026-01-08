@@ -15,3 +15,7 @@ class RegistrationStates(StatesGroup):
     """Состояния для процесса регистрации"""
 
     waiting_for_code = State()
+    waiting_for_shop_name = State()
+    waiting_for_shop_address = State()
+    waiting_for_shop_address_link = State()
+    waiting_for_shop_phone = State()

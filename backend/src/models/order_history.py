@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Index
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,7 +35,13 @@ class OrderHistory(Base):
         comment="ID пользователя, внесшего изменение (NULL для системных изменений)",
     )
     change_type: Mapped[ChangeType] = mapped_column(
-        ENUM(ChangeType, name="changetype", create_type=True), nullable=False
+        ENUM(
+            ChangeType,
+            name="changetype",
+            create_type=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
     )
     changes: Mapped[dict] = mapped_column(
         JSONB, nullable=False, comment="JSON с деталями изменений (старые/новые значения)"
@@ -46,3 +52,5 @@ class OrderHistory(Base):
     changed_by_user: Mapped[User | None] = relationship(
         back_populates="order_history_entries", lazy="joined"
     )
+
+    __table_args__ = (Index("ix_order_history_order_created", "order_id", "created_at"),)

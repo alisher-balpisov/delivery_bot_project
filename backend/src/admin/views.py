@@ -159,6 +159,7 @@ async def get_all_orders(
         None, description="Фильтр по статусу: active, inactive или blocked"
     ),
     search: str | None = Query(None, description="Поиск по имени магазина или имени пользователя"),
+    current: bool | None = Query(None, description="true=активные, false=завершённые"),
 ):
     """
     Просмотреть все заказы системы (админ-панель).
@@ -171,7 +172,7 @@ async def get_all_orders(
     page, limit = pagination
     logger.info(
         f"Администратор {current_user} запрашивает список заказов: "
-        f"{page=}, {limit=}, {status=}, {search=}"
+        f"{page=}, {limit=}, {status=}, {search=}, {current=}"
     )
 
     try:
@@ -181,6 +182,7 @@ async def get_all_orders(
             limit=limit,
             status=status,
             search=search,
+            current=current,
         )
 
         logger.info(

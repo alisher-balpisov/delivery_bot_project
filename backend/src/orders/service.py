@@ -2,17 +2,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import contains_eager, joinedload
 
-from backend.src.common.constants import (
-    COURIER_ALLOWED_FIELDS,
-    FINAL_STATUSES,
-    RESPONSE_SCHEMAS,
-    PaginatedResponse,
-)
+from backend.src.common.constants import COURIER_ALLOWED_FIELDS, RESPONSE_SCHEMAS, PaginatedResponse
 from backend.src.common.enums import OrderStatus, UserRole
+from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
 from backend.src.models.order import Order
@@ -187,7 +183,7 @@ def _ensure_order_not_finalized(order: Order) -> None:
     Raises:
         OrderUpdateForbiddenException: Если заказ завершён/отменён
     """
-    if order.status in FINAL_STATUSES:
+    if order.status in OrderStatus.completed_statuses():
         logger.warning(
             f"Попытка изменить заказ {order.id} в финальном статусе {order.status.value}"
         )
@@ -456,33 +452,55 @@ async def get_orders_list(
     Возвращает пагинированный список заказов с фильтрами.
 
     Список адаптирован под роль пользователя.
-
-    Args:
-        db: Сессия БД
-        user: Текущий пользователь
-        filters: Параметры фильтрации и пагинации
-
-    Returns:
-        PaginatedResponse с заказами
-
-    Raises:
-        HTTPException: При попытке использовать запрещённые фильтры
     """
     # Валидируем фильтры для роли
     _validate_filters_for_role(user, filters)
 
-    # Строим запрос
-    stmt = _build_orders_query(user, filters)
+    # Определяем базовые фильтры
+    additional_filters = []
+    if user.role == UserRole.SHOP:
+        if not user.shop:
+            raise OrderAccessForbiddenException("У вас нет профиля магазина")
+        additional_filters.append(Order.shop_id == user.shop.id)
+    elif user.role == UserRole.COURIER:
+        if not user.courier:
+            raise OrderAccessForbiddenException("У вас нет профиля курьера")
+        additional_filters.append(Order.courier_id == user.courier.id)
+    elif user.role == UserRole.ADMIN:
+        if filters.shop_id:
+            additional_filters.append(Order.shop_id == filters.shop_id)
+        if filters.courier_id:
+            additional_filters.append(Order.courier_id == filters.courier_id)
 
-    # Считаем общее количество
-    total = await _count_orders(db, stmt)
+    # Фильтры статуса (из OrderListFilters logic)
+    if filters.current is True:
+        additional_filters.append(Order.status.in_(OrderStatus.active_statuses()))
+    elif filters.current is False:
+        additional_filters.append(Order.status.in_(OrderStatus.completed_statuses()))
 
-    # Применяем пагинацию
-    stmt = stmt.offset((filters.page - 1) * filters.limit).limit(filters.limit)
-
-    # Получаем заказы
-    result = await db.execute(stmt)
-    orders = result.scalars().all()
+    # Используем универсальную пагинацию
+    total, orders = await get_paginated_list(
+        db=db,
+        model=Order,
+        page=filters.page,
+        limit=filters.limit,
+        status=filters.status,
+        status_field="status",
+        # Для эффективного поиска нужны джоины
+        joins=[
+            (Shop, Order.shop_id == Shop.id, True),
+            (Courier, Order.courier_id == Courier.id, True),
+        ],
+        eager_load_options=[
+            contains_eager(Order.shop).joinedload(Shop.user),
+            contains_eager(Order.courier).joinedload(Courier.user),
+        ],
+        search=None,  # Здесь search не используется из схем, но если бы был - добавили бы
+        search_fields=[Shop.name, Courier.full_name, Order.description],
+        sort_by_field="created_at",
+        sort_desc=True,
+        additional_filters=additional_filters,
+    )
 
     # Преобразуем в схемы
     response_schema = _get_list_item_schema(user.role)
@@ -519,96 +537,7 @@ def _validate_filters_for_role(user: User, filters: OrderListFilters) -> None:
         )
 
 
-def _build_orders_query(user: User, filters: OrderListFilters):
-    """Строит SQL-запрос с учётом роли и фильтров."""
-    stmt = (
-        select(Order)
-        .options(
-            joinedload(Order.shop).joinedload(Shop.user),
-            joinedload(Order.courier).joinedload(Courier.user),
-        )
-        .order_by(Order.created_at.desc())
-    )
-
-    # Применяем фильтры в зависимости от роли
-    if user.role == UserRole.SHOP:
-        stmt = _apply_shop_filters(stmt, user, filters)
-    elif user.role == UserRole.COURIER:
-        stmt = _apply_courier_filters(stmt, user, filters)
-    elif user.role == UserRole.ADMIN:
-        stmt = _apply_admin_filters(stmt, filters)
-    else:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
-
-    return stmt
-
-
-def _apply_shop_filters(stmt, user: User, filters: OrderListFilters):
-    """Применяет фильтры для магазина."""
-    if not user.shop:
-        raise OrderAccessForbiddenException("У вас нет профиля магазина")
-
-    # Магазин видит только свои заказы
-    stmt = stmt.where(Order.shop_id == user.shop.id)
-
-    # Фильтр по статусу
-    if filters.status:
-        stmt = stmt.where(Order.status == filters.status)
-
-    # Фильтр по текущим/завершённым
-    if filters.current is True:
-        stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
-    elif filters.current is False:
-        stmt = stmt.where(Order.status.in_(FINAL_STATUSES))
-
-    return stmt
-
-
-def _apply_courier_filters(stmt, user: User, filters: OrderListFilters):
-    """Применяет фильтры для курьера."""
-    if not user.courier:
-        raise OrderAccessForbiddenException("У вас нет профиля курьера")
-
-    # Курьер видит только свои заказы
-    stmt = stmt.where(Order.courier_id == user.courier.id)
-
-    # Фильтр по статусу
-    if filters.status:
-        stmt = stmt.where(Order.status == filters.status)
-
-    # Фильтр по текущим/завершённым
-    if filters.current is True:
-        stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
-    elif filters.current is False:
-        stmt = stmt.where(Order.status.in_(FINAL_STATUSES))
-
-    return stmt
-
-
-def _apply_admin_filters(stmt, filters: OrderListFilters):
-    """Применяет фильтры для администратора."""
-    if filters.shop_id:
-        stmt = stmt.where(Order.shop_id == filters.shop_id)
-
-    if filters.courier_id:
-        stmt = stmt.where(Order.courier_id == filters.courier_id)
-
-    if filters.status:
-        stmt = stmt.where(Order.status == filters.status)
-
-    if filters.current is True:
-        stmt = stmt.where(Order.status.not_in(FINAL_STATUSES))
-    elif filters.current is False:
-        stmt = stmt.where(Order.status.in_(FINAL_STATUSES))
-
-    return stmt
-
-
-async def _count_orders(db: AsyncSession, stmt) -> int:
-    """Подсчитывает общее количество заказов."""
-    count_stmt = select(func.count()).select_from(stmt.subquery())
-    result = await db.execute(count_stmt)
-    return result.scalar_one()
+# Устаревшие функции удалены, так как теперь используется get_paginated_list
 
 
 def _get_list_item_schema(role: UserRole):
@@ -660,7 +589,7 @@ async def complete_order(
         raise OrderUpdateForbiddenException("Вы можете завершать только назначенные вам заказы")
 
     # Проверяем статус
-    allowed_statuses = {OrderStatus.DELIVERING, OrderStatus.SEMI_COMPLETED}
+    allowed_statuses = {OrderStatus.DELIVERING, OrderStatus.AWAITING_CONFIRMATION}
     if order.status not in allowed_statuses:
         raise OrderUpdateForbiddenException(
             f"Невозможно завершить заказ в статусе {order.status.value}. "

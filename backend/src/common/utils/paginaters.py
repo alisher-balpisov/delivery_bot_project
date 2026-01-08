@@ -140,10 +140,12 @@ async def _get_total_count(
     filters: list[ColumnElement[bool]] | None,
     joins: Sequence[tuple[type, ColumnElement[bool]] | tuple[type, ColumnElement[bool], bool]]
     | None,
+    apply_joins: bool = True,
 ) -> int:
     """Получает общее количество записей с учетом фильтров."""
     count_query = select(func.count()).select_from(model)
-    count_query = _apply_joins(count_query, joins)
+    if apply_joins:
+        count_query = _apply_joins(count_query, joins)
 
     if filters:
         count_query = count_query.where(*filters)
@@ -194,6 +196,7 @@ async def get_paginated_list[ModelType](
     eager_load_options: list[ORMOption] | None = None,
     sort_by_field: str = "id",
     sort_desc: bool = False,
+    additional_filters: list[ColumnElement[bool]] | None = None,
 ) -> tuple[int, list[ModelType]]:
     """
     Универсальная функция для получения пагинированного списка сущностей.
@@ -212,6 +215,7 @@ async def get_paginated_list[ModelType](
         eager_load_options: Опции для загрузки связанных объектов
         sort_by_field: Поле для сортировки
         sort_desc: Сортировать по убыванию
+        additional_filters: Дополнительные фильтры SQLAlchemy (optional)
     """
     _validate_pagination_params(page, limit)
 
@@ -224,7 +228,17 @@ async def get_paginated_list[ModelType](
         search_fields=search_fields,
     )
 
-    total = await _get_total_count(db, model, filters, joins)
+    if filters is None:
+        filters = []
+
+    if additional_filters:
+        filters.extend(additional_filters)
+
+    # Оптимизация: не делаем JOIN для подсчета, если нет поиска
+    # (предполагаем, что дополнительные фильтры не используют джойны,
+    #  либо они должны быть явно указаны как необходимые для подсчета)
+    apply_joins_for_count = bool(search and search_fields)
+    total = await _get_total_count(db, model, filters, joins, apply_joins=apply_joins_for_count)
 
     if not total:
         return 0, []
