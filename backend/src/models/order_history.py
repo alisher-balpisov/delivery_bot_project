@@ -32,7 +32,7 @@ class OrderHistory(Base):
         ForeignKey("users.id"),
         nullable=True,
         index=True,
-        comment="ID пользователя, внесшего изменение (NULL для системных изменений)",
+        comment="ID пользователя, внесшего изменение",
     )
     change_type: Mapped[ChangeType] = mapped_column(
         ENUM(
@@ -44,7 +44,7 @@ class OrderHistory(Base):
         nullable=False,
     )
     changes: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, comment="JSON с деталями изменений (старые/новые значения)"
+        JSONB, nullable=False, comment="JSON с деталями изменений"
     )
 
     # Связи

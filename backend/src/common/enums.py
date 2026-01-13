@@ -33,14 +33,11 @@ class DeliveryTimeType(StrEnum):
 class OrderStatus(StrEnum):
     """Статусы заказа согласно DBML-схеме."""
 
-    # ВАЖНО: Значения должны соответствовать тем, что в базе данных (часто в верхнем регистре)
     PENDING = "PENDING"  # Заказ создан и ожидает назначения курьера
-    PENDING_COURIER = "PENDING_COURIER"  # Ожидает подтверждения курьера (special orders)
+    PENDING_COURIER = "PENDING_COURIER"  # Ожидает подтверждения курьера
     COURIER_EN_ROUTE = "COURIER_EN_ROUTE"  # Курьер назначен и едет за заказом
     DELIVERING = "DELIVERING"  # Курьер доставляет заказ
-    AWAITING_CONFIRMATION = (
-        "SEMI_COMPLETED"  # Доставлен, ожидает подтверждения (в БД SEMI_COMPLETED)
-    )
+    AWAITING_CONFIRMATION = "AWAITING_CONFIRMATION"  # Доставлен, ожидает подтверждения
     COMPLETED = "COMPLETED"  # Заказ завершён
     DISPUTED = "DISPUTED"  # Возник спор
     CANCELED = "CANCELED"  # Заказ отменён
@@ -67,11 +64,7 @@ class OrderStatus(StrEnum):
 
 
 class OrderType(StrEnum):
-    REGULAR = "REGULAR"
-    SPECIAL = "SPECIAL"
-
-
-class SpecialOrderType(StrEnum):
+    REGULAR = "regular"
     TIME = "TIME"
     DISTANCE = "DISTANCE"
     CUSTOM = "CUSTOM"
@@ -79,6 +72,7 @@ class SpecialOrderType(StrEnum):
 
 
 class DisputeStatus(StrEnum):
+    CANCELLED = "CANCELLED"  # Спор отменен
     PENDING_REVIEW = "PENDING_REVIEW"  # Спор открыт и ожидает рассмотрения
     IN_REVIEW = "IN_REVIEW"  # Спор находится в процессе активного рассмотрения
     RESOLVED = "RESOLVED"  # Спор был разрешён

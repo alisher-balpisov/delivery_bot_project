@@ -45,26 +45,13 @@ async def create_order(
 ):
     """
     Создаёт новый заказ от имени магазина.
-
-    ## Права доступа
-    - Доступно только магазинам
-
-    ## Типы заказов
-    - **regular**: обычный заказ, курьер назначается автоматически
-    - **special**: специальный заказ, требуется указать courier_id
-
-    ## Коды ответа
-    - **201**: заказ успешно создан
-    - **400**: некорректные данные или курьер не найден
-    - **401**: пользователь не авторизован
-    - **403**: недостаточно прав (не магазин)
     """
     logger.info(f"Создание заказа: {current_user.shop}, order_type={order_in.order_type.value}")
 
     try:
         order = await service.create_order(
             db=db,
-            order_in=order_in,
+            order_params=order_in,
             shop_id=current_user.shop.id,  # type: ignore
         )
 

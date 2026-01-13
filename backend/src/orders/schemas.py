@@ -1,10 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.src.common.enums import OrderStatus, OrderType, SpecialOrderType
+from backend.src.common.constants import MAX_ALLOWED_DATE_FOR_ORDER
+from backend.src.common.enums import DeliveryTimeType, OrderStatus, OrderType
 
 PhoneFlexible = str
 
@@ -12,57 +13,84 @@ PhoneFlexible = str
 class OrderCreateRequest(BaseModel):
     """Схема для создания нового заказа магазином (входные данные API)."""
 
-    description: str | None = Field(None, max_length=1000)
-    recipient_address: str = Field(..., max_length=500)
-    recipient_phone: PhoneFlexible
+    courier_id: int | None = Field(None, description="ID курьера (для специальных типов заказов)")
     delivery_time: datetime | None = None
-
-    courier_id: int | None = Field(None, description="ID курьера (только для special заказов)")
-    order_type: OrderType = Field(OrderType.REGULAR, description="Тип заказа: regular или special")
-    special_type: SpecialOrderType | None = Field(
-        None, description="Тип специального заказа (только если order_type=special)"
+    delivery_time_type: DeliveryTimeType = Field(DeliveryTimeType.TODAY)
+    order_type: OrderType = Field(OrderType.REGULAR, description="Тип заказа")
+    price: Decimal = Field(
+        ...,
+        ge=3000,
+        le=20000,
+        multiple_of=1,
+        description="Цена доставки, устанавливаемая магазином",
     )
-    price: Decimal = Field(..., gt=0, description="Цена доставки, устанавливаемая магазином")
-    client_phone: PhoneFlexible = Field(..., description="Телефон клиента")
+    description: str | None = Field(None, max_length=1000)
 
     @model_validator(mode="after")
-    def validate_order_type_logic(self):
-        """Валидация логики типов заказов"""
-        # Проверка: если order_type == regular, то special_type должен быть None
-        if self.order_type == OrderType.REGULAR and self.special_type is not None:
-            raise ValueError("Для обычного заказа (regular) special_type должен быть None")
-
-        # Проверка: если order_type == special, то special_type должен быть указан
-        if self.order_type == OrderType.SPECIAL and self.special_type is None:
-            raise ValueError("Для специального заказа (special) необходимо указать special_type")
-
-        # Проверка: courier_id должен быть указан только для special заказов
-        if self.order_type == OrderType.REGULAR and self.courier_id is not None:
-            raise ValueError("Для обычного заказа (regular) нельзя указывать courier_id")
-
-        if self.order_type == OrderType.SPECIAL and self.courier_id is None:
-            raise ValueError("Для специального заказа (special) необходимо указать courier_id")
+    def validate_delivery_type_consistency(self) -> "OrderCreateRequest":
+        # Если заказали "Как можно скорее" (ASAP), конкретное время обычно не указывают
+        if self.delivery_time_type == DeliveryTimeType.ASAP and self.delivery_time is not None:
+            # Либо ошибка, либо ворнинг, либо зануление
+            # raise ValueError("При выборе ASAP нельзя указывать конкретное время доставки")
+            self.delivery_time = None  # Или просто очищаем лишнее
 
         return self
 
     @model_validator(mode="after")
-    def validate_delivery_time_logic(self) -> "OrderCreateRequest":
-        """Валидация логики времени доставки для специальных заказов"""
-        # Для заказов типа TIME время доставки обязательно
-        if self.special_type == SpecialOrderType.TIME and self.delivery_time is None:
-            raise ValueError("Для заказа типа TIME необходимо указать время доставки")
+    def validate_max_future_date(self):
+        """
+        Проверка горизота планирования.
+        """
+        if self.delivery_time:
+            now_utc = datetime.now(UTC)
 
-        # Опционально: проверить, что время доставки в будущем (если указано)
-        if self.delivery_time is not None and self.delivery_time <= datetime.now(UTC):
-            raise ValueError("Время доставки должно быть в будущем")
+            # Приводим delivery_time к UTC для корректного сравнения
+            check_time = self.delivery_time
+            if check_time.tzinfo is None:
+                check_time = check_time.replace(tzinfo=UTC)
 
+            max_allowed_date = now_utc + timedelta(days=MAX_ALLOWED_DATE_FOR_ORDER)
+            if check_time > max_allowed_date:
+                raise ValueError(
+                    f"Нельзя планировать доставку более чем на {MAX_ALLOWED_DATE_FOR_ORDER} дней вперед"
+                )
         return self
 
+    @model_validator(mode="after")
+    def validate_order_logic(self):
+        """
+        Комплексная валидация логики заказа.
+        """
+        # --- 1. Валидация связки OrderType и Courier ---
+        if self.order_type == OrderType.REGULAR:
+            if self.courier_id is not None:
+                raise ValueError(
+                    "Для обычного заказа (regular) нельзя указывать courier_id. Он назначается системой."
+                )
+        else:
+            if self.courier_id is None:
+                raise ValueError(
+                    f"Для заказа типа {self.order_type.value} необходимо указать courier_id."
+                )
 
-class OrderCreate(OrderCreateRequest):
-    """Схема для создания нового заказа (внутреннее использование в сервисах)."""
+        # --- 2. Валидация времени доставки ---
+        if self.order_type == OrderType.TIME and self.delivery_time is None:
+            raise ValueError("Для заказа типа TIME необходимо указать поле delivery_time.")
 
-    shop_id: int
+        if self.delivery_time is not None:
+            now_utc = datetime.now(UTC)
+            input_time = self.delivery_time
+
+            # Обработка таймзоны
+            if input_time.tzinfo is None:
+                input_time = input_time.replace(tzinfo=UTC)
+
+            if input_time <= now_utc:
+                raise ValueError(
+                    f"Время доставки должно быть в будущем. (Сейчас: {now_utc.strftime('%H:%M')})"
+                )
+
+        return self
 
 
 class OrderUpdate(BaseModel):
@@ -105,7 +133,6 @@ class OrderResponse(BaseModel):
     id: int
     status: OrderStatus
     order_type: OrderType
-    special_type: SpecialOrderType | None = None
 
     client_phone: str
     photo_report_id: str | None = None
@@ -140,7 +167,6 @@ class OrderCardResponse(BaseModel):
     courier_name: str | None
     status: OrderStatus
     order_type: OrderType
-    special_type: SpecialOrderType | None = None
     price: Decimal
     recipient_address: str
     created_at: datetime
@@ -164,7 +190,6 @@ class OrderCardResponse(BaseModel):
                 "courier_name": courier_name,
                 "status": v.status,
                 "order_type": v.order_type,
-                "special_type": v.special_type,
                 "price": v.price,
                 "recipient_address": v.recipient_address,
                 "created_at": v.created_at,
@@ -191,7 +216,6 @@ class OrderListItemForShop(BaseModel):
     id: int
     status: OrderStatus
     order_type: OrderType
-    special_type: SpecialOrderType | None = None
     price: Decimal
     recipient_address: str
     delivery_time: datetime | None = None
@@ -207,7 +231,6 @@ class OrderListItemForCourier(BaseModel):
     id: int
     status: OrderStatus
     order_type: OrderType
-    special_type: SpecialOrderType | None = None
     recipient_address: str
     recipient_phone: str
     delivery_time: datetime | None = None
@@ -223,7 +246,6 @@ class OrderListItemForAdmin(BaseModel):
     id: int
     status: OrderStatus
     order_type: OrderType
-    special_type: SpecialOrderType | None = None
     price: Decimal
     recipient_address: str
     delivery_time: datetime | None = None

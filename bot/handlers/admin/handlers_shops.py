@@ -200,7 +200,13 @@ async def shop_history_handler(
                             filter_type=callback_data.filter_type,
                         ).pack(),
                     )
-                ]
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Главное меню",
+                        callback_data="admin_menu",
+                    )
+                ],
             ]
         )
     else:
@@ -228,6 +234,7 @@ async def shop_history_handler(
             total_pages=total_pages,
             back_callback_data=back_callback,
             callback_factory=callback_factory,
+            show_main_menu=True,  # Добавляем флаг для отображения кнопки главного меню
         )
 
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")

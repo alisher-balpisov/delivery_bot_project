@@ -38,7 +38,7 @@ class Shop(Base):
         String(512), nullable=True, comment="Адрес магазина"
     )
     address_link: Mapped[str | None] = mapped_column(
-        String(512), nullable=True, comment="Ссылка на адрес магазина (например, Google Maps)"
+        String(512), nullable=True, comment="Ссылка на адрес магазина"
     )
     phone_number: Mapped[list[str] | None] = mapped_column(
         ARRAY(String(30)), nullable=True, comment="Контактные номера телефонов магазина"

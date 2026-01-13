@@ -1,12 +1,18 @@
 from datetime import UTC, datetime
 from typing import Any
 
+from fake_db import OrderType
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, joinedload
 
-from backend.src.common.constants import COURIER_ALLOWED_FIELDS, RESPONSE_SCHEMAS, PaginatedResponse
+from backend.src.common.constants import (
+    ACTIVE_STATUSES_FOR_COURIER,
+    COURIER_ALLOWED_FIELDS,
+    RESPONSE_SCHEMAS,
+    PaginatedResponse,
+)
 from backend.src.common.enums import OrderStatus, UserRole
 from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.logging import get_logger
@@ -22,7 +28,6 @@ from .exceptions import (
     OrderUpdateForbiddenException,
 )
 from .schemas import (
-    OrderCreate,
     OrderCreateRequest,
     OrderListFilters,
     OrderListItemForAdmin,
@@ -37,71 +42,71 @@ logger = get_logger(__name__)
 # ==================== СОЗДАНИЕ ЗАКАЗА ====================
 
 
-async def create_order(db: AsyncSession, order_in: OrderCreateRequest, shop_id: int) -> Order:
+async def create_order(db: AsyncSession, order_params: OrderCreateRequest, shop_id: int) -> Order:
     """
     Создаёт новый заказ для магазина.
-
-    Args:
-        db: Сессия базы данных
-        order_in: Данные заказа от API
-        shop_id: ID магазина-создателя
-
-    Returns:
-        Созданный заказ
-
-    Raises:
-        HTTPException: Если курьер не существует (для special заказов)
     """
-    # Преобразуем внешнюю схему во внутреннюю
-    order_data = OrderCreate(**order_in.model_dump(), shop_id=shop_id)
+    courier_id_to_assign = order_params.courier_id
 
-    # Валидируем курьера для special заказов
-    if order_data.courier_id:
-        await _validate_courier_exists(db, order_data.courier_id)
+    if order_params.order_type == OrderType.REGULAR:
+        found_courier_id = await search_courier(db)
+        if not found_courier_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Нет доступных курьеров для назначения",
+            )
+        courier_id_to_assign = found_courier_id
 
-    # Создаём ORM-объект
-    order = _build_order_entity(order_data)
+    elif courier_id_to_assign is not None:
+        await _validate_courier_exists(db, courier_id_to_assign)
 
-    # Сохраняем в БД
-    db.add(order)
-    await db.flush()
-    await db.refresh(order)
+    order = Order(
+        **order_params.model_dump(exclude={"courier_id"}),
+        courier_id=courier_id_to_assign,
+        shop_id=shop_id,
+        status=OrderStatus.PENDING,
+    )
+
+    async with db.begin():
+        db.add(order)
+        await db.flush()
+        await db.refresh(order)
 
     logger.info(
-        f"Создан заказ {order}: shop_id={shop_id}, "
+        f"УСПЕШНО создан заказ {order.id}: shop_id={shop_id}, "
         f"type={order.order_type.value}, courier_id={order.courier_id}"
     )
 
     return order
 
 
-def _build_order_entity(order_data: OrderCreate) -> Order:
-    """Создаёт ORM-модель заказа из схемы данных."""
-    return Order(
-        shop_id=order_data.shop_id,
-        courier_id=order_data.courier_id,
-        status=OrderStatus.PENDING,
-        order_type=order_data.order_type,
-        special_type=order_data.special_type,
-        price=order_data.price,
-        client_phone=order_data.client_phone,
-        recipient_address=order_data.recipient_address,
-        recipient_phone=order_data.recipient_phone,
-        delivery_time=order_data.delivery_time,
-        description=order_data.description,
+async def search_courier(db: AsyncSession) -> int | None:
+    """
+    Находит ID активного курьера с наименьшим количеством активных заказов.
+    """
+    query = (
+        select(Courier.id)
+        .outerjoin(
+            Order,
+            and_(Order.courier_id == Courier.id, Order.status.in_(ACTIVE_STATUSES_FOR_COURIER)),
+        )
+        .where(Courier.is_active)
+        .group_by(Courier.id)
+        .order_by(func.count(Order.id).asc())
+        .limit(1)
     )
+
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
 
 
 async def _validate_courier_exists(db: AsyncSession, courier_id: int) -> None:
-    """
-    Проверяет существование курьера в БД.
-
-    Raises:
-        HTTPException: Если курьер не найден
-    """
-    courier = await db.get(Courier, courier_id)
-    if not courier:
-        logger.error(f"Попытка создать заказ с несуществующим courier_id={courier_id}")
+    result = await db.scalar(select(1).where(Courier.id == courier_id))
+    if result is None:
+        logger.error(
+            "Попытка создать заказ с несуществующим courier_id=%s",
+            courier_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Курьер с ID {courier_id} не найден",

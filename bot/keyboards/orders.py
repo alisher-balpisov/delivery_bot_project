@@ -15,6 +15,7 @@ def get_orders_list_keyboard(
     callback_factory: Callable[[str, int, int | None], str],
     filter_status: str | None = None,
     filter_callback_factory: Callable[[str], str] | None = None,
+    show_main_menu: bool = False,
 ) -> InlineKeyboardMarkup:
     """
     Генерация клавиатуры со списком заказов.
@@ -120,13 +121,12 @@ def get_orders_list_keyboard(
 
     builder.row(*pagination_buttons)
 
-    # Кнопка Назад
-    builder.row(
-        InlineKeyboardButton(
-            text="Назад",
-            callback_data=back_callback_data,
-        ),
-    )
+    buttons = [InlineKeyboardButton(text="Назад", callback_data=back_callback_data)]
+
+    if show_main_menu:
+        buttons.append(InlineKeyboardButton(text="Главное меню", callback_data="admin_menu"))
+
+    builder.row(*buttons)
 
     return builder.as_markup()
 

@@ -4,11 +4,11 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Index, String, Text, or_
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.src.common.enums import DeliveryTimeType, OrderStatus, OrderType, SpecialOrderType
+from backend.src.common.enums import DeliveryTimeType, OrderStatus, OrderType
 from backend.src.core.database import Base
 
 if TYPE_CHECKING:
@@ -61,26 +61,11 @@ class Order(Base):
         nullable=False,
         default=OrderType.REGULAR,
     )
-    special_type: Mapped[SpecialOrderType | None] = mapped_column(
-        ENUM(
-            SpecialOrderType,
-            name="specialordertype",
-            create_type=True,
-            values_callable=lambda x: [e.value for e in x],
-        ),
-        nullable=True,
-    )
 
     price: Mapped[Decimal] = mapped_column(
-        DECIMAL(10, 2), nullable=False, comment="Стоимость доставки"
+        DECIMAL(10, 0), nullable=False, comment="Стоимость доставки"
     )
-    client_phone: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="Телефон клиента (заказчика в магазине)"
-    )
-    recipient_address: Mapped[str] = mapped_column(Text, nullable=False, comment="Адрес получателя")
-    recipient_phone: Mapped[str] = mapped_column(
-        String(50), nullable=False, comment="Телефон получателя"
-    )
+
     delivery_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True, comment="Желаемое время доставки"
     )
@@ -106,11 +91,10 @@ class Order(Base):
         DateTime(timezone=True), nullable=True, comment="Дата и время завершения заказа"
     )
 
-    # Связи многие-к-одному (родительские)
+    # Связи
     shop: Mapped[Shop] = relationship(back_populates="orders", lazy="selectin")
     courier: Mapped[Courier | None] = relationship(back_populates="orders", lazy="selectin")
 
-    # Связи один-ко-многим и один-к-одному (дочерние)
     history: Mapped[list[OrderHistory]] = relationship(
         back_populates="order", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -125,24 +109,10 @@ class Order(Base):
     )
 
     __table_args__ = (
-        CheckConstraint(
-            "length(trim(client_phone)) > 0", name="check_order_client_phone_not_empty"
-        ),
-        CheckConstraint(
-            "length(trim(recipient_address)) > 0", name="check_order_recipient_address_not_empty"
-        ),
-        CheckConstraint(
-            "length(trim(recipient_phone)) > 0", name="check_order_recipient_phone_not_empty"
-        ),
         CheckConstraint("price > 0", name="check_price_positive"),
         CheckConstraint(
-            (status != OrderStatus.COMPLETED) | (completed_at is not None),
+            or_(status != OrderStatus.COMPLETED, completed_at.is_not(None)),
             name="check_completed_at_if_completed",
-        ),
-        CheckConstraint(
-            ((order_type == OrderType.REGULAR) & (special_type.is_(None)))
-            | ((order_type == OrderType.SPECIAL) & (special_type.is_not(None))),
-            name="check_special_type_logic",
         ),
         Index("ix_orders_shop_status", "shop_id", "status"),
         Index("ix_orders_courier_status", "courier_id", "status"),

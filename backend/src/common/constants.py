@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 SECONDS_IN_MINUTE = 60
 MINUTES_IN_HOUR = 60
 HOURS_IN_DAY = 24
+MAX_ALLOWED_DATE_FOR_ORDER = 365
 
 # ==============================================================================
 # Типы
@@ -52,6 +53,13 @@ RetrievePermissionCheck = Callable[[User, Order], Awaitable[None]]
 
 COURIER_ALLOWED_FIELDS = {"status", "courier_notes", "completion_notes"}
 FINAL_STATUSES = {OrderStatus.COMPLETED, OrderStatus.CANCELED}
+ACTIVE_STATUSES_FOR_COURIER = [
+    OrderStatus.PENDING_COURIER,
+    OrderStatus.COURIER_EN_ROUTE,
+    OrderStatus.DELIVERING,
+    OrderStatus.AWAITING_CONFIRMATION,
+    OrderStatus.DISPUTED,
+]
 
 # ==============================================================================
 # Маппинг схем ответов по ролям

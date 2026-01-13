@@ -44,9 +44,7 @@ class CourierRating(Base):
         comment="ID курьера, которому выставлен рейтинг",
     )
 
-    rating: Mapped[int | None] = mapped_column(
-        nullable=True, comment="Рейтинг от 1 до 5 (NULL если еще не выставлен)"
-    )
+    rating: Mapped[int | None] = mapped_column(nullable=True, comment="Рейтинг от 1 до 5")
     comment: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Комментарий к рейтингу"
     )
