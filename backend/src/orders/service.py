@@ -10,10 +10,10 @@ from sqlalchemy.orm import contains_eager, joinedload
 from backend.src.common.constants import (
     ACTIVE_STATUSES_FOR_COURIER,
     COURIER_ALLOWED_FIELDS,
-    RESPONSE_SCHEMAS,
     PaginatedResponse,
 )
 from backend.src.common.enums import OrderStatus, UserRole
+from backend.src.common.types import RESPONSE_SCHEMAS
 from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier

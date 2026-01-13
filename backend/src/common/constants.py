@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from backend.src.auth.dependencies import User
-from backend.src.common.enums import OrderStatus, UserRole
+from backend.src.common.enums import OrderStatus
 
 # Импорт констант валидации из нового модуля
 from backend.src.common.validation import (
@@ -12,11 +12,6 @@ from backend.src.common.validation import (
     ValidationRules,
 )
 from backend.src.models.order import Order
-from backend.src.orders.schemas import (
-    OrderResponseForAdmin,
-    OrderResponseForCourier,
-    OrderResponseForShop,
-)
 from pydantic import BaseModel, Field
 
 # ==============================================================================
@@ -37,7 +32,6 @@ MAX_ALLOWED_DATE_FOR_ORDER = 365
 # Типы
 # ==============================================================================
 
-type OrderResponseSchema = OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier
 type UpdatePayload = dict[str, Any]
 
 # ==============================================================================
@@ -61,15 +55,6 @@ ACTIVE_STATUSES_FOR_COURIER = [
     OrderStatus.DISPUTED,
 ]
 
-# ==============================================================================
-# Маппинг схем ответов по ролям
-# ==============================================================================
-
-RESPONSE_SCHEMAS: dict[UserRole, type[OrderResponseSchema]] = {
-    UserRole.ADMIN: OrderResponseForAdmin,
-    UserRole.SHOP: OrderResponseForShop,
-    UserRole.COURIER: OrderResponseForCourier,
-}
 
 # ==============================================================================
 # Общая модель пагинированного ответа
@@ -93,11 +78,9 @@ __all__ = [
     "FINAL_STATUSES",
     "HOURS_IN_DAY",
     "MINUTES_IN_HOUR",
-    "RESPONSE_SCHEMAS",
     "SECONDS_IN_MINUTE",
     "VALIDATION",
     "CommissionRules",
-    "OrderResponseSchema",
     "PaginatedResponse",
     "RetrievePermissionCheck",
     "UpdatePayload",

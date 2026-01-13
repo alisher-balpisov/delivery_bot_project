@@ -9,6 +9,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, TypeVar
 
 from backend.src.common.enums import OrderStatus, UserRole
+from backend.src.orders.schemas import (
+    OrderResponseForAdmin,
+    OrderResponseForCourier,
+    OrderResponseForShop,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ==============================================================================
@@ -114,7 +119,6 @@ FilterParams = dict[str, Any]
 # Функция для применения фильтров
 FilterFunction = Callable[[Any, FilterParams], Any]
 
-
 # ==============================================================================
 # Права доступа
 # ==============================================================================
@@ -126,6 +130,16 @@ AllowedRoles = set[UserRole]
 PermissionCheck = Callable[[Any, Any], Awaitable[bool]]
 
 
+# ==============================================================================
+# Маппинг схем ответов по ролям
+# ==============================================================================
+type OrderResponseSchema = OrderResponseForAdmin | OrderResponseForShop | OrderResponseForCourier
+
+RESPONSE_SCHEMAS: dict[UserRole, type[OrderResponseSchema]] = {
+    UserRole.ADMIN: OrderResponseForAdmin,
+    UserRole.SHOP: OrderResponseForShop,
+    UserRole.COURIER: OrderResponseForCourier,
+}
 # ==============================================================================
 # Экспорт
 # ==============================================================================
