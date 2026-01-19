@@ -35,3 +35,13 @@ def get_shop_main_keyboard() -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+def back_to_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Назад в меню",
+                    callback_data="shop_main_menu",
+                )
+        ]]
+    )

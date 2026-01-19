@@ -5,8 +5,6 @@ class OrderStates(StatesGroup):
     """Состояния для создания заказа"""
 
     waiting_for_description = State()
-    waiting_for_pickup_address = State()
-    waiting_for_delivery_address = State()
     waiting_for_price = State()
     confirmation = State()
 
@@ -19,3 +17,4 @@ class RegistrationStates(StatesGroup):
     waiting_for_shop_address = State()
     waiting_for_shop_address_link = State()
     waiting_for_shop_phone = State()
+
