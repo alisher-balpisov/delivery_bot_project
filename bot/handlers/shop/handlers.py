@@ -8,7 +8,7 @@ from backend.src.common.enums import UserRole
 from bot.clients.auth_client import AuthClient
 from bot.clients.shops_client import ShopsClient
 from bot.filters.filters import RoleFilter
-from bot.handlers.shop.keyboards import get_shop_main_keyboard, back_to_menu
+from bot.handlers.shop.keyboards import get_shop_main_menu_keyboard
 from bot.handlers.shop.messages import ShopMessages
 from bot.redis_storage import UserDataStorage
 from bot.utils.token_manager import TokenManager
@@ -38,7 +38,7 @@ async def shop_main_menu_handler(
         active_disputes=stats.active_disputes,
     )
 
-    await message.answer(text, reply_markup=get_shop_main_keyboard())
+    await message.answer(text, reply_markup=get_shop_main_menu_keyboard())
 
 
 @router.callback_query(F.data == "shop_main_menu", RoleFilter(UserRole.SHOP))
@@ -63,7 +63,7 @@ async def shop_main_menu_callback_handler(
         active_disputes=stats.active_disputes,
     )
 
-    await callback.message.edit_text(text, reply_markup=get_shop_main_keyboard())
+    await callback.message.edit_text(text, reply_markup=get_shop_main_menu_keyboard())
     await callback.answer()
 
 
@@ -108,18 +108,4 @@ async def edit_profile_handler(callback: CallbackQuery):
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
-
-@router.callback_query(F.data == "create_order", RoleFilter(UserRole.SHOP))
-async def create_order_handler(callback: CallbackQuery):
-    text = """Введите информацию о заказе 
-номер получателя 
-адрес
-дополнительную информацию
-(или вставьте сообщение которое вам отправил заказчик)
-
-Детали заказа всегда можно дополнить или изменить*
-"""
-    keyboard = back_to_menu()
-    await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
