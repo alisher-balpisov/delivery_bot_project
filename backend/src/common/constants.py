@@ -54,6 +54,11 @@ ACTIVE_STATUSES_FOR_COURIER = [
     OrderStatus.AWAITING_CONFIRMATION,
     OrderStatus.DISPUTED,
 ]
+ALLOWED_STATUSES_FOR_CREATE_DISPUTE = [
+        OrderStatus.COURIER_EN_ROUTE,
+        OrderStatus.DELIVERING,
+        OrderStatus.AWAITING_CONFIRMATION,
+    ]
 
 
 # ==============================================================================

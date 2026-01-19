@@ -1,7 +1,10 @@
+from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.src.common.constants import ALLOWED_STATUSES_FOR_CREATE_DISPUTE
 from backend.src.common.enums import DisputeStatus, UserRole
 from backend.src.core.logging import get_logger
 from backend.src.models.dispute import Dispute
@@ -19,37 +22,28 @@ async def create_dispute(
 ) -> DisputeResponse:
     """
     Создает новый спор по заказу.
-
-    Args:
-        db: Сессия базы данных.
-        dispute_data: Данные для создания спора.
-        initiator: Пользователь, который создает спор (из токена).
-
-    Raises:
-        ValueError: Если заказ не найден.
-        DisputeActionError: Если спор по этому заказу уже существует.
-        DisputeAccessDenied: Если у пользователя нет прав на создание спора.
     """
     logger.info(f"User {initiator.id} creating dispute for order {dispute_data.order_id}")
 
-    result = await db.execute(select(Order).where(Order.id == dispute_data.order_id))
+    query = select(Order).where(Order.id == dispute_data.order_id)
+    result = await db.execute(query)
     order = result.scalar_one_or_none()
+
     if not order:
-        logger.warning(f"Order {dispute_data.order_id} not found for dispute creation.")
-        raise ValueError("Заказ не найден")
+        logger.warning(f"Order {dispute_data.order_id} not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
 
-    # Проверка авторизации - может создать только магазин или курьер, связанный с заказом
-    is_shop = initiator.shop and initiator.shop.id == order.shop_id
-    is_courier = initiator.courier and initiator.courier.id == order.courier_id
-    if not (is_shop or is_courier):
+    if order.status not in ALLOWED_STATUSES_FOR_CREATE_DISPUTE:
+        raise DisputeActionError(f"Нельзя открыть спор для заказа в статусе {order.status}")
+
+    user_shop_id = getattr(initiator.shop, "id", None) if initiator.shop else None
+    user_courier_id = getattr(initiator.courier, "id", None) if initiator.courier else None
+
+    is_shop_owner = user_shop_id and user_shop_id == order.shop_id
+    is_courier_owner = user_courier_id and user_courier_id == order.courier_id
+
+    if not (is_shop_owner or is_courier_owner):
         raise DisputeAccessDenied("Вы можете открывать споры только по своим заказам")
-
-    # Проверка на существующий спор по этому заказу
-    existing_dispute_result = await db.execute(
-        select(Dispute).where(Dispute.order_id == dispute_data.order_id)
-    )
-    if existing_dispute_result.scalar_one_or_none():
-        raise DisputeActionError("Спор по этому заказу уже существует")
 
     new_dispute = Dispute(
         order_id=dispute_data.order_id,
@@ -65,22 +59,26 @@ async def create_dispute(
 
         logger.info(f"Dispute created successfully with ID {new_dispute.id}")
 
-        return DisputeResponse(
-            id=new_dispute.id,
-            order_id=new_dispute.order_id,
-            description=new_dispute.description,
-            courier_id=order.courier_id,
-            shop_id=order.shop_id,
-            status=new_dispute.status,
-            created_by_role=initiator.role,
-            resolution_notes=new_dispute.resolution_comment,
-            created_at=new_dispute.created_at,
-            resolved_at=new_dispute.resolved_at,
-        )
+    except IntegrityError:
+        await db.rollback()
+        # Если нарушение уникальности (спор уже есть)
+        logger.warning(f"Dispute for order {dispute_data.order_id} already exists.")
+        raise DisputeActionError("Спор по этому заказу уже существует")
+
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error creating dispute for order {dispute_data.order_id}: {e}")
-        raise
+        logger.error(f"Error creating dispute: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Ошибка при создании спора"
+        )
+
+    # 5. Формирование ответа
+    return DisputeResponse(
+        **new_dispute.__dict__,
+        courier_id=order.courier_id,
+        shop_id=order.shop_id,
+        created_by_role=initiator.role,
+    )
 
 
 async def get_dispute_by_id(
@@ -141,7 +139,7 @@ async def get_dispute_by_id(
         shop_id=dispute.order.shop_id,
         status=dispute.status,
         created_by_role=created_by_role,
-        resolution_notes=dispute.resolution_comment,
+        resolution_comment=dispute.resolution_comment,
         created_at=dispute.created_at,
         resolved_at=dispute.resolved_at,
     )
@@ -190,7 +188,7 @@ async def update_dispute(
             shop_id=dispute.order.shop_id,
             status=dispute.status,
             created_by_role=created_by_role,
-            resolution_notes=dispute.resolution_comment,
+            resolution_comment=dispute.resolution_comment,
             created_at=dispute.created_at,
             resolved_at=dispute.resolved_at,
         )
