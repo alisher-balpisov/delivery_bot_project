@@ -64,7 +64,7 @@ class OrderStatus(StrEnum):
 
 
 class OrderType(StrEnum):
-    REGULAR = "regular"
+    REGULAR = "REGULAR"
     TIME = "TIME"
     DISTANCE = "DISTANCE"
     CUSTOM = "CUSTOM"
