@@ -73,6 +73,8 @@ class DisputeUpdate(BaseModel):
 class DisputeResponse(BaseModel):
     """Полная схема ответа с данными спора."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     order_id: int
     courier_id: int
@@ -80,7 +82,7 @@ class DisputeResponse(BaseModel):
     status: DisputeStatus
     created_by_role: UserRole
     description: str
-    resolution_notes: str | None = None
+    resolution_comment: str | None = None
     created_at: datetime
     resolved_at: datetime | None = None
 
