@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aiogram import BaseMiddleware
@@ -156,6 +157,22 @@ class TokenRefreshMiddleware(BaseMiddleware):
                 )
 
                 if success:
+                    # ВАЖНО: Обновляем объект user_data in-place
+                    # Это необходимо, чтобы:
+                    # 1. Текущий запрос использовал новый (валидный) токен
+                    # 2. L1 кэш в UserDataFilter (который хранит ссылку на этот объект)
+                    #    автоматически обновился и не отдавал старые данные
+                    now = datetime.now(UTC)
+                    user_data.access_token = result.data["access_token"]
+                    user_data.refresh_token = result.data.get(
+                        "refresh_token", user_data.refresh_token
+                    )
+                    user_data.token_expires_at = now + timedelta(seconds=result.data["expires_in"])
+
+                    refresh_in = result.data.get("refresh_expires_in")
+                    if refresh_in:
+                        user_data.refresh_expires_at = now + timedelta(seconds=refresh_in)
+
                     logger.info(f"Токены успешно обновлены для пользователя {telegram_id}")
                 else:
                     logger.error(f"Не удалось сохранить обновленные токены для {telegram_id}")

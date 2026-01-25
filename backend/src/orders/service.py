@@ -42,10 +42,11 @@ logger = get_logger(__name__)
 # ==================== СОЗДАНИЕ ЗАКАЗА ====================
 
 
-async def create_order(db: AsyncSession, order_params: OrderCreateRequest, shop_id: int) -> Order:
-    """
-    Создаёт новый заказ для магазина.
-    """
+async def create_order(
+    db: AsyncSession,
+    order_params: OrderCreateRequest,
+    shop_id: int,
+) -> Order:
     courier_id_to_assign = order_params.courier_id
 
     if order_params.order_type == OrderType.REGULAR:
@@ -56,7 +57,6 @@ async def create_order(db: AsyncSession, order_params: OrderCreateRequest, shop_
                 detail="Нет доступных курьеров для назначения",
             )
         courier_id_to_assign = found_courier_id
-
     elif courier_id_to_assign is not None:
         await _validate_courier_exists(db, courier_id_to_assign)
 
@@ -67,15 +67,9 @@ async def create_order(db: AsyncSession, order_params: OrderCreateRequest, shop_
         status=OrderStatus.PENDING,
     )
 
-    async with db.begin():
-        db.add(order)
-        await db.flush()
-        await db.refresh(order)
-
-    logger.info(
-        f"УСПЕШНО создан заказ {order.id}: shop_id={shop_id}, "
-        f"type={order.order_type.value}, courier_id={order.courier_id}"
-    )
+    db.add(order)
+    await db.flush()
+    await db.refresh(order)
 
     return order
 

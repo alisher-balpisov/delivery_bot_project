@@ -14,6 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import DeliveryTimeType, OrderType, UserRole
 
+from bot.clients.auth_client import AuthClient
 from bot.clients.orders_client import OrdersClient
 from bot.clients.shops_client import ShopsClient
 from bot.filters.filters import RoleFilter
@@ -38,6 +39,7 @@ from bot.handlers.shop.service import (
 )
 from bot.handlers.shop.states import OrderStates
 from bot.redis_storage import UserDataStorage
+from bot.utils.token_manager import TokenManager
 
 router = Router(name="shop_orders_handlers")
 
@@ -55,7 +57,6 @@ async def create_order_handler(callback: CallbackQuery, state: FSMContext):
     """
     # Очищаем состояние для нового заказа
     await state.clear()
-    ic()
     text = (
         "<b>📝 Создание нового заказа</b>\n"
         "{'─' * 25}\n\n"
@@ -83,6 +84,7 @@ async def get_description_handler(
     message: Message,
     state: FSMContext,
     shops_client: ShopsClient,
+    auth_client: AuthClient,
     user_storage: UserDataStorage,
 ):
     """
@@ -102,7 +104,9 @@ async def get_description_handler(
 
     # Получаем информацию о магазине
     telegram_id = message.from_user.id
-    token = await user_storage.get_access_token(telegram_id)
+
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(telegram_id)
 
     # Получаем данные магазина (пробуем из кеша)
     shop_info = await user_storage.get_cached_profile(telegram_id)
@@ -435,10 +439,10 @@ async def confirm_and_create_order(
     callback: CallbackQuery,
     state: FSMContext,
     orders_client: OrdersClient,
+    auth_client: AuthClient,
     user_storage: UserDataStorage,
 ):
     """Подтверждает и создаёт заказ через API"""
-    print("jkewiowejweiodewijodewjidewji")
     data = await state.get_data()
 
     # Проверяем наличие всех обязательных данных
@@ -447,9 +451,10 @@ async def confirm_and_create_order(
         await create_order_handler(callback, state)
         return
 
-    # Получаем токен
+    # Получаем токен через TokenManager (автоматический refresh)
     telegram_id = callback.from_user.id
-    token = await user_storage.get_access_token(telegram_id)
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(telegram_id)
 
     if not token:
         await callback.answer("⚠️ Ошибка авторизации. Попробуйте перезайти.", show_alert=True)

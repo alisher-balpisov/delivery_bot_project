@@ -126,15 +126,12 @@ class OrderResponse(BaseModel):
     """Схема для полного представления заказа, включая все поля."""
 
     description: str | None = Field(None, max_length=1000)
-    recipient_address: str
-    recipient_phone: str
     delivery_time: datetime | None = None
 
     id: int
     status: OrderStatus
     order_type: OrderType
 
-    client_phone: str
     photo_report_id: str | None = None
     completed_at: datetime | None = None
     created_at: datetime

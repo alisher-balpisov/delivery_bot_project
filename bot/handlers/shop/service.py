@@ -175,7 +175,7 @@ async def create_order(
 
         if result.success and isinstance(result.data, dict) and result.data.get("id"):
             order_id = result.data["id"]
-            return True, OrderMessages.SUCCESSFULLY_CREATED.format(order_id), order_id
+            return True, OrderMessages.SUCCESSFULLY_CREATED.format(order_id=order_id), order_id
         else:
             error_msg = result.detail or ShopMessages.UNKNOWN_ERROR
             return False, ErrorMessages.Orders.ORDER_CREATION_ERROR(error=error_msg), None
