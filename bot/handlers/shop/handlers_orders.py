@@ -464,31 +464,17 @@ async def confirm_and_create_order(
     await callback.answer("⏳ Создаём заказ...")
 
     # Создаём заказ
-    success, message, order_id = await create_order(
+    success, message = await create_order(
         token=token,
         order_details=data,
         orders_client=orders_client,
     )
+    print(message)
 
     if success:
-        # Очищаем состояние
         await state.clear()
-
-        success_text = (
-            f"<b>✅ Заказ успешно создан!</b>\n"
-            f"{'═' * 25}\n\n"
-            f"🆔 <b>Номер заказа:</b> #{order_id}\n"
-            f"📦 <b>Статус:</b> Ожидает назначения курьера\n\n"
-            f"<i>Вы получите уведомление, когда курьер примет заказ.</i>"
-        )
-
-        await callback.message.edit_text(
-            text=success_text,
-            reply_markup=back_to_menu(),
-            parse_mode="HTML",
-        )
+        await callback.message.edit_text(text=message, reply_markup=back_to_menu())
     else:
-        # Показываем ошибку, но не очищаем данные
         await callback.message.edit_text(
             text=f"❌ <b>Ошибка создания заказа</b>\n\n{message}",
             reply_markup=get_order_confirmation_keyboard(),

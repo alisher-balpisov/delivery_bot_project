@@ -2,10 +2,13 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from bot.handlers import courier
+from icecream import ic
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from backend.src.common.constants import MAX_ALLOWED_DATE_FOR_ORDER
 from backend.src.common.enums import DeliveryTimeType, OrderStatus, OrderType
+from backend.src.models import Courier
 
 PhoneFlexible = str
 
@@ -123,19 +126,28 @@ class CourierInfoForShop(BaseModel):
 
 
 class OrderResponse(BaseModel):
-    """Схема для полного представления заказа, включая все поля."""
-
-    description: str | None = Field(None, max_length=1000)
-    delivery_time: datetime | None = None
-
     id: int
     status: OrderStatus
     order_type: OrderType
+    description: str | None = Field(None, max_length=1000)
+    delivery_time: datetime | None = None
+
+    courier: Any = Field(None, exclude=True)
 
     photo_report_id: str | None = None
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def courier_id(self) -> int | None:
+        return self.courier.id if self.courier else None
+
+    @computed_field
+    @property
+    def courier_full_name(self) -> str | None:
+        return self.courier.full_name if self.courier else None
 
     model_config = ConfigDict(from_attributes=True)
 

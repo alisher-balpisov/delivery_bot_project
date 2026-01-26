@@ -6,6 +6,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from backend.src.common.enums import DeliveryTimeType, OrderType
 from backend.src.core.logging import get_logger
+from icecream import ic
 
 from bot.clients.orders_client import OrdersClient
 from bot.exceptions import ErrorMessages
@@ -131,7 +132,7 @@ async def create_order(
     token: str | None,
     order_details: dict[str, Any],
     orders_client: OrdersClient,
-) -> tuple[bool, str, int | None]:
+) -> tuple[bool, str]:
     """
     Отправляет запрос на создание заказа в API.
 
@@ -144,7 +145,7 @@ async def create_order(
         Tuple(успех, сообщение, ID заказа или None)
     """
     if not token:
-        return False, ErrorMessages.Auth.UNAUTHORIZED, None
+        return False, ErrorMessages.Auth.UNAUTHORIZED
 
     # Формируем данные для API
     order_data = {
@@ -172,21 +173,28 @@ async def create_order(
     try:
         logger.info(f"Создание заказа: {order_data}")
         result = await orders_client.create_order(token, order_data)
+        ic(result)
 
         if result.success and isinstance(result.data, dict) and result.data.get("id"):
             order_id = result.data["id"]
-            return True, OrderMessages.SUCCESSFULLY_CREATED.format(order_id=order_id), order_id
+            courier_id = result.data["courier_id"]
+            courier_full_name: str = result.data["courier_full_name"]
+
+            if not courier_id:
+                return (True, OrderMessages.SUCCESSFULLY_CREATED_NO_COURIER.format(order_id))
+            return (
+                True,
+                OrderMessages.SUCCESSFULLY_CREATED.format(
+                    order_id=order_id, courier_name=courier_full_name.split()[1]
+                ),
+            )
         else:
             error_msg = result.detail or ShopMessages.UNKNOWN_ERROR
-            return False, ErrorMessages.Orders.ORDER_CREATION_ERROR(error=error_msg), None
+            return False, ErrorMessages.Orders.ORDER_CREATION_ERROR(error=error_msg)
 
     except Exception as e:
         logger.error(f"Критическая ошибка при создании заказа: {e}", exc_info=True)
-        return (
-            False,
-            ErrorMessages.Orders.ORDER_CREATION_ERROR(error=ShopMessages.UNKNOWN_ERROR),
-            None,
-        )
+        return (False, ErrorMessages.Orders.ORDER_CREATION_ERROR(error=ShopMessages.UNKNOWN_ERROR))
 
 
 def get_order_type_requirements(order_type: str) -> dict[str, Any]:

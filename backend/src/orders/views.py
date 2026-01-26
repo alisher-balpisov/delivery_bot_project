@@ -56,7 +56,7 @@ async def create_order(
         )
 
         logger.info(f"✓ Заказ {order} создан магазином {current_user.shop}")
-        return order
+        return OrderResponse.model_validate(order)
 
     except ValueError as e:
         logger.warning(f"Ошибка валидации при создании заказа: {e}")

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from fake_db import OrderType
+from fake_db import OrderType, UserStatus
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,6 +77,8 @@ async def create_order(
 async def search_courier(db: AsyncSession) -> int | None:
     """
     Находит ID активного курьера с наименьшим количеством активных заказов.
+    Если у нескольких курьеров одинаковое минимальное кол-во заказов,
+    выбирается курьер с наименьшим ID.
     """
     query = (
         select(Courier.id)
@@ -84,9 +86,12 @@ async def search_courier(db: AsyncSession) -> int | None:
             Order,
             and_(Order.courier_id == Courier.id, Order.status.in_(ACTIVE_STATUSES_FOR_COURIER)),
         )
-        .where(Courier.is_active)
+        .where(Courier.is_active.is_(True), Courier.user.has(User.status == UserStatus.ACTIVE))
         .group_by(Courier.id)
-        .order_by(func.count(Order.id).asc())
+        .order_by(
+            func.count(Order.id).asc(),
+            Courier.id.asc(),
+        )
         .limit(1)
     )
 

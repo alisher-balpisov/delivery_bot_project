@@ -48,7 +48,6 @@ RetrievePermissionCheck = Callable[[User, Order], Awaitable[None]]
 COURIER_ALLOWED_FIELDS = {"status", "courier_notes", "completion_notes"}
 FINAL_STATUSES = {OrderStatus.COMPLETED, OrderStatus.CANCELED}
 ACTIVE_STATUSES_FOR_COURIER = [
-    OrderStatus.PENDING_COURIER,
     OrderStatus.COURIER_EN_ROUTE,
     OrderStatus.DELIVERING,
     OrderStatus.AWAITING_CONFIRMATION,

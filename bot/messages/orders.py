@@ -29,7 +29,10 @@ class OrderMessages:
     CREATING_ORDER: Final = "🔄 Создаю заказ..."
 
     SUCCESSFULLY_CREATED: Final = (
-        "✅ Заказ #{order_id} успешно создан!\n\nОжидайте, когда курьер примет заказ."
+        "✅ Заказ #{order_id} успешно создан!\n\nВ ближайшее время ожидайте курьера {courier_name}."
+    )
+    SUCCESSFULLY_CREATED_NO_COURIER: Final = (
+        "✅ Заказ #{order_id} успешно создан!\n\nНа данный момент нет свободных курьеров"
     )
 
     NO_AVAILABLE_ORDERS: Final = "📭 Нет доступных заказов."
