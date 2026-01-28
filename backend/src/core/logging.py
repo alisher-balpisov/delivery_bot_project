@@ -2,51 +2,29 @@ import asyncio
 import functools
 import logging
 import logging.handlers
-import sys
 import time
 from collections.abc import Callable
 from copy import copy
 from pathlib import Path
 from typing import Any, ClassVar, TypeVar
 
+from rich.console import Console
+from rich.logging import RichHandler
+
 from .config import settings
 
-# Type variables для декоратора
+console = Console()
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-class ColoredFormatter(logging.Formatter):
-    """
-    Форматтер с цветным выводом для консоли.
-    """
-
-    COLORS: ClassVar[dict[str, str]] = {
-        "DEBUG": "\033[36m",  # Cyan
-        "INFO": "\033[32m",  # Green
-        "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",  # Red
-        "CRITICAL": "\033[41m",  # Red background
-    }
-    RESET = "\033[0m"
-
-    def format(self, record: logging.LogRecord) -> str:
-        """
-        Создает копию record, чтобы безопасно добавить цвет,
-        и затем форматирует сообщение.
-        """
-        # Создаем поверхностную копию, чтобы не изменять оригинал
-        record_copy = copy(record)
-        level_name = record_copy.levelname
-        if level_name in self.COLORS:
-            record_copy.levelname = f"{self.COLORS[level_name]}{level_name}{self.RESET}"
-        # Форматируем сообщение, используя измененную копию
-        return super().format(record_copy)
+# --- Форматтеры ---
 
 
 class TelegramFormatter(logging.Formatter):
     """
     Специальный форматтер для логов Telegram бота.
-    Добавляет emoji в запись лога.
+    Добавляет emoji в запись лога в зависимости от уровня.
     """
 
     EMOJI: ClassVar[dict[str, str]] = {
@@ -58,7 +36,6 @@ class TelegramFormatter(logging.Formatter):
     }
 
     def format(self, record: logging.LogRecord) -> str:
-        # Используем copy, чтобы следовать лучшим практикам, как и в ColoredFormatter
         record_copy = copy(record)
         record_copy.emoji = self.EMOJI.get(record_copy.levelname, "📋")
         return super().format(record_copy)
@@ -79,17 +56,35 @@ def _create_rotating_file_handler(
 
 
 def setup_console_handler() -> logging.Handler:
-    """Настройка обработчика для вывода в консоль."""
-    console_handler = logging.StreamHandler(sys.stdout)
-    formatter_class = (
-        ColoredFormatter if settings.debug and sys.stdout.isatty() else logging.Formatter
+    """
+    Настройка обработчика для вывода в консоль через Rich.
+    """
+    # Создаем настроенную консоль для логов
+    # Если заставляем терминал, то и цвета заставляем
+    color_system = "truecolor" if settings.logging.rich_force_terminal else "auto"
+
+    rich_console = Console(
+        force_terminal=settings.logging.rich_force_terminal,
+        color_system=color_system,
+        width=settings.logging.rich_width,
     )
 
-    formatter = formatter_class(
-        fmt=settings.logging.format, datefmt=settings.logging.date_format, style="{"
+    console_handler = RichHandler(
+        rich_tracebacks=True,  # Красивые цветные трейсбеки
+        tracebacks_show_locals=settings.logging.rich_show_locals,  # Показывать значения переменных при ошибке
+        tracebacks_suppress=settings.logging.rich_suppress,  # Скрывать шум библиотек
+        show_time=True,
+        show_level=True,
+        show_path=False,
+        markup=True,  # Разрешаем [bold red]...[/] в сообщениях
+        console=rich_console,  # Используем настроенную консоль
     )
+
+    # RichHandler сам добавляет время и уровень, поэтому формат message простой
+    formatter = logging.Formatter(fmt="%(message)s", datefmt="[%X]")
     console_handler.setFormatter(formatter)
     console_handler.setLevel(settings.logging.level)
+
     return console_handler
 
 
@@ -151,18 +146,21 @@ def setup_error_handler() -> logging.Handler | None:
 
 
 def configure_third_party_loggers() -> None:
-    """Настройка уровней логирования для сторонних библиотек."""
+    """Настройка уровней логирования для сторонних библиотек, чтобы убрать шум."""
     loggers_config = {
         "sqlalchemy.engine": settings.logging.sqlalchemy_level,
         "sqlalchemy.pool": "WARNING",
         "sqlalchemy.dialects": "WARNING",
         "aiogram": settings.logging.aiogram_level,
+        "aiogram.event": "INFO",  # Чтобы видеть входящие апдейты, если уровень INFO
         "httpx": "WARNING",
         "httpcore": "WARNING",
-        "uvicorn.access": "INFO",
+        "uvicorn": "INFO",
+        "uvicorn.access": "WARNING",  # WARNING скроет логи "GET / HTTP/1.1 200 OK"
         "uvicorn.error": "INFO",
         "multipart": "WARNING",
         "asyncio": "WARNING",
+        "watchfiles": "WARNING",  # Убирает шум при авто-перезагрузке
     }
     for name, level in loggers_config.items():
         logging.getLogger(name).setLevel(getattr(logging, level.upper()))
@@ -170,16 +168,20 @@ def configure_third_party_loggers() -> None:
 
 def setup_logging() -> None:
     """Основная функция настройки системы логирования."""
+
+    # 1. Применяем настройки Rich (если есть в конфиге)
+    settings.logging.configure_rich()
+
     root_logger = logging.getLogger()
 
-    # Проверка, чтобы избежать повторной инициализации.
-    # clear() остается для случаев, когда нужна принудительная перезагрузка.
+    # 2. Очищаем существующие хендлеры (важно для перезагрузки uvicorn)
     if root_logger.handlers:
         root_logger.handlers.clear()
 
-    root_logger.setLevel(logging.DEBUG)
+    # 3. Устанавливаем базовый уровень
+    root_logger.setLevel(settings.logging.level)
 
-    # Собираем обработчики, отфильтровывая None
+    # 4. Собираем обработчики
     handlers = [
         setup_console_handler(),
         setup_file_handler(),
@@ -187,38 +189,24 @@ def setup_logging() -> None:
         setup_error_handler(),
     ]
 
+    # 5. Добавляем только активные обработчики
     for handler in filter(None, handlers):
         root_logger.addHandler(handler)
 
+    # 6. Настраиваем чужие библиотеки
     configure_third_party_loggers()
-
-    logger = logging.getLogger(__name__)
-    logger.info("📝 Логирование настроено. Уровень: %s", settings.logging.level)
-    if settings.logging.file_path:
-        logger.info("📁 Логи сохраняются в: %s", settings.logging.file_path)
-    if settings.debug:
-        logger.debug("🐛 Режим отладки включен")
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Получить логгер с заданным именем
-
-    Args:
-        name: Имя логгера (обычно __name__)
-    """
+    """Получить логгер с заданным именем"""
     return logging.getLogger(name)
 
 
-# Контекстный менеджер для временного изменения уровня логирования
-class LogLevel:
-    """
-    Контекстный менеджер для временного изменения уровня логирования
+# --- Декораторы и Контекстные менеджеры ---
 
-    Пример:
-    with LogLevel(logging.DEBUG):
-        logger.debug("Этот лог будет показан")
-    """
+
+class LogLevel:
+    """Контекстный менеджер для временного изменения уровня логирования"""
 
     def __init__(self, level: int, logger_name: str | None = None):
         self.level = level
@@ -227,90 +215,72 @@ class LogLevel:
         self.logger = None
 
     def __enter__(self):
-        if self.logger_name:
-            self.logger = logging.getLogger(self.logger_name)
-        else:
-            self.logger = logging.getLogger()
-
+        self.logger = (
+            logging.getLogger(self.logger_name) if self.logger_name else logging.getLogger()
+        )
         self.original_level = self.logger.level
         self.logger.setLevel(self.level)
-
         return self.logger
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.logger.setLevel(self.original_level)
+        if self.logger:
+            self.logger.setLevel(self.original_level)
 
 
-# Декоратор для логирования вызовов функций
 def log_function_calls(logger_name: str | None = None) -> Callable[[F], F]:
-    """
-    Декоратор для автоматического логирования вызовов функций
-
-    Args:
-        logger_name: Имя логгера (по умолчанию используется имя модуля функции)
-    """
+    """Декоратор для автоматического логирования вызовов функций"""
 
     def decorator(func: F) -> F:
+        # Определяем логгер один раз
+        logger = logging.getLogger(logger_name or func.__module__)
+
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            logger = logging.getLogger(logger_name or func.__module__)
-
             start_time = time.time()
-            logger.debug("🔄 Вызов %s(args=%s, kwargs=%s)", func.__name__, args, kwargs)
-
+            logger.debug("🔄 Вызов %s", func.__name__)
             try:
                 result = await func(*args, **kwargs)
-                execution_time = time.time() - start_time
-                logger.debug("✅ %s выполнена за %.3fс", func.__name__, execution_time)
+                _log_success(logger, func.__name__, start_time)
                 return result
             except Exception as e:
-                execution_time = time.time() - start_time
-                logger.error(
-                    "❌ Ошибка в %s за %.3fс: %s",
-                    func.__name__,
-                    execution_time,
-                    e,
-                    exc_info=True,
-                )
+                _log_error(logger, func.__name__, start_time, e)
                 raise
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            logger = logging.getLogger(logger_name or func.__module__)
-
             start_time = time.time()
-            logger.debug("🔄 Вызов %s(args=%s, kwargs=%s)", func.__name__, args, kwargs)
-
+            logger.debug("🔄 Вызов %s", func.__name__)
             try:
                 result = func(*args, **kwargs)
-                execution_time = time.time() - start_time
-                logger.debug("✅ %s выполнена за %.3fс", func.__name__, execution_time)
+                _log_success(logger, func.__name__, start_time)
                 return result
             except Exception as e:
-                execution_time = time.time() - start_time
-                logger.error(
-                    "❌ Ошибка в %s за %.3fс: %s",
-                    func.__name__,
-                    execution_time,
-                    e,
-                    exc_info=True,
-                )
+                _log_error(logger, func.__name__, start_time, e)
                 raise
 
         if asyncio.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore[return-value]
+            return async_wrapper  # type: ignore
         else:
-            return sync_wrapper  # type: ignore[return-value]
+            return sync_wrapper  # type: ignore
 
     return decorator
 
 
-# Экспорт основных компонентов
-__all__ = [
-    "ColoredFormatter",
-    "LogLevel",
-    "TelegramFormatter",
-    "get_logger",
-    "log_function_calls",
-    "setup_logging",
-]
+def _log_success(logger: logging.Logger, func_name: str, start_time: float):
+    execution_time = time.time() - start_time
+    # Если функция выполняется дольше 1 секунды, меняем уровень лога и цвет сообщения
+    if execution_time > 1.0:
+        logger.warning("🐢 SLOW %s: %.3fс", func_name, execution_time)
+    else:
+        logger.debug("✅ %s: %.3fс", func_name, execution_time)
+
+
+def _log_error(logger: logging.Logger, func_name: str, start_time: float, error: Exception):
+    execution_time = time.time() - start_time
+    logger.error(
+        "❌ Ошибка в %s (%.3fс): %s",
+        func_name,
+        execution_time,
+        error,
+        exc_info=True,
+    )

@@ -29,6 +29,7 @@ from bot.handlers.shop.keyboards import (
     set_order_time_keyboard,
     set_order_type_keyboard,
 )
+from bot.handlers.shop.messages import ShopOrder
 from bot.handlers.shop.service import (
     DeliveryTimeTypeCallback,
     OrderTypeCallback,
@@ -41,7 +42,7 @@ from bot.handlers.shop.states import OrderStates
 from bot.redis_storage import UserDataStorage
 from bot.utils.token_manager import TokenManager
 
-router = Router(name="shop_orders_handlers")
+router = Router(name="shop_create_orders_handlers")
 
 
 # =============================================================================
@@ -57,19 +58,10 @@ async def create_order_handler(callback: CallbackQuery, state: FSMContext):
     """
     # Очищаем состояние для нового заказа
     await state.clear()
-    text = (
-        "<b>📝 Создание нового заказа</b>\n"
-        "{'─' * 25}\n\n"
-        "Введите информацию о заказе:\n"
-        "• Номер телефона получателя\n"
-        "• Адрес доставки\n"
-        "• Дополнительную информацию\n\n"
-        "<i>Можете вставить сообщение от заказчика целиком.\n"
-        "Детали заказа всегда можно дополнить или изменить.</i>"
-    )
+
     keyboard = back_to_menu()
 
-    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.message.edit_text(ShopOrder.CREATE, reply_markup=keyboard, parse_mode="HTML")
     await state.set_state(OrderStates.waiting_for_description)
     await callback.answer()
 
@@ -104,9 +96,6 @@ async def get_description_handler(
 
     # Получаем информацию о магазине
     telegram_id = message.from_user.id
-
-    token_manager = TokenManager(auth_client, user_storage)
-    token = await token_manager.get_token(telegram_id)
 
     # Получаем данные магазина (пробуем из кеша)
     shop_info = await user_storage.get_cached_profile(telegram_id)
@@ -156,19 +145,8 @@ async def open_order_type_menu(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     current_type = data.get("order_type", OrderType.REGULAR.value)
 
-    text = (
-        "<b>📦 Выбор типа заказа</b>\n"
-        f"{'─' * 25}\n\n"
-        "🚴 <b>Обычный</b> — стандартная доставка\n"
-        "⏰ <b>Ко времени</b> — доставка к определённому времени\n"
-        "🗺️ <b>Дальний</b> — доставка на большое расстояние\n"
-        "📦 <b>Особый</b> — габаритный груз или особые условия\n"
-        "🏭 <b>Со склада</b> — нужно забрать товар со склада\n\n"
-        f"<i>Текущий выбор отмечен галочкой ✅</i>"
-    )
-
     await callback.message.edit_text(
-        text=text,
+        text=ShopOrder.TYPE,
         reply_markup=set_order_type_keyboard(current_type=current_type),
         parse_mode="HTML",
     )
@@ -203,17 +181,8 @@ async def open_order_time_menu(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     current_time_type = data.get("delivery_time_type", DeliveryTimeType.TODAY.value)
 
-    text = (
-        "<b>⏰ Выбор типа времени доставки</b>\n"
-        f"{'─' * 25}\n\n"
-        "🚀 <b>Как можно скорее</b> — срочная доставка\n"
-        "📅 <b>В течение дня</b> — до конца рабочего дня\n"
-        "⏰ <b>К конкретному времени</b> — укажите точное время\n\n"
-        "<i>Выберите подходящий вариант</i>"
-    )
-
     await callback.message.edit_text(
-        text=text,
+        text=ShopOrder.DELIVERY_TIME_TYPE,
         reply_markup=set_order_time_keyboard(current_time_type=current_time_type),
         parse_mode="HTML",
     )
@@ -234,17 +203,8 @@ async def save_delivery_time_type_handler(
 
     # Если выбрано конкретное время - запрашиваем ввод
     if new_time_type == DeliveryTimeType.SCHEDULED.value:
-        text = (
-            "<b>🕐 Укажите время доставки</b>\n"
-            f"{'─' * 25}\n\n"
-            "Введите время в одном из форматов:\n"
-            "• <code>HH:MM</code> — сегодня (например: 14:30)\n"
-            "• <code>ДД.ММ HH:MM</code> — дата и время (например: 25.01 15:00)\n"
-            "• <code>ДД.ММ.ГГГГ HH:MM</code> — полная дата (например: 25.01.2026 15:00)\n"
-        )
-
         await callback.message.edit_text(
-            text=text,
+            text=ShopOrder.DELIVERY_TIME,
             reply_markup=get_time_input_keyboard(),
             parse_mode="HTML",
         )

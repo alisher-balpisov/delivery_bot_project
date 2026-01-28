@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from backend.src.common.enums import DeliveryTimeType, OrderType
 
-from bot.handlers.shop.messages import ShopMainKeyboardsButtons
+from bot.handlers.shop.messages import ShopMainKeyboardsButtons, ShopOrder
 from bot.handlers.shop.service import DeliveryTimeTypeCallback, OrderTypeCallback
 
 
@@ -269,13 +269,11 @@ def format_order_preview(
     order_type_display = order_type_labels.get(order_type, order_type)
 
     # Формируем текст
-    text = (
-        f"<b>📋 Предпросмотр заказа</b>\n"
-        f"{'─' * 25}\n\n"
-        f"🏢 <b>Магазин:</b> {shop_name}\n"
-        f"📍 <b>Адрес:</b> {shop_address}\n\n"
-        f"📝 <b>Детали заказа:</b>\n{description}\n\n"
-        f"📦 <b>Тип заказа:</b> {order_type_display}\n"
+    text = ShopOrder.PREVIEW.format(
+        shop_name=shop_name,
+        shop_address=shop_address,
+        description=description,
+        order_type_display=order_type_display,
     )
 
     # Добавляем информацию о времени доставки для типа TIME

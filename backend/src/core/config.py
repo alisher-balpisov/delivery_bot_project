@@ -1,9 +1,15 @@
+import site
 import string
+import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from rich.console import Console
+from rich.traceback import install
+
+console = Console()
 
 
 class DatabaseConfig(BaseModel):
@@ -174,18 +180,51 @@ class LoggingConfig(BaseModel):
     # Уровень логирования для библиотеки aiogram.
     aiogram_level: str = "INFO"
 
-    def handler_kwargs(self) -> dict[str, Any]:
-        """
-        Собирает словарь аргументов для `RotatingFileHandler`.
+    # Настройки Rich (теперь управляются через pydantic)
+    rich_show_locals: bool = False
+    rich_width: int | None = None
+    # Принудительно включать цвета (полезно для VSCode Debug Console).
+    rich_force_terminal: bool = True
+    rich_suppress: list = site.getsitepackages()
 
-        Returns:
-            Словарь с параметрами для настройки файлового обработчика логов.
-        """
+    def handler_kwargs(self) -> dict[str, Any]:
+        """Собирает словарь аргументов для RotatingFileHandler."""
         return {
             "maxBytes": self.max_file_size,
             "backupCount": self.backup_count,
             "encoding": "utf-8",
         }
+
+    def configure_rich(self):
+        """
+        Устанавливает глобальный обработчик исключений Rich,
+        используя параметры из текущей конфигурации.
+        """
+        # Создаем новую консоль с актуальными настройками
+        rich_console = Console(
+            force_terminal=self.rich_force_terminal,
+            width=self.rich_width,
+        )
+        install(
+            console=rich_console,
+            show_locals=self.rich_show_locals,
+            width=self.rich_width,
+            suppress=self.rich_suppress,
+        )
+
+    @staticmethod
+    def handle_start_exception():
+        """
+        Красиво печатает исключение и завершает процесс.
+        Сделан статическим, чтобы можно было вызывать даже если
+        конфиг не успел инициализироваться полностью.
+        """
+        console.print_exception(
+            show_locals=False,
+            suppress=site.getsitepackages(),
+            width=120,
+        )
+        sys.exit(1)
 
 
 class BusinessConfig(BaseModel):

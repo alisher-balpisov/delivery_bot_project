@@ -2,13 +2,10 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from bot.handlers import courier
-from icecream import ic
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from backend.src.common.constants import MAX_ALLOWED_DATE_FOR_ORDER
 from backend.src.common.enums import DeliveryTimeType, OrderStatus, OrderType
-from backend.src.models import Courier
 
 PhoneFlexible = str
 
@@ -177,7 +174,7 @@ class OrderCardResponse(BaseModel):
     status: OrderStatus
     order_type: OrderType
     price: Decimal
-    recipient_address: str
+    recipient_address: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -226,7 +223,7 @@ class OrderListItemForShop(BaseModel):
     status: OrderStatus
     order_type: OrderType
     price: Decimal
-    recipient_address: str
+    recipient_address: str | None = None
     delivery_time: datetime | None = None
     created_at: datetime
     courier: CourierInfoForShop | None = None
@@ -240,8 +237,8 @@ class OrderListItemForCourier(BaseModel):
     id: int
     status: OrderStatus
     order_type: OrderType
-    recipient_address: str
-    recipient_phone: str
+    recipient_address: str | None = None
+    recipient_phone: str | None = None
     delivery_time: datetime | None = None
     created_at: datetime
     shop: ShopInfoForCourier
@@ -256,7 +253,7 @@ class OrderListItemForAdmin(BaseModel):
     status: OrderStatus
     order_type: OrderType
     price: Decimal
-    recipient_address: str
+    recipient_address: str | None = None
     delivery_time: datetime | None = None
     created_at: datetime
     completed_at: datetime | None = None

@@ -332,4 +332,4 @@ def setup_middlewares(dispatcher) -> None:
     dispatcher.callback_query.middleware(UserActivityMiddleware())
     dispatcher.callback_query.middleware(ErrorHandlerMiddleware())
 
-    logger.info("✅ Middleware зарегистрированы")
+    logger.info("Middleware зарегистрированы")

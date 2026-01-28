@@ -1,22 +1,33 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types.error_event import ErrorEvent
-from backend.src.core.config import get_bot_token, settings
-from backend.src.core.logging import get_logger, setup_logging
+from backend.src.core.config import LoggingConfig, settings
+from rich.console import Console
+from rich.panel import Panel
 
-from bot.clients import ClientManager
-from bot.clients.base_client import ConnectionPool
-from bot.filters.user_data_filter import UserDataFilter
-from bot.handlers import *
-from bot.middleware import setup_middlewares
-from bot.middleware.token_refresh_middleware import TokenRefreshMiddleware
-from bot.redis_storage import UserDataStorage
-from bot.utils.token_manager import TokenManager
+settings.logging.configure_rich()
+
+try:
+    from aiogram import Bot, Dispatcher
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.types.error_event import ErrorEvent
+    from backend.src.core.config import get_bot_token, settings
+    from backend.src.core.logging import get_logger, setup_logging
+
+    from bot.clients import ClientManager
+    from bot.clients.base_client import ConnectionPool
+    from bot.filters.user_data_filter import UserDataFilter
+    from bot.handlers import *
+    from bot.middleware import setup_middlewares
+    from bot.middleware.token_refresh_middleware import TokenRefreshMiddleware
+    from bot.redis_storage import UserDataStorage
+    from bot.utils.token_manager import TokenManager
+
+except Exception:
+    LoggingConfig.handle_start_exception()
 
 logger = get_logger(__name__)
+console = Console(force_terminal=settings.logging.rich_force_terminal)
 
 
 def create_bot(**kwargs) -> Bot:
@@ -27,45 +38,30 @@ def create_bot(**kwargs) -> Bot:
 def create_dispatcher(
     storage, user_data_storage: UserDataStorage, client_manager: ClientManager, **kwargs
 ) -> Dispatcher:
-    """
-    Создает и настраивает диспетчер.
-
-    Изменения:
-    - UserDataStorage передается явно
-    - ClientManager передается для доступа к клиентам
-    - TokenRefreshMiddleware регистрируется после setup_middlewares
-    """
     dp = Dispatcher(storage=storage, **kwargs)
 
-    # Регистрируем middleware ДО фильтров и роутеров
     setup_middlewares(dp)
 
-    # Регистрируем middleware для обновления токенов
     token_refresh_middleware = TokenRefreshMiddleware(
         storage=user_data_storage,
         auth_client=client_manager.auth,
     )
-    # Регистрируем middleware для message и callback_query
     dp.message.middleware(token_refresh_middleware)
     dp.callback_query.middleware(token_refresh_middleware)
 
-    # Сохраняем middleware в kwargs для доступа в lifespan
     kwargs["token_refresh_middleware"] = token_refresh_middleware
 
-    # Создаем фильтр с UserDataStorage
     user_data_provider = UserDataFilter(user_data_storage)
 
-    # Применяем фильтр ко всем роутерам
     for router in [auth_router, protected_router, orders_router, public_router]:
         router.message.filter(user_data_provider)
         router.callback_query.filter(user_data_provider)
-    # Регистрируем роутеры
+
     dp.include_router(protected_router)
     dp.include_router(auth_router)
     dp.include_router(orders_router)
     dp.include_router(public_router)
 
-    # Обработчик критических ошибок
     async def on_unknown_error(event: ErrorEvent):
         logger.critical(f"Критическая ошибка: {event.exception}", exc_info=True)
         if event.update and event.update.message:
@@ -80,38 +76,27 @@ def create_dispatcher(
 
 @asynccontextmanager
 async def lifespan():
-    """
-    Асинхронный менеджер контекста для жизненного цикла приложения.
-    """
-    logger.info("🚀 Инициализация Telegram бота...")
+    """Контекстный менеджер жизненного цикла бота с визуализацией запуска."""
+
+    console.print("[cyan]⚙️  Инициализация компонентов...[/cyan]")
+
     bot = None
-    pool = ConnectionPool()
+    pool = None
     user_data_storage = None
     token_refresh_middleware = None
 
     try:
-        # 1. Создаем хранилище для FSM
+        # Инициализация всех компонентов
+        pool = ConnectionPool()
         storage = MemoryStorage()
-        logger.info("✅ Хранилище FSM: Memory")
-
-        # 2. Создаем хранилище данных пользователей (Redis)
         user_data_storage = UserDataStorage(settings.redis)
-        logger.info("✅ Хранилище данных пользователей: Redis")
-
-        # 3. Создаем менеджер клиентов API
         client_manager = ClientManager(pool=pool)
-        logger.info("✅ API клиенты инициализированы")
-
-        # 4. Создаем бота
         bot = create_bot()
-        logger.info("✅ Бот создан")
 
-        # 5. Создаем диспетчер с передачей всех зависимостей
         dp_kwargs = {
             "storage": storage,
             "user_data_storage": user_data_storage,
             "client_manager": client_manager,
-            # Передаем клиенты как kwargs для доступа в хендлерах
             "admin_client": client_manager.admin,
             "auth_client": client_manager.auth,
             "disputes_client": client_manager.disputes,
@@ -121,50 +106,41 @@ async def lifespan():
             "system_client": client_manager.system,
             "users_client": client_manager.users,
             "couriers_client": client_manager.couriers,
-            "user_storage": user_data_storage,  # Передаем storage для TokenManager с другим именем
+            "user_storage": user_data_storage,
             "token_manager": TokenManager(client_manager.auth, user_data_storage),
         }
         dp = create_dispatcher(**dp_kwargs)
-        logger.info("✅ Диспетчер настроен")
 
-        # 6. Запускаем cleanup задачу для TokenRefreshMiddleware
         token_refresh_middleware = dp_kwargs.get("token_refresh_middleware")
         if token_refresh_middleware:
             await token_refresh_middleware.start_cleanup_task()
-            logger.info("✅ Задача очистки locks запущена")
-
-        logger.info("🎉 Telegram бот успешно инициализирован!")
 
         try:
             yield bot, dp
         finally:
-            # Останавливаем cleanup задачу
+            # Тихое завершение без визуализации
             if token_refresh_middleware:
                 await token_refresh_middleware.stop_cleanup_task()
-                logger.info("✅ Задача очистки locks остановлена")
 
     finally:
-        logger.info("🔌 Завершение работы...")
-
-        # Закрываем Redis соединение
         if user_data_storage:
             await user_data_storage.close()
-            logger.info("✅ Redis соединение закрыто")
-
-        # Закрываем HTTP клиент
-        await pool.close()
-        logger.info("✅ HTTP соединения закрыты")
-
-        # Закрываем сессию бота
+        if pool:
+            await pool.close()
         if bot and bot.session:
             await bot.session.close()
-            logger.info("✅ Сессия бота закрыта")
 
 
 async def run_polling(skip_updates: bool = True):
-    """Запускает бота в режиме опроса."""
+    """Запуск бота в режиме polling с красивым логированием."""
     async with lifespan() as (bot, dp):
-        logger.info("🔄 Запуск бота в режиме polling...")
+        console.print(
+            Panel(
+                "[green]Бот готов принимать сообщения!\n[dim]Нажмите Ctrl+C для остановки[/dim]",
+                border_style="cyan",
+                title="🤖 Bot Active",
+            )
+        )
 
         await dp.start_polling(
             bot,
@@ -174,14 +150,33 @@ async def run_polling(skip_updates: bool = True):
 
 
 def main():
-    """Основная функция для запуска бота."""
+    """Главная функция запуска."""
+    # Настройка логгирования
     setup_logging()
+
+    # Красивый заголовок
+    console.print("\n")
 
     try:
         asyncio.run(run_polling(skip_updates=settings.telegram.skip_updates))
     except (KeyboardInterrupt, SystemExit):
-        logger.info("👋 Работа бота завершена.")
+        console.print("\n")
+        console.print(
+            Panel(
+                "[yellow]👋 Бот остановлен пользователем[/yellow]",
+                border_style="yellow",
+                title="Shutdown",
+            )
+        )
     except Exception as e:
+        console.print("\n")
+        console.print(
+            Panel(
+                f"[bold red]💥 Критическая ошибка:[/bold red]\n{e}",
+                border_style="red",
+                title="Error",
+            )
+        )
         logger.critical(f"💥 Критическая ошибка при запуске бота: {e}", exc_info=True)
         exit(1)
 
