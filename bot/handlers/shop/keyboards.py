@@ -56,13 +56,17 @@ def back_to_menu() -> InlineKeyboardMarkup:
     )
 
 
-def get_order_settings_keyboard(order_type: str | None = None) -> InlineKeyboardMarkup:
+def get_order_settings_keyboard(
+    order_type: str = OrderType.REGULAR.value,
+    delivery_time_type: DeliveryTimeType = DeliveryTimeType.TODAY,
+) -> InlineKeyboardMarkup:
     """
     Возвращает клавиатуру настройки заказа магазина.
     Показывается после ввода описания заказа.
 
     Args:
         order_type: Текущий тип заказа (значение enum)
+        delivery_time_type: Текущий тип времени доставки
     """
     keyboard = [
         # Ряд 1: Навигация
@@ -84,14 +88,15 @@ def get_order_settings_keyboard(order_type: str | None = None) -> InlineKeyboard
             )
         ],
     ]
-
-    # Если выбран тип TIME, добавляем кнопку установки времени
-    if order_type == OrderType.TIME.value:
+    # Кнопка времени доставки появляется ТОЛЬКО если:
+    if order_type == OrderType.TIME.value and delivery_time_type == DeliveryTimeType.SCHEDULED:
         keyboard.append(
             [
                 InlineKeyboardButton(
                     text="⏰ Установить время доставки",
-                    callback_data="set_order_time",
+                    callback_data=(
+                        DeliveryTimeTypeCallback(time_type=delivery_time_type.value).pack()
+                    ),
                 )
             ]
         )
@@ -129,11 +134,15 @@ def set_order_type_keyboard(current_type: str | None = None) -> InlineKeyboardMa
 
     for type_val, (emoji, title) in order_types.items():
         text = f"{emoji} {title}"
-        # Если этот тип сейчас выбран, ставим галочку
         if current_type == type_val:
             text = f"✅ {text}"
 
-        builder.button(text=text, callback_data=OrderTypeCallback(type=type_val))
+        builder.button(
+            text=text,
+            callback_data=OrderTypeCallback(
+                type=type_val, need_time=(type_val == OrderType.TIME.value)
+            ),
+        )
 
     builder.adjust(1)  # Кнопки в один столбец
 
@@ -155,7 +164,7 @@ def set_order_time_keyboard(current_time_type: str | None = None) -> InlineKeybo
     # Типы времени доставки
     time_types = {
         DeliveryTimeType.ASAP.value: ("🚀", "Как можно скорее"),
-        DeliveryTimeType.TODAY.value: ("📅", "В течение дня"),
+        # DeliveryTimeType.TODAY.value: ("📅", "В течение дня"),
         DeliveryTimeType.SCHEDULED.value: ("⏰", "К конкретному времени"),
     }
 

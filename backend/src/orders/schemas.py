@@ -117,7 +117,7 @@ class CourierInfoForShop(BaseModel):
     """Информация о курьере для магазина."""
 
     id: int
-    name: str = Field(alias="full_name")
+    full_name: str
 
     model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True)
 
@@ -129,7 +129,7 @@ class OrderResponse(BaseModel):
     description: str | None = Field(None, max_length=1000)
     delivery_time: datetime | None = None
 
-    courier: Any = Field(None, exclude=True)
+    courier: CourierInfoForShop | None = Field(None, exclude=True)
 
     photo_report_id: str | None = None
     completed_at: datetime | None = None

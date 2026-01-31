@@ -54,6 +54,3 @@ GEMINI.md
 
 # файлы ide
 .idea
-
-# тестовые данные db
-load_test_data_orm.py

@@ -114,9 +114,13 @@ async def get_description_handler(
         shop_address=shop_address,
     )
 
-    # Устанавливаем дефолтный тип заказа
+    # Устанавливаем дефолтный тип заказа и время доставки
     order_type = OrderType.REGULAR.value
-    await state.update_data(order_type=order_type)
+    delivery_time_type = DeliveryTimeType.TODAY.value
+    await state.update_data(
+        order_type=order_type,
+        delivery_time_type=delivery_time_type,
+    )
 
     # Формируем текст предпросмотра
     text = format_order_preview(
@@ -129,7 +133,10 @@ async def get_description_handler(
     # Отправляем предпросмотр
     await message.answer(
         text=text,
-        reply_markup=get_order_settings_keyboard(order_type=order_type),
+        reply_markup=get_order_settings_keyboard(
+            order_type=order_type,
+            delivery_time_type=DeliveryTimeType.TODAY,
+        ),
         parse_mode="HTML",
     )
 
@@ -160,33 +167,34 @@ async def save_order_type_handler(
     """Обрабатывает выбор типа заказа"""
     new_type = callback_data.type
 
-    # Сохраняем новый тип в State
-    await state.update_data(order_type=new_type)
+    # Если выбран НЕ-TIME тип — сбрасываем время доставки
+    if new_type != OrderType.TIME.value:
+        await state.update_data(
+            order_type=new_type,
+            delivery_time_type=DeliveryTimeType.TODAY.value,
+            delivery_time=None,
+        )
+    else:
+        # Для TIME типа сохраняем только order_type
+        await state.update_data(order_type=new_type)
 
-    # Получаем информацию о требованиях для этого типа
-    requirements = get_order_type_requirements(new_type)
+    if callback_data.need_time:
+        await callback.message.edit_text(
+            "Выберите время заказа", reply_markup=set_order_time_keyboard()
+        )
+    else:
+        # Получаем информацию о требованиях для этого типа
+        requirements = get_order_type_requirements(new_type)
 
-    # Обновляем клавиатуру
-    await callback.message.edit_reply_markup(
-        reply_markup=set_order_type_keyboard(current_type=new_type)
-    )
+        # Обновляем клавиатуру
+        await callback.message.edit_reply_markup(
+            reply_markup=set_order_type_keyboard(current_type=new_type)
+        )
 
-    # Показываем уведомление с информацией о типе
-    await callback.answer(f"Тип изменён: {requirements['description'][:50]}...", show_alert=False)
-
-
-@router.callback_query(F.data == "set_order_time", RoleFilter(UserRole.SHOP))
-async def open_order_time_menu(callback: CallbackQuery, state: FSMContext):
-    """Открывает меню выбора типа времени доставки"""
-    data = await state.get_data()
-    current_time_type = data.get("delivery_time_type", DeliveryTimeType.TODAY.value)
-
-    await callback.message.edit_text(
-        text=ShopOrder.DELIVERY_TIME_TYPE,
-        reply_markup=set_order_time_keyboard(current_time_type=current_time_type),
-        parse_mode="HTML",
-    )
-    await callback.answer()
+        # Показываем уведомление с информацией о типе
+        await callback.answer(
+            f"Тип изменён: {requirements['description'][:50]}...", show_alert=False
+        )
 
 
 @router.callback_query(DeliveryTimeTypeCallback.filter(), RoleFilter(UserRole.SHOP))
@@ -244,19 +252,23 @@ async def process_delivery_time_input(message: Message, state: FSMContext):
 
     # Возвращаемся к предпросмотру заказа
     data = await state.get_data()
+    order_type = data.get("order_type", OrderType.TIME.value)
 
     text = format_order_preview(
         shop_name=data.get("shop_name", "Магазин"),
         shop_address=data.get("shop_address", "Адрес"),
         description=data.get("description", ""),
-        order_type=data.get("order_type", OrderType.REGULAR.value),
+        order_type=order_type,
         delivery_time=delivery_time,
         delivery_time_type=DeliveryTimeType.SCHEDULED.value,
     )
 
     await message.answer(
         f"✅ Время доставки установлено: {delivery_time.strftime('%d.%m.%Y %H:%M')}\n\n{text}",
-        reply_markup=get_order_settings_keyboard(order_type=data.get("order_type")),
+        reply_markup=get_order_settings_keyboard(
+            order_type=order_type,
+            delivery_time_type=DeliveryTimeType.SCHEDULED,
+        ),
         parse_mode="HTML",
     )
 
@@ -276,6 +288,13 @@ async def back_to_order_preview(callback: CallbackQuery, state: FSMContext):
         return
 
     order_type = data.get("order_type", OrderType.REGULAR.value)
+    delivery_time_type_str = data.get("delivery_time_type", DeliveryTimeType.TODAY.value)
+
+    # Безопасное преобразование строки в enum
+    try:
+        delivery_time_type_enum = DeliveryTimeType(delivery_time_type_str)
+    except ValueError:
+        delivery_time_type_enum = DeliveryTimeType.TODAY
 
     text = format_order_preview(
         shop_name=data.get("shop_name", "Магазин"),
@@ -283,13 +302,16 @@ async def back_to_order_preview(callback: CallbackQuery, state: FSMContext):
         description=description,
         order_type=order_type,
         delivery_time=data.get("delivery_time"),
-        delivery_time_type=data.get("delivery_time_type"),
+        delivery_time_type=delivery_time_type_str,
         price=data.get("price"),
     )
 
     await callback.message.edit_text(
         text=text,
-        reply_markup=get_order_settings_keyboard(order_type=order_type),
+        reply_markup=get_order_settings_keyboard(
+            order_type=order_type,
+            delivery_time_type=delivery_time_type_enum,
+        ),
         parse_mode="HTML",
     )
 

@@ -6,6 +6,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from backend.src.common.enums import DeliveryTimeType, OrderType
 from backend.src.core.logging import get_logger
+from icecream import ic
 
 from bot.clients.orders_client import OrdersClient
 from bot.exceptions import ErrorMessages
@@ -15,10 +16,9 @@ from bot.messages import OrderMessages, ShopMessages
 logger = get_logger(__name__)
 
 
-class OrderTypeCallback(CallbackData, prefix="set_ord_type"):
-    """Callback для выбора типа заказа"""
-
-    type: str  # Значение OrderType (regular, time и т.д.)
+class OrderTypeCallback(CallbackData, prefix="order_type"):
+    type: str
+    need_time: bool = False
 
 
 class DeliveryTimeTypeCallback(CallbackData, prefix="set_del_time"):

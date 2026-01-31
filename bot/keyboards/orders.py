@@ -56,7 +56,6 @@ def get_orders_list_keyboard(
     for order in orders:
         order_id = order.get("id")
         status = order.get("status", "unknown")
-        address = order.get("recipient_address", "Нет адреса")
 
         # Форматируем дату
         date = format_dt_short(order.get("created_at", ""))
@@ -72,17 +71,12 @@ def get_orders_list_keyboard(
             # Если не Enum, проверяем напрямую в словаре или берем первую букву
             status_icon = ORDER_STATUS_EMOJIS.get(status, status[:1].upper())
 
-        # Умное сокращение адреса
-        max_address_len = 20
-        if len(address) > max_address_len:
-            address = address[: max_address_len - 3] + "..."
-
         # Формируем текст кнопки
         # Если есть цена (для админов/магазинов может быть важно), можно добавить
         # Но для курьеров важнее адрес.
         # Давайте сделаем универсально: #ID | Status | Address | Date
 
-        button_text = f"#{order_id} | {status_icon} | {address} | {date}"
+        button_text = f"#{order_id} | {status_icon} | {date}"
 
         # Для админов может быть другой формат, но пока оставим так.
         # Если нужно, можно передавать formatter в функцию.
