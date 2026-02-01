@@ -1,7 +1,13 @@
 # ==============================================================================
+# Build System
+# ==============================================================================
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# ==============================================================================
 # Project Metadata
 # ==============================================================================
-# Содержит основную информацию о вашем проекте
 [project]
 name = "delivery-bot"
 version = "0.1.0"
@@ -9,90 +15,210 @@ description = "Telegram bot for delivery management system"
 readme = "README.md"
 requires-python = ">=3.13"
 
-# Основные зависимости
+# Основные зависимости (только прямые, без транзитивных)
 dependencies = [
+    # Core frameworks
     "aiogram==3.22.0",
+    "fastapi==0.117.1",
+    "uvicorn==0.37.0",
+
+    # Database
+    "sqlalchemy==2.0.43",
     "aiosqlite==0.21.0",
     "asyncpg==0.30.0",
-    "python-dotenv==1.1.1",
-    "fastapi==0.117.1",
-    "greenlet==3.2.4",
-    "httpx==0.28.1",
-    "psutil==7.1.0",
     "psycopg2-binary==2.9.10",
+    "greenlet==3.2.4",
+
+    # Cache & State
+    "redis==5.0.7",
+
+    # HTTP & Networking
+    "httpx==0.28.1",
+    "aiohttp==3.12.15",
+    "aiodns>=3.6.1",
+    "anyio==4.12.1",
+    "attrs==25.4.0",
+    "certifi==2026.1.4",
+    "multidict==6.7.1",
+    "frozenlist==1.8.0",
+    "idna==3.11",
+    "yarl==1.22.0",
+
+    # Configuration & Validation
     "pydantic==2.11.9",
     "pydantic-settings==2.11.0",
+    "python-dotenv==1.1.1",
+    "packaging==26.0",
+
+    # Security & Authentication
     "python-jose[cryptography]==3.3.0",
-    "python-multipart==0.0.20",
-    "redis==5.0.7",
+    "cryptography==46.0.4",
+    "pycparser==3.0",
+    "pyasn1==0.6.2",
+    "wrapt==2.1.0",
+
+    # Rate Limiting
     "slowapi==0.1.9",
-    "sqlalchemy==2.0.43",
-    "uvicorn==0.37.0",
-    "watchfiles==1.1.0",
-    "aiodns>=3.6.1",
-    "faker>=40.1.0",
-    "pydantic-core==2.33.2",
-    "httpcore==1.0.9",
-    "limits==5.5.0",
+    "limits==5.6.0",
+    "propcache==0.4.1",
+    "typing-inspection==0.4.2",
+    "deprecated==1.3.1",
+    "click==8.3.1",
+
+    # File Handling
+    "python-multipart==0.0.20",
     "aiofiles==24.1.0",
-    "aiohttp==3.12.15",
-    "aiohappyeyeballs==2.6.1",
-    "aiosignal==1.4.0",
-    "attrs==25.3.0",
-    "frozenlist==1.7.0",
-    "multidict==6.6.4",
-    "propcache==0.3.2",
-    "yarl==1.20.1",
-    "click==8.3.0",
-    "deprecated==1.2.18",
-    "magic-filter==1.0.12",
-    "wrapt==1.17.3",
-    "h11==0.16.0",
-    "anyio==4.11.0",
-    "sniffio==1.3.1",
-    "certifi==2025.8.3",
-    "idna==3.10",
-    "annotated-types==0.7.0",
-    "typing-extensions==4.15.0",
-    "typing-inspection==0.4.1",
-    "starlette==0.48.0",
-    "packaging==25.0",
-    "iniconfig==2.1.0",
-    "pluggy==1.6.0",
-    "tqdm>=4.67.1",
+
+    # Utilities
+    "psutil==7.1.0",
+    "watchfiles==1.1.0",
+    "faker>=40.1.2",
+    "rich>=14.3.2",
+    "ruff>=0.14.14",
 ]
 
-# Зависимости, которые нужны только для разработки и тестирования
+# Зависимости для разработки и тестирования
 [project.optional-dependencies]
 dev = [
-    "icecream>=2.1.8",
-    "pytest>=8.4.2",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
-    "ruff>=0.1.0",
+    "icecream>=2.1.10",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
 ]
 
 # Ссылки
 [project.urls]
 "Repository" = "https://github.com/alisher-balpisov/delivery_bot_project.git"
 
+# ==============================================================================
+# Ruff Configuration
+# ==============================================================================
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py313"
+src = ["backend/src", "bot"]
+
+# Исключаемые директории
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "migrations",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+skip-magic-trailing-comma = false
+docstring-code-format = true
 
 [tool.ruff.lint]
-# E: pycodestyle errors
-# F: Pyflakes
-# I: isort
-# B: flake8-bugbear
-# S: flake8-bandit (security)
-# UP: pyupgrade
-# N: pep8-naming
-# RUF: Ruff-specific rules
-select = ["E", "F", "I", "B", "S", "UP", "N", "RUF"]
-ignore = []
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "C4",  # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "C90", # mccabe
+    "UP",  # pyupgrade
+    "S",   # flake8-bandit
+    "N",   # pep8-naming
+    "RUF", # Ruff-specific rules
+]
+
+ignore = [
+    "E501",  # Длина строки (контролируется форматтером)
+    "B008",  # Вызовы функций в аргументах по умолчанию
+    "B904",  # Raise without from
+    "C901",  # Контролируется через mccabe.max-complexity
+    "S101",  # Использование assert
+    "F403",  # Star imports
+    "F405",  # Star imports
+    "RUF001", # Кириллица в строках
+    "RUF002", # Кириллица в docstrings
+    "RUF003", # Кириллица в комментариях
+]
+
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
-# Ignore assert (S101) and hardcoded passwords (S105, S106) in tests
-"tests/*" = ["S101", "S105", "S106"]
+"tests/*" = ["S101"]
 "backend/tests/*" = ["S101", "S105", "S106"]
+"__init__.py" = ["F401"]
+"backend/src/main.py" = ["E402"]
+
+# ==============================================================================
+# Pytest Configuration
+# ==============================================================================
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests", "backend/tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--cov=backend/src",
+    "--cov=bot",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+
+# ==============================================================================
+# Coverage Configuration
+# ==============================================================================
+[tool.coverage.run]
+source = ["backend/src", "bot"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__init__.py",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+# ==============================================================================
+# Setuptools Configuration
+# ==============================================================================
+[tool.setuptools]
+# Пакеты находятся в корне проекта
+packages = ["bot", "backend"]
+
+# Дополнительные файлы для включения в пакет
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.md", "*.yml", "*.yaml"]

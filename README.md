@@ -1,175 +1,202 @@
-# Система бота для доставки
+# Delivery Bot Project
 
-Этот проект представляет собой комплексную систему бота для доставки с бэкендом на FastAPI и Telegram-ботом на основе `aiogram`. Система предназначена для управления доставками, курьерами, заказами и пользователями, обеспечивая удобное взаимодействие через интерфейс Telegram.
+Telegram bot for delivery management system with FastAPI backend.
 
-## Возможности
+## Features
 
-*   **Бэкенд API (FastAPI):**
-    *   RESTful API для управления пользователями, курьерами, заказами, магазинами и спорами.
-    *   Аутентификация на основе JWT для безопасного доступа.
-    *   SQLAlchemy ORM для асинхронного взаимодействия с базой данных PostgreSQL.
-    *   Интерфейс администратора для управления системой.
-    *   Сервис уведомлений для информирования пользователей.
+- 🤖 Telegram Bot interface
+- 🚀 FastAPI REST API
+- 🗄️ PostgreSQL/SQLite database support
+- 🔐 JWT authentication
+- 📦 Redis caching
+- 🎨 Clean architecture
 
-*   **Telegram-бот (`aiogram`):**
-    *   Удобный интерфейс для взаимодействия с системой доставки.
-    *   Доступ на основе ролей для администраторов, курьеров, владельцев магазинов и обычных пользователей.
-    *   Уведомления в реальном времени о статусе заказа и других важных событиях.
-    *   Обрабатывает регистрацию пользователей, создание заказов, разрешение споров и многое другое.
+## Requirements
 
-## Стек технологий
+- Python 3.13+
+- PostgreSQL (or SQLite for development)
+- Redis
 
-*   **Бэкенд:** Python, FastAPI, SQLAlchemy, PostgreSQL, JWT
-*   **Бот:** Python, `aiogram`
-*   **Линтинг и форматирование:** `ruff`
-*   **Тестирование:** `pytest`
-*   **Управление зависимостями:** `pip`, `uv`
+## Installation
 
-## Структура проекта
-
-Проект состоит из двух основных компонентов: `backend` и `bot`.
-
-```
-.
-├── backend/                # Бэкенд-приложение FastAPI
-│   ├── src/
-│   │   ├── api/            # Конечные точки API
-│   │   ├── auth/           # Логика аутентификации
-│   │   ├── core/           # Основные компоненты (конфигурация, база данных)
-│   │   ├── models/         # Модели SQLAlchemy
-│   │   ├── schemas/        # Схемы Pydantic
-│   │   └── ...
-│   └── tests/              # Тесты бэкенда
-├── bot/                    # Приложение Telegram-бота
-│   ├── clients/            # API-клиенты для бэкенд-сервисов
-│   ├── handlers/           # Обработчики команд и сообщений бота
-│   └── ...
-├── .gitignore
-├── .pre-commit-config.yaml
-├── pyproject.toml
-├── pytest.ini
-├── README.md
-└── requirements.txt
-```
-
-## Начало работы
-
-### Предварительные требования
-
-*   Python 3.10+
-*   PostgreSQL
-*   Токен Telegram-бота
-
-### Установка
-
-1.  **Клонируйте репозиторий:**
-    ```bash
-    git clone <URL-репозитория>
-    cd delivery_bot_project
-    ```
-
-2.  **Создайте и активируйте виртуальное окружение:**
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate
-    ```
-
-3.  **Установите зависимости:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-### Конфигурация
-
-1.  Создайте файл `.env` в корне проекта.
-
-2.  Добавьте следующие переменные окружения в файл `.env`, заменив значения-заполнители:
-
-    ```env
-    # backend/src/core/config.py
-    DATABASE__URL="postgresql+asyncpg://user:password@host:port/dbname"
-    TELEGRAM__BOT_TOKEN="ваш_токен_telegram_бота"
-    JWT__SECRET_KEY="ваш_супер_секретный_ключ"
-    ```
-
-### Запуск приложения
-
-**1. Бэкенд API:**
-
-Чтобы запустить сервер бэкенда для разработки (с автоматической перезагрузкой):
+### Using uv (recommended)
 
 ```bash
+# Clone repository
+git clone https://github.com/alisher-balpisov/delivery_bot_project.git
+cd delivery_bot_project
+
+# Install dependencies
+uv pip install -e ".[dev]"
+
+# Copy environment file
+cp .env.example .env
+# Edit .env with your configuration
+
+# Run database migrations (if using Alembic)
+# alembic upgrade head
+```
+
+### Using pip
+
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Copy environment file
+cp .env.example .env
+```
+
+### Using make
+
+```bash
+# First-time setup
+make setup
+
+# Install dependencies
+make install-dev
+```
+
+## Configuration
+
+1. Copy `.env.example` to `.env`
+2. Fill in your configuration:
+   - `TELEGRAM__BOT_TOKEN` - from @BotFather
+   - `DATABASE__URL` - database connection string
+   - `JWT__SECRET_KEY` - generate with: `openssl rand -hex 32`
+   - `REDIS__HOST` and `REDIS__PORT` - Redis connection
+
+## Running
+
+### Telegram Bot
+
+```bash
+# Using Python
+python -m bot.main
+
+# Using make
+make run-bot
+```
+
+### FastAPI Backend
+
+```bash
+# Using uvicorn
 uvicorn backend.src.main:app --reload
+
+# Using make
+make run-api
 ```
 
-API будет доступен по адресу `http://localhost:8000`, а документация OpenAPI — по адресу `http://localhost:8000/docs`.
+## Development
 
-**2. Telegram-бот:**
-
-Чтобы запустить Telegram-бота:
+### Code Quality
 
 ```bash
-python bot/main.py
+# Format code
+make format
+
+# Lint code
+make lint
+
+# Fix issues automatically
+make fix
+
+# Run all checks
+make check
 ```
 
-Для разработки вы можете использовать `watchfiles` для автоматического перезапуска бота при изменении файлов:
+### Testing
 
 ```bash
-python run_bot.py
+# Run all tests
+make test
+
+# Run tests with coverage
+make test-cov
+
+# Run fast tests only
+make test-fast
 ```
 
-## Разработка
+### Pre-commit Hooks
 
-### Линтинг и форматирование
+```bash
+# Install hooks
+pre-commit install
 
-В этом проекте используется `ruff` для линтинга и форматирования кода.
+# Run manually
+make pre-commit
+```
 
-*   **Проверить наличие ошибок линтинга:**
-    ```bash
-    ruff check .
-    ```
+## Project Structure
 
-*   **Отформатировать код:**
-    ```bash
-    ruff format .
-    ```
+```
+delivery_bot_project/
+├── backend/              # FastAPI backend
+│   ├── src/
+│   │   ├── core/        # Core configuration
+│   │   ├── api/         # API routes
+│   │   ├── models/      # Database models
+│   │   └── services/    # Business logic
+│   └── tests/           # Backend tests
+├── bot/                 # Telegram bot
+│   ├── handlers/        # Message handlers
+│   ├── keyboards/       # Bot keyboards
+│   ├── states/          # FSM states
+│   └── main.py         # Bot entry point
+├── .env.example        # Environment variables template
+├── pyproject.toml      # Project configuration
+└── README.md          # This file
+```
 
-В файле `.pre-commit-config.yaml` настроен pre-commit хук для автоматического запуска `ruff` перед каждым коммитом.
+## Available Commands (Make)
 
-### Тестирование
+```bash
+make help          # Show all available commands
+make setup         # Initial project setup
+make install-dev   # Install development dependencies
+make test          # Run tests
+make lint          # Check code quality
+make format        # Format code
+make check         # Run all checks
+make run-bot       # Start Telegram bot
+make run-api       # Start FastAPI server
+make clean         # Clean temporary files
+```
 
-В проекте используется `pytest` для запуска тестов. Файлы тестов находятся в каталоге `backend/tests`.
+## Environment Variables
 
-*   **Запустить тесты:**
-    ```bash
-    pytest
-    ```
+See `.env.example` for all available configuration options.
 
-Файл `pytest.ini` содержит конфигурацию для `pytest`.
+### Required Variables
 
-## Команды бота
+- `TELEGRAM__BOT_TOKEN` - Telegram bot token
+- `DATABASE__URL` - Database connection URL
+- `JWT__SECRET_KEY` - Secret key for JWT tokens
 
-Telegram-бот предоставляет различные команды для разных ролей пользователей. Вот несколько примеров:
+### Optional Variables
 
-*   `/start` - Начать взаимодействие с ботом.
-*   `/help` - Получить справку и информацию о доступных командах.
-*   `/register` - Зарегистрироваться как новый пользователь.
-*   `/new_order` - Создать новый заказ на доставку.
-*   `/my_orders` - Просмотреть историю ваших заказов.
+- `REDIS__HOST` - Redis host (default: localhost)
+- `DEBUG` - Enable debug mode (default: true)
+- `API_PORT` - API server port (default: 8000)
 
-Администраторы, курьеры и владельцы магазинов имеют доступ к дополнительным командам, специфичным для их ролей.
+## License
 
-## Участие в разработке
+This project is private.
 
-Мы приветствуем участие в разработке! Не стесняйтесь отправлять pull request'ы или открывать issue.
+## Authors
 
-1.  Сделайте форк репозитория.
-2.  Создайте новую ветку (`git checkout -b feature/your-feature`).
-3.  Внесите свои изменения.
-4.  Закоммитьте свои изменения (`git commit -m 'Add some feature'`).
-5.  Отправьте ветку в репозиторий (`git push origin feature/your-feature`).
-6.  Откройте pull request.
+- Alisher Balpisov
 
-## Лицензия
+## Contributing
 
-Этот проект лицензирован по лицензии MIT.
+This is a private project. For contributions, please contact the repository owner.
+
+## Support
+
+For issues and questions, please open an issue on GitHub or contact the maintainer.

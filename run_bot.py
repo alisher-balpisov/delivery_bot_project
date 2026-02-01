@@ -12,7 +12,7 @@ import logging
 import sys
 from pathlib import Path
 
-from watchfiles import run_process
+from watchfiles import DefaultFilter, run_process
 
 # --- Настройка базового логирования ---
 logging.basicConfig(
@@ -22,6 +22,15 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+class BotFileFilter(DefaultFilter):
+    """Фильтр для мониторинга только релевантных файлов."""
+
+    def __call__(self, change, path: str) -> bool:
+        if any(x in path for x in ["__pycache__", ".pyc", ".log", ".git"]):
+            return False
+        return super().__call__(change, path)
 
 
 def start():
@@ -54,22 +63,26 @@ if __name__ == "__main__":
         project_root / "backend" / "src",
     ]
 
-    # Отфильтровываем только существующие директории
+    # Фильтруем только существующие директории
     existing_paths = [str(path) for path in watch_paths if path.exists()]
 
     if not existing_paths:
         logger.warning(
-            "Не найдены директории для мониторинга. "
+            "⚠️  Не найдены директории для мониторинга. "
             "Бот будет запущен без автоматической перезагрузки."
         )
         start()
     else:
-        logger.info(f"Мониторинг изменений в директориях: {', '.join(existing_paths)}")
+        logger.info(f"Мониторинг изменений в: {', '.join(existing_paths)}")
 
         try:
-            run_process(*existing_paths, target=start)
+            run_process(
+                *existing_paths,
+                target=start,
+                watch_filter=BotFileFilter(),
+            )
         except KeyboardInterrupt:
-            logger.info("Получен сигнал остановки. Завершение работы...")
+            logger.info("\nПолучен сигнал остановки. Завершение работы...")
         except Exception as e:
             logger.error(f"Критическая ошибка: {e}", exc_info=True)
             sys.exit(1)

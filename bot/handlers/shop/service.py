@@ -6,7 +6,6 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from backend.src.common.enums import DeliveryTimeType, OrderType
 from backend.src.core.logging import get_logger
-from icecream import ic
 
 from bot.clients.orders_client import OrdersClient
 from bot.exceptions import ErrorMessages
