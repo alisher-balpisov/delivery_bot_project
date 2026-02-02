@@ -1,202 +1,273 @@
-# Delivery Bot Project
+# 🚚 Delivery Bot
 
-Telegram bot for delivery management system with FastAPI backend.
+Telegram-бот и REST API для управления доставкой заказов. Система связывает магазины, курьеров и администраторов в единый процесс обработки заказов.
 
-## Features
+## 📋 Содержание
 
-- 🤖 Telegram Bot interface
-- 🚀 FastAPI REST API
-- 🗄️ PostgreSQL/SQLite database support
-- 🔐 JWT authentication
-- 📦 Redis caching
-- 🎨 Clean architecture
+- [Стек технологий](#-стек-технологий)
+- [Архитектура](#-архитектура)
+- [Структура проекта](#-структура-проекта)
+- [Установка](#-установка)
+- [Переменные окружения](#-переменные-окружения)
+- [Запуск](#-запуск)
+- [API Эндпоинты](#-api-эндпоинты)
 
-## Requirements
+---
 
-- Python 3.13+
-- PostgreSQL (or SQLite for development)
-- Redis
+## 🛠 Стек технологий
 
-## Installation
+| Категория | Технология |
+|-----------|------------|
+| **Backend** | FastAPI 0.117, Uvicorn |
+| **Telegram Bot** | aiogram 3.22 |
+| **ORM** | SQLAlchemy 2.0 (async) |
+| **База данных** | PostgreSQL / SQLite |
+| **Кеш / FSM** | Redis |
+| **Аутентификация** | JWT (python-jose) |
+| **Валидация** | Pydantic 2.11 |
+| **HTTP-клиент** | httpx, aiohttp |
+| **Python** | 3.13+ |
 
-### Using uv (recommended)
+---
 
-```bash
-# Clone repository
-git clone https://github.com/alisher-balpisov/delivery_bot_project.git
-cd delivery_bot_project
+## 🏗 Архитектура
 
-# Install dependencies
-uv pip install -e ".[dev]"
+Проект разделён на две основные части:
 
-# Copy environment file
-cp .env.example .env
-# Edit .env with your configuration
+### Backend (FastAPI REST API)
 
-# Run database migrations (if using Alembic)
-# alembic upgrade head
-```
+Отвечает за:
+- Хранение и обработку данных
+- Аутентификацию и авторизацию (JWT)
+- Бизнес-логику заказов
+- CRUD-операции для всех сущностей
 
-### Using pip
+### Bot (aiogram Telegram Bot)
 
-```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+Отвечает за:
+- Интерфейс взаимодействия с пользователями
+- Регистрацию по инвайт-кодам
+- Создание и отслеживание заказов
+- Уведомления участников процесса
 
-# Install dependencies
-pip install -e ".[dev]"
+### Роли пользователей
 
-# Copy environment file
-cp .env.example .env
-```
+| Роль | Возможности |
+|------|-------------|
+| **Admin** | Управление пользователями, кодами регистрации, просмотр статистики |
+| **Shop** | Создание заказов, просмотр своих заказов |
+| **Courier** | Принятие и выполнение заказов, загрузка фото-отчётов |
+| **Guest** | Ограниченный доступ (гостевой режим) |
 
-### Using make
+---
 
-```bash
-# First-time setup
-make setup
-
-# Install dependencies
-make install-dev
-```
-
-## Configuration
-
-1. Copy `.env.example` to `.env`
-2. Fill in your configuration:
-   - `TELEGRAM__BOT_TOKEN` - from @BotFather
-   - `DATABASE__URL` - database connection string
-   - `JWT__SECRET_KEY` - generate with: `openssl rand -hex 32`
-   - `REDIS__HOST` and `REDIS__PORT` - Redis connection
-
-## Running
-
-### Telegram Bot
-
-```bash
-# Using Python
-python -m bot.main
-
-# Using make
-make run-bot
-```
-
-### FastAPI Backend
-
-```bash
-# Using uvicorn
-uvicorn backend.src.main:app --reload
-
-# Using make
-make run-api
-```
-
-## Development
-
-### Code Quality
-
-```bash
-# Format code
-make format
-
-# Lint code
-make lint
-
-# Fix issues automatically
-make fix
-
-# Run all checks
-make check
-```
-
-### Testing
-
-```bash
-# Run all tests
-make test
-
-# Run tests with coverage
-make test-cov
-
-# Run fast tests only
-make test-fast
-```
-
-### Pre-commit Hooks
-
-```bash
-# Install hooks
-pre-commit install
-
-# Run manually
-make pre-commit
-```
-
-## Project Structure
+## 📁 Структура проекта
 
 ```
 delivery_bot_project/
-├── backend/              # FastAPI backend
-│   ├── src/
-│   │   ├── core/        # Core configuration
-│   │   ├── api/         # API routes
-│   │   ├── models/      # Database models
-│   │   └── services/    # Business logic
-│   └── tests/           # Backend tests
-├── bot/                 # Telegram bot
-│   ├── handlers/        # Message handlers
-│   ├── keyboards/       # Bot keyboards
-│   ├── states/          # FSM states
-│   └── main.py         # Bot entry point
-├── .env.example        # Environment variables template
-├── pyproject.toml      # Project configuration
-└── README.md          # This file
+├── backend/
+│   └── src/
+│       ├── admin/         # Админ-панель: статистика, управление
+│       ├── api/           # Роутинг API
+│       ├── auth/          # Аутентификация, JWT
+│       ├── common/        # Общие модули (enums, utils)
+│       ├── core/          # Конфигурация, БД, логирование
+│       ├── couriers/      # Логика курьеров
+│       ├── disputes/      # Споры (в разработке)
+│       ├── models/        # SQLAlchemy модели
+│       ├── orders/        # Заказы: CRUD, статусы
+│       ├── shops/         # Логика магазинов
+│       ├── users/         # Управление пользователями
+│       └── main.py        # Точка входа API
+├── bot/
+│   ├── clients/           # HTTP-клиенты для API
+│   ├── filters/           # Фильтры aiogram
+│   ├── handlers/          # Обработчики сообщений
+│   │   ├── admin/         # Хендлеры админа
+│   │   ├── auth/          # Авторизация/регистрация
+│   │   ├── common/        # Общие хендлеры
+│   │   ├── courier/       # Хендлеры курьера
+│   │   ├── public/        # Публичные команды
+│   │   └── shop/          # Хендлеры магазина
+│   ├── keyboards/         # Инлайн и reply клавиатуры
+│   ├── messages/          # Тексты сообщений
+│   ├── middleware/        # Middleware (auth, throttling)
+│   ├── utils/             # Утилиты
+│   └── main.py            # Точка входа бота
+├── .env.example           # Пример переменных окружения
+├── pyproject.toml         # Зависимости и конфигурация
+├── run_bot.py             # Запуск бота с hot-reload
+└── requirements.txt       # Альтернативный файл зависимостей
 ```
 
-## Available Commands (Make)
+---
+
+## 🚀 Установка
+
+### Требования
+
+- Python 3.13+
+- PostgreSQL (опционально, можно SQLite)
+- Redis
+
+### Шаги установки
 
 ```bash
-make help          # Show all available commands
-make setup         # Initial project setup
-make install-dev   # Install development dependencies
-make test          # Run tests
-make lint          # Check code quality
-make format        # Format code
-make check         # Run all checks
-make run-bot       # Start Telegram bot
-make run-api       # Start FastAPI server
-make clean         # Clean temporary files
+# Клонирование репозитория
+git clone https://github.com/alisher-balpisov/delivery_bot_project.git
+cd delivery_bot_project
+
+# Создание виртуального окружения
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# .venv\Scripts\activate   # Windows
+
+# Установка зависимостей
+pip install -e .
+# или через uv:
+uv pip install -e .
 ```
 
-## Environment Variables
+---
 
-See `.env.example` for all available configuration options.
+## ⚙️ Переменные окружения
 
-### Required Variables
+Скопируйте `.env.example` в `.env` и заполните:
 
-- `TELEGRAM__BOT_TOKEN` - Telegram bot token
-- `DATABASE__URL` - Database connection URL
-- `JWT__SECRET_KEY` - Secret key for JWT tokens
+```
 
-### Optional Variables
+### Основные переменные
 
-- `REDIS__HOST` - Redis host (default: localhost)
-- `DEBUG` - Enable debug mode (default: true)
-- `API_PORT` - API server port (default: 8000)
+```env
+# Приложение
+APP_NAME=Delivery Bot
+DEBUG=true
+ENVIRONMENT=development
 
-## License
+# Telegram Bot (получить у @BotFather)
+TELEGRAM__BOT_TOKEN=your_bot_token_here
 
-This project is private.
+# База данных
+DATABASE__URL=postgresql+asyncpg://user:password@localhost:5432/delivery_bot
+# или для разработки:
+DATABASE__URL=sqlite+aiosqlite:///./delivery_bot.db
 
-## Authors
+# Redis
+REDIS__HOST=localhost
+REDIS__PORT=6379
+REDIS__DB=0
 
-- Alisher Balpisov
+# JWT (сгенерировать: openssl rand -hex 32)
+JWT__SECRET_KEY=your_jwt_secret_key_here
+JWT__ACCESS_TOKEN_EXPIRE_MINUTES=15
+JWT__REFRESH_TOKEN_EXPIRE_DAYS=30
 
-## Contributing
+# API
+API_HOST=localhost
+API_PORT=8000
+API_PREFIX=/api/v1
 
-This is a private project. For contributions, please contact the repository owner.
+# Супер-администраторы (Telegram ID через запятую)
+ADMIN__SUPER_ADMIN_TELEGRAM_IDS=123456789,987654321
+```
 
-## Support
+Полный список переменных см. в [.env.example](.env.example).
 
-For issues and questions, please open an issue on GitHub or contact the maintainer.
+---
+
+## ▶️ Запуск
+
+### Запуск API (Backend)
+
+```bash
+# Стандартный запуск
+python -m backend.src.main
+
+# Только API без визуализации
+python -m backend.src.main api
+
+# Через uvicorn напрямую
+uvicorn backend.src.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+API будет доступен: `http://localhost:8000`
+Документация Swagger: `http://localhost:8000/docs`
+
+### Запуск Telegram-бота
+
+```bash
+# С автоматической перезагрузкой при изменениях
+python run_bot.py
+
+# Напрямую без hot-reload
+python -m bot.main
+```
+
+### Запуск обоих компонентов
+
+Рекомендуется запускать в разных терминалах:
+
+```bash
+# Терминал 1 — API
+python -m backend.src.main
+
+# Терминал 2 — Bot
+python run_bot.py
+```
+
+---
+
+## 📡 API Эндпоинты
+
+Базовый URL: `http://localhost:8000/api/v1`
+
+### Аутентификация (`/auth`)
+
+| Метод | Эндпоинт | Описание |
+|-------|----------|----------|
+| POST | `/auth/code` | Регистрация по инвайт-коду |
+| POST | `/auth/guest` | Гостевая регистрация |
+| POST | `/auth/login` | Вход для существующих пользователей |
+| POST | `/auth/refresh` | Обновление access-токена |
+| POST | `/auth/token` | OAuth2 для Swagger UI |
+
+### Заказы (`/orders`)
+
+| Метод | Эндпоинт | Описание |
+|-------|----------|----------|
+| POST | `/orders` | Создание заказа (магазин) |
+| GET | `/orders` | Список заказов с фильтрами |
+| GET | `/orders/{id}` | Детали заказа |
+| PATCH | `/orders/{id}` | Обновление заказа |
+| POST | `/orders/{id}/complete` | Завершение с фото-отчётом |
+
+### Магазины (`/shops`)
+
+| Метод | Эндпоинт | Описание |
+|-------|----------|----------|
+| GET | `/shops` | Список магазинов |
+| GET | `/shops/{id}` | Информация о магазине |
+
+### Курьеры (`/couriers`)
+
+| Метод | Эндпоинт | Описание |
+|-------|----------|----------|
+| GET | `/couriers` | Список курьеров |
+| GET | `/couriers/{id}` | Информация о курьере |
+
+### Администрирование (`/admin`)
+
+| Метод | Эндпоинт | Описание |
+|-------|----------|----------|
+| GET | `/admin/stats` | Системная статистика |
+| GET | `/admin/users` | Список пользователей |
+| POST | `/admin/codes` | Генерация инвайт-кода |
+
+### Служебные
+
+| Метод | Эндпоинт | Описание |
+|-------|----------|----------|
+| GET | `/` | Информация о приложении |
+| GET | `/api/v1/health` | Проверка здоровья |
+
+---
