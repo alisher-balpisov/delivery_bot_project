@@ -114,12 +114,15 @@ def get_order_settings_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def set_order_type_keyboard(current_type: str | None = None) -> InlineKeyboardMarkup:
+def set_order_type_keyboard(
+    current_type: str | None = None, back_callback: str = "back_to_preview"
+) -> InlineKeyboardMarkup:
     """
     Возвращает клавиатуру выбора типа заказа с отметкой текущего.
 
     Args:
         current_type: Текущий выбранный тип (значение enum)
+        back_callback: Callback data для кнопки "Назад"
     """
     builder = InlineKeyboardBuilder()
 
@@ -146,18 +149,21 @@ def set_order_type_keyboard(current_type: str | None = None) -> InlineKeyboardMa
 
     builder.adjust(1)  # Кнопки в один столбец
 
-    # Кнопка Назад, чтобы вернуться к просмотру заказа
-    builder.row(InlineKeyboardButton(text="🔙 Назад к заказу", callback_data="back_to_preview"))
+    # Кнопка Назад
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=back_callback))
 
     return builder.as_markup()
 
 
-def set_order_time_keyboard(current_time_type: str | None = None) -> InlineKeyboardMarkup:
+def set_order_time_keyboard(
+    current_time_type: str | None = None, back_callback: str = "back_to_preview"
+) -> InlineKeyboardMarkup:
     """
     Возвращает клавиатуру выбора типа времени доставки.
 
     Args:
         current_time_type: Текущий выбранный тип времени (значение enum)
+        back_callback: Callback data для кнопки "Назад"
     """
     builder = InlineKeyboardBuilder()
 
@@ -178,19 +184,19 @@ def set_order_time_keyboard(current_time_type: str | None = None) -> InlineKeybo
     builder.adjust(1)
 
     # Кнопка назад
-    builder.row(InlineKeyboardButton(text="🔙 Назад к заказу", callback_data="back_to_preview"))
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=back_callback))
 
     return builder.as_markup()
 
 
-def get_price_input_keyboard() -> InlineKeyboardMarkup:
+def get_price_input_keyboard(back_callback: str = "back_to_preview") -> InlineKeyboardMarkup:
     """Клавиатура для этапа ввода цены (с кнопкой отмены)"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🔙 Назад к настройкам",
-                    callback_data="back_to_preview",
+                    text="🔙 Назад",
+                    callback_data=back_callback,
                 ),
                 InlineKeyboardButton(
                     text="◀️ Главное меню",
@@ -221,21 +227,56 @@ def get_order_confirmation_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="🔙 Изменить заказ",
-                    callback_data="back_to_preview",
+                    callback_data="edit_order_menu",
                 ),
             ],
         ]
     )
 
 
-def get_time_input_keyboard() -> InlineKeyboardMarkup:
+def get_edit_order_menu_keyboard() -> InlineKeyboardMarkup:
+    """
+    Клавиатура меню редактирования заказа.
+    Показывает опции: изменить описание, тип заказа, цену.
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✏️ Изменить описание",
+                    callback_data="edit_order_description",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📦 Изменить тип заказа",
+                    callback_data="edit_order_type",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💰 Изменить цену",
+                    callback_data="edit_order_price",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад",
+                    callback_data="back_to_confirmation",
+                ),
+            ],
+        ]
+    )
+
+
+def get_time_input_keyboard(back_callback: str = "back_to_preview") -> InlineKeyboardMarkup:
     """Клавиатура для этапа ввода конкретного времени доставки"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="🔙 Назад к настройкам",
-                    callback_data="back_to_preview",
+                    callback_data=back_callback,
                 ),
                 InlineKeyboardButton(
                     text="◀️ Главное меню",
@@ -302,7 +343,6 @@ def format_order_preview(
     if price is not None:
         text += f"\n💰 <b>Цена доставки:</b> {price:,.0f} ₸\n"
 
-    text += f"\n{'─' * 25}\n"
     text += "<i>Настройте параметры заказа используя кнопки ниже.</i>"
 
     return text

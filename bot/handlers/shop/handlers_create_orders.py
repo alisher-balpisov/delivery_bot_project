@@ -11,7 +11,7 @@
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from backend.src.common.enums import DeliveryTimeType, OrderType, UserRole
 
 from bot.clients.auth_client import AuthClient
@@ -22,6 +22,7 @@ from bot.handlers.shop.keyboards import (
     back_to_menu,
     format_order_confirmation_text,
     format_order_preview,
+    get_edit_order_menu_keyboard,
     get_order_confirmation_keyboard,
     get_order_settings_keyboard,
     get_price_input_keyboard,
@@ -166,6 +167,8 @@ async def save_order_type_handler(
 ):
     """Обрабатывает выбор типа заказа"""
     new_type = callback_data.type
+    current_state = await state.get_state()
+    is_editing = current_state == OrderStates.editing_type
 
     # Если выбран НЕ-TIME тип — сбрасываем время доставки
     if new_type != OrderType.TIME.value:
@@ -179,22 +182,29 @@ async def save_order_type_handler(
         await state.update_data(order_type=new_type)
 
     if callback_data.need_time:
+        # Если выбираем время в режиме редактирования - кнопка назад ведёт в меню
+        back_callback = "edit_order_menu" if is_editing else "back_to_preview"
+
         await callback.message.edit_text(
-            "Выберите время заказа", reply_markup=set_order_time_keyboard()
+            "Выберите время заказа",
+            reply_markup=set_order_time_keyboard(back_callback=back_callback),
         )
-    else:
-        # Получаем информацию о требованиях для этого типа
-        requirements = get_order_type_requirements(new_type)
+        return
 
-        # Обновляем клавиатуру
-        await callback.message.edit_reply_markup(
-            reply_markup=set_order_type_keyboard(current_type=new_type)
-        )
+    # Если мы в режиме редактирования и время не требуется — сразу готово
+    if is_editing:
+        await back_to_confirmation_handler(callback, state)
+        return
 
-        # Показываем уведомление с информацией о типе
-        await callback.answer(
-            f"Тип изменён: {requirements['description'][:50]}...", show_alert=False
-        )
+    # ОБЫЧНЫЙ ФЛОУ СОЗДАНИЯ:
+    # Получаем информацию о требованиях для этого типа
+    requirements = get_order_type_requirements(new_type)
+
+    # Показываем уведомление с информацией о типе
+    await callback.answer(f"Тип изменён: {requirements['description'][:50]}...", show_alert=False)
+
+    # Возвращаемся к предпросмотру заказа
+    await back_to_order_preview(callback, state)
 
 
 @router.callback_query(DeliveryTimeTypeCallback.filter(), RoleFilter(UserRole.SHOP))
@@ -205,24 +215,35 @@ async def save_delivery_time_type_handler(
 ):
     """Обрабатывает выбор типа времени доставки"""
     new_time_type = callback_data.time_type
+    current_state = await state.get_state()
+    is_editing = current_state == OrderStates.editing_type
 
     # Сохраняем новый тип времени
     await state.update_data(delivery_time_type=new_time_type)
+
+    back_callback = "edit_order_menu" if is_editing else "back_to_preview"
 
     # Если выбрано конкретное время - запрашиваем ввод
     if new_time_type == DeliveryTimeType.SCHEDULED.value:
         await callback.message.edit_text(
             text=ShopOrder.DELIVERY_TIME,
-            reply_markup=get_time_input_keyboard(),
+            reply_markup=get_time_input_keyboard(back_callback=back_callback),
             parse_mode="HTML",
         )
         await state.set_state(OrderStates.waiting_for_time)
         await callback.answer()
         return
 
-    # Для других типов - обновляем клавиатуру и показываем уведомление
+    # Если мы в режиме редактирования и время не требуется — сразу готово
+    if is_editing:
+        await back_to_confirmation_handler(callback, state)
+        return
+
+    # Для других типов - обновляем клавиатуру и показываем уведомление (ОБЫЧНЫЙ ФЛОУ)
     await callback.message.edit_reply_markup(
-        reply_markup=set_order_time_keyboard(current_time_type=new_time_type)
+        reply_markup=set_order_time_keyboard(
+            current_time_type=new_time_type, back_callback=back_callback
+        )
     )
     await callback.answer("Тип времени доставки изменён!")
 
@@ -231,6 +252,9 @@ async def save_delivery_time_type_handler(
 async def process_delivery_time_input(message: Message, state: FSMContext):
     """Обрабатывает ввод конкретного времени доставки"""
     time_text = message.text
+    data = await state.get_data()
+    is_editing = data.get("is_editing", False)
+    back_callback = "edit_order_menu" if is_editing else "back_to_preview"
 
     if not time_text:
         await message.answer("⚠️ Пожалуйста, введите время в текстовом формате.", parse_mode="HTML")
@@ -242,7 +266,7 @@ async def process_delivery_time_input(message: Message, state: FSMContext):
     if error:
         await message.answer(
             f"❌ {error}",
-            reply_markup=get_time_input_keyboard(),
+            reply_markup=get_time_input_keyboard(back_callback=back_callback),
             parse_mode="HTML",
         )
         return
@@ -250,8 +274,30 @@ async def process_delivery_time_input(message: Message, state: FSMContext):
     # Сохраняем время доставки
     await state.update_data(delivery_time=delivery_time)
 
-    # Возвращаемся к предпросмотру заказа
-    data = await state.get_data()
+    # Если мы в режиме редактирования - переходим к подтверждению
+    if is_editing:
+        await state.update_data(is_editing=False)  # Сбрасываем флаг
+
+        # Этот код дублирует back_to_confirmation_handler, но нам нужно message.answer, а не callback.edit_text
+        text = format_order_confirmation_text(
+            shop_name=data.get("shop_name", "Магазин"),
+            shop_address=data.get("shop_address", "Адрес"),
+            description=data.get("description", ""),
+            order_type=data.get("order_type", OrderType.REGULAR.value),
+            price=float(data.get("price", 0)),
+            delivery_time=delivery_time,
+            delivery_time_type=data.get("delivery_time_type"),
+        )
+
+        await message.answer(
+            f"✅ Время доставки обновлено!\n\n{text}",
+            reply_markup=get_order_confirmation_keyboard(),
+            parse_mode="HTML",
+        )
+        await state.set_state(OrderStates.confirmation)
+        return
+
+    # ОБЫЧНЫЙ ФЛОУ: Возвращаемся к предпросмотру заказа
     order_type = data.get("order_type", OrderType.TIME.value)
 
     text = format_order_preview(
@@ -348,7 +394,6 @@ async def request_order_price(callback: CallbackQuery, state: FSMContext):
 
     text = (
         "<b>💰 Установка цены доставки</b>\n"
-        f"{'─' * 25}\n\n"
         "Введите цену доставки в тенге.\n\n"
         "📋 <b>Ограничения:</b>\n"
         "• Минимальная цена: <b>3 000 ₸</b>\n"
@@ -366,12 +411,16 @@ async def request_order_price(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(OrderStates.waiting_for_price, RoleFilter(UserRole.SHOP))
+@router.message(OrderStates.editing_price, RoleFilter(UserRole.SHOP))
 async def process_price_input(
     message: Message,
     state: FSMContext,
 ):
     """Обрабатывает ввод цены и показывает подтверждение"""
     price_text = message.text
+    data = await state.get_data()
+    is_editing = data.get("is_editing", False)
+    back_callback = "edit_order_menu" if is_editing else "back_to_preview"
 
     if not price_text:
         await message.answer("⚠️ Пожалуйста, введите цену числом.", parse_mode="HTML")
@@ -383,15 +432,16 @@ async def process_price_input(
     if error:
         await message.answer(
             f"❌ {error}\n\n<i>Введите цену от 3 000 до 20 000 ₸</i>",
-            reply_markup=get_price_input_keyboard(),
+            reply_markup=get_price_input_keyboard(back_callback=back_callback),
             parse_mode="HTML",
         )
         return
 
-    # Сохраняем цену
-    await state.update_data(price=price)
+    # Сохраняем цену (и сбрасываем флаг редактирования)
+    await state.update_data(price=price, is_editing=False)
 
     # Показываем финальное подтверждение
+    # (data нужно обновить, так как price изменился и is_editing мб был удален)
     data = await state.get_data()
 
     text = format_order_confirmation_text(
@@ -405,6 +455,195 @@ async def process_price_input(
     )
     await message.answer(
         text=text,
+        reply_markup=get_order_confirmation_keyboard(),
+        parse_mode="HTML",
+    )
+    await state.set_state(OrderStates.confirmation)
+
+
+# =============================================================================
+# РЕДАКТИРОВАНИЕ ЗАКАЗА
+# =============================================================================
+
+
+@router.callback_query(F.data == "edit_order_menu", RoleFilter(UserRole.SHOP))
+async def edit_order_menu_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Показывает меню редактирования заказа.
+    """
+
+    text = "<b>🔧 Редактирование заказа</b>\n\nВыберите, что хотите изменить:"
+
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=get_edit_order_menu_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "edit_order_type", RoleFilter(UserRole.SHOP))
+async def edit_order_type_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Запускает редактирование типа заказа.
+    """
+    data = await state.get_data()
+    current_type = data.get("order_type", OrderType.REGULAR.value)
+
+    await callback.message.edit_text(
+        text=ShopOrder.TYPE,
+        reply_markup=set_order_type_keyboard(
+            current_type=current_type, back_callback="edit_order_menu"
+        ),
+        parse_mode="HTML",
+    )
+    await state.update_data(is_editing=True)
+    await state.set_state(OrderStates.editing_type)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "edit_order_price", RoleFilter(UserRole.SHOP))
+async def edit_order_price_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Запускает редактирование цены заказа.
+    """
+    text = (
+        "<b>💰 Установка цены доставки</b>\n"
+        "Введите новую цену доставки в тенге.\n\n"
+        "<i>Введите только число (например: 5000)</i>"
+    )
+
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=get_price_input_keyboard(back_callback="edit_order_menu"),
+        parse_mode="HTML",
+    )
+    await state.update_data(is_editing=True)
+    await state.set_state(OrderStates.editing_price)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_confirmation", RoleFilter(UserRole.SHOP))
+async def back_to_confirmation_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Возвращает к экрану подтверждения заказа.
+    """
+    # Сбрасываем флаг редактирования
+    await state.update_data(is_editing=False)
+    data = await state.get_data()
+
+    text = format_order_confirmation_text(
+        shop_name=data.get("shop_name", "Магазин"),
+        shop_address=data.get("shop_address", "Адрес"),
+        description=data.get("description", ""),
+        order_type=data.get("order_type", OrderType.REGULAR.value),
+        price=float(data.get("price", 0)),
+        delivery_time=data.get("delivery_time"),
+        delivery_time_type=data.get("delivery_time_type"),
+    )
+
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=get_order_confirmation_keyboard(),
+        parse_mode="HTML",
+    )
+    await state.set_state(OrderStates.confirmation)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "edit_order_description", RoleFilter(UserRole.SHOP))
+async def edit_order_description_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Запускает редактирование описания заказа.
+    Сохраняет все текущие данные заказа и переходит в режим ввода нового описания.
+    """
+    data = await state.get_data()
+    current_description = data.get("description", "")
+
+    text = (
+        "<b>✏️ Изменение описания заказа</b>\n"
+        f"<b>Текущее описание:</b>\n<blockquote>{current_description}</blockquote>\n\n"
+        "<i>Введите новое описание заказа:</i>"
+    )
+
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="❌ Отмена",
+                        callback_data="cancel_edit_description",
+                    )
+                ]
+            ]
+        ),
+        parse_mode="HTML",
+    )
+    await state.set_state(OrderStates.editing_description)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "cancel_edit_description", RoleFilter(UserRole.SHOP))
+async def cancel_edit_description_handler(callback: CallbackQuery, state: FSMContext):
+    """
+    Отменяет редактирование описания и возвращает к экрану подтверждения.
+    """
+    data = await state.get_data()
+
+    # Возвращаемся к финальному подтверждению с текущими данными
+    text = format_order_confirmation_text(
+        shop_name=data.get("shop_name", "Магазин"),
+        shop_address=data.get("shop_address", "Адрес"),
+        description=data.get("description", ""),
+        order_type=data.get("order_type", OrderType.REGULAR.value),
+        price=float(data.get("price", 0)),
+        delivery_time=data.get("delivery_time"),
+        delivery_time_type=data.get("delivery_time_type"),
+    )
+
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=get_order_confirmation_keyboard(),
+        parse_mode="HTML",
+    )
+    await state.set_state(OrderStates.confirmation)
+    await callback.answer()
+
+
+@router.message(OrderStates.editing_description, RoleFilter(UserRole.SHOP))
+async def save_edited_description_handler(message: Message, state: FSMContext):
+    """
+    Сохраняет новое описание и возвращает к экрану подтверждения заказа.
+    """
+    new_description = message.text
+
+    if not new_description:
+        await message.answer(
+            "⚠️ Пожалуйста, введите <b>текстовое</b> описание заказа.",
+            parse_mode="HTML",
+        )
+        return
+
+    # Сохраняем новое описание
+    await state.update_data(description=new_description)
+
+    # Получаем все данные заказа
+    data = await state.get_data()
+
+    # Показываем обновлённое подтверждение
+    text = format_order_confirmation_text(
+        shop_name=data.get("shop_name", "Магазин"),
+        shop_address=data.get("shop_address", "Адрес"),
+        description=new_description,
+        order_type=data.get("order_type", OrderType.REGULAR.value),
+        price=float(data.get("price", 0)),
+        delivery_time=data.get("delivery_time"),
+        delivery_time_type=data.get("delivery_time_type"),
+    )
+
+    await message.answer(
+        f"✅ <b>Описание обновлено!</b>\n\n{text}",
         reply_markup=get_order_confirmation_keyboard(),
         parse_mode="HTML",
     )

@@ -3,10 +3,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from backend.src.core.logging import get_logger
 
+from bot.clients import AdminClient, UsersClient
 from bot.clients.shops_client import ShopsClient
+from bot.handlers.common.handlers import handle_authorized_user
 from bot.messages import AuthMessages
 from bot.states import RegistrationStates
-from bot.utils.token_manager import TokenManager
+from bot.utils.token_manager import TokenManager, UserDataStorage
 
 logger = get_logger(__name__)
 
@@ -58,6 +60,9 @@ async def shop_phone_handler(
     state: FSMContext,
     shops_client: ShopsClient,
     token_manager: TokenManager,
+    users_client: UsersClient,
+    user_storage: UserDataStorage,
+    admin_client: AdminClient,
 ) -> None:
     """Обрабатывает ввод телефонов и завершает регистрацию."""
     phones_text = (message.text or "").strip()
@@ -65,7 +70,6 @@ async def shop_phone_handler(
         await message.answer("❌ Номера телефонов не могут быть пустыми. Попробуйте еще раз:")
         return
 
-    # Разбиваем строку на список телефонов
     phones = [p.strip() for p in phones_text.split(",") if p.strip()]
 
     if not phones:
@@ -81,17 +85,14 @@ async def shop_phone_handler(
     }
 
     try:
-        # Получаем токен для запроса
         token = await token_manager.get_token(message.from_user.id)
         if not token:
             await message.answer(AuthMessages.AUTH_ERROR)
             await state.clear()
             return
 
-        # Обновляем профиль магазина
         await shops_client.update_shop_profile(token, shop_update_data)
 
-        # Завершаем регистрацию
         await message.answer(
             "✅ Регистрация магазина успешно завершена!\n\n"
             f"Название: {shop_update_data['name']}\n"
@@ -99,7 +100,19 @@ async def shop_phone_handler(
             f"Телефоны: {', '.join(phones)}\n\n"
             "Теперь вы можете пользоваться ботом."
         )
+
         await state.clear()
+        await user_storage.delete_user_data(message.from_user.id)
+
+        await handle_authorized_user(
+            message,
+            users_client,
+            user_storage,
+            message.from_user.id,
+            token,
+            admin_client,
+            shops_client,
+        )
 
     except Exception as e:
         logger.error(f"Ошибка при обновлении профиля магазина: {e}", exc_info=True)
