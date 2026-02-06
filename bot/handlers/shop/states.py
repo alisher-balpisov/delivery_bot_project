@@ -12,6 +12,8 @@ class OrderStates(StatesGroup):
     waiting_for_time = State()
     # Шаг 4: Подтверждение заказа
     confirmation = State()
+    # Шаг 5: Выбор курьера (для нерегулярных заказов)
+    waiting_for_courier = State()
     # Дополнительный шаг: Ожидание доп. информации
     waiting_for_order_info = State()
     # Шаг для редактирования описания на этапе подтверждения

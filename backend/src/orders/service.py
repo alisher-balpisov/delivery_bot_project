@@ -59,12 +59,22 @@ async def create_order(
         courier_id_to_assign = found_courier_id
     elif courier_id_to_assign is not None:
         await _validate_courier_exists(db, courier_id_to_assign)
+    else:
+        # Для других типов, если курьер не выбран, пробуем найти автоматически
+        # Но если не нашли - оставляем без курьера (PENDING)
+        found_courier_id = await search_courier(db)
+        if found_courier_id:
+            courier_id_to_assign = found_courier_id
+
+    # Если курьер найден (или выбран вручную) - статус ASSIGNED
+    # Если поиск не дал результатов - статус PENDING (ожидание курьера)
+    initial_status = OrderStatus.PENDING_COURIER if courier_id_to_assign else OrderStatus.PENDING
 
     order = Order(
         **order_params.model_dump(exclude={"courier_id"}),
         courier_id=courier_id_to_assign,
         shop_id=shop_id,
-        status=OrderStatus.PENDING,
+        status=initial_status,
     )
 
     db.add(order)

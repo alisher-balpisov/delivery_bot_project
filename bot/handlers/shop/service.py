@@ -26,12 +26,16 @@ class DeliveryTimeTypeCallback(CallbackData, prefix="set_del_time"):
     time_type: str  # Значение DeliveryTimeType (ASAP, TODAY, SCHEDULED)
 
 
+class CourierSelectionCallback(CallbackData, prefix="select_courier"):
+    """Callback для выбора курьера"""
+
+    courier_id: int  # 0 для автовыбора
+    page: int = 1
+
+
 # Константы для валидации цены
 MIN_ORDER_PRICE = 3000
 MAX_ORDER_PRICE = 20000
-
-
-from decimal import Decimal
 
 
 def validate_price(price_text: str) -> tuple[Decimal | None, str | None]:

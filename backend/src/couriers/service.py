@@ -4,12 +4,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager
 
+from backend.src.common.constants import ACTIVE_STATUSES_FOR_COURIER
 from backend.src.common.enums import UserStatus
 from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
 from backend.src.models.courier_rating import CourierRating
+from backend.src.models.order import Order
 from backend.src.models.user import User
 
 logger = get_logger(__name__)
@@ -111,3 +113,68 @@ async def get_couriers(
     )
 
     return couriers, total
+
+
+async def get_active_couriers_for_selection(
+    db: AsyncSession, page: int = 1, limit: int = 5
+) -> tuple[list[dict], int]:
+    """
+    Возвращает список активных курьеров с количеством заказов и рейтингом.
+    Используется магазином для выбора курьера вручную.
+    """
+    offset = (page - 1) * limit
+
+    # Подзапрос для подсчета активных заказов
+    active_orders_subq = (
+        select(Order.courier_id, func.count(Order.id).label("active_orders_count"))
+        .where(Order.status.in_(ACTIVE_STATUSES_FOR_COURIER))
+        .group_by(Order.courier_id)
+        .subquery()
+    )
+
+    # Подзапрос для среднего рейтинга
+    rating_subq = (
+        select(CourierRating.courier_id, func.avg(CourierRating.rating).label("avg_rating"))
+        .group_by(CourierRating.courier_id)
+        .subquery()
+    )
+
+    # Базовый запрос
+    base_query = (
+        select(
+            Courier,
+            func.coalesce(active_orders_subq.c.active_orders_count, 0).label("active_orders"),
+            func.coalesce(rating_subq.c.avg_rating, 0.0).label("rating"),
+        )
+        .join(User, Courier.user_id == User.id)
+        .outerjoin(active_orders_subq, Courier.id == active_orders_subq.c.courier_id)
+        .outerjoin(rating_subq, Courier.id == rating_subq.c.courier_id)
+        .where(
+            Courier.is_active.is_(True),
+            User.status == UserStatus.ACTIVE,
+        )
+    )
+
+    # Получаем общее количество
+    count_stmt = select(func.count()).select_from(base_query.subquery())
+    total = await db.scalar(count_stmt) or 0
+
+    # Добавляем сортировку и пагинацию
+    stmt = base_query.order_by("active_orders", "rating").limit(limit).offset(offset)
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    couriers_data = []
+    for row in rows:
+        courier, active_orders, rating = row
+        couriers_data.append(
+            {
+                "id": courier.id,
+                "full_name": courier.full_name,
+                "active_orders_count": active_orders,
+                "rating": float(rating) if rating else 0.0,
+            }
+        )
+
+    return couriers_data, total

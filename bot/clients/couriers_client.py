@@ -31,3 +31,14 @@ class CouriersClient(BaseApiClient):
     async def get_courier_details(self, token: str, courier_id: int) -> RequestResult:
         """Получить детальную информацию о курьере."""
         return await self._make_request("GET", f"/couriers/{courier_id}", token=token)
+
+    async def get_active_couriers_for_selection(
+        self, token: str, page: int = 1, limit: int = 5
+    ) -> RequestResult:
+        """Получить список активных курьеров для выбора."""
+        return await self._make_request(
+            "GET",
+            "/couriers/active-for-selection",
+            token=token,
+            params={"page": page, "limit": limit},
+        )

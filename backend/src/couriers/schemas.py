@@ -47,3 +47,14 @@ class CourierListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+class CourierSelectionItem(BaseModel):
+    """Схема курьера для выбора магазином."""
+
+    id: int
+    full_name: str | None
+    active_orders_count: int
+    rating: float
+
+    model_config = ConfigDict(from_attributes=True)

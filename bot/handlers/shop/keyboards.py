@@ -5,7 +5,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from backend.src.common.enums import DeliveryTimeType, OrderType
 
 from bot.handlers.shop.messages import ShopMainKeyboardsButtons, ShopOrder
-from bot.handlers.shop.service import DeliveryTimeTypeCallback, OrderTypeCallback
+from bot.handlers.shop.service import (
+    CourierSelectionCallback,
+    DeliveryTimeTypeCallback,
+    OrderTypeCallback,
+)
 
 
 def get_shop_main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -287,6 +291,75 @@ def get_time_input_keyboard(back_callback: str = "back_to_preview") -> InlineKey
     )
 
 
+def get_courier_selection_keyboard(
+    couriers: list[dict], page: int = 1, total: int = 0, limit: int = 5
+) -> InlineKeyboardMarkup:
+    """
+    Клавиатура выбора курьера с пагинацией.
+    """
+    builder = InlineKeyboardBuilder()
+    total_pages = (total + limit - 1) // limit
+
+    # Кнопка 'Автовыбор'
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 Автовыбор (системный)",
+            callback_data=CourierSelectionCallback(courier_id=0).pack(),
+        )
+    )
+
+    # Список курьеров
+    for courier in couriers:
+        rating_str = f"{courier['rating']:.1f}" if courier["rating"] else "N/A"
+        name = courier["full_name"] or "Курьер"
+        text = f"{name} (📦 {courier['active_orders_count']} | ⭐ {rating_str})"
+
+        builder.row(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=CourierSelectionCallback(courier_id=courier["id"]).pack(),
+            )
+        )
+
+    # Пагинация
+    pagination_buttons = []
+    if page > 1:
+        pagination_buttons.append(
+            InlineKeyboardButton(
+                text="⬅️",
+                callback_data=CourierSelectionCallback(courier_id=-1, page=page - 1).pack(),
+            )
+        )
+
+    pagination_buttons.append(
+        InlineKeyboardButton(
+            text=f"{page}/{total_pages}",
+            callback_data="noop",  # Кнопка-информатор, ничего не делает
+        )
+    )
+
+    if page < total_pages:
+        pagination_buttons.append(
+            InlineKeyboardButton(
+                text="➡️",
+                callback_data=CourierSelectionCallback(courier_id=-1, page=page + 1).pack(),
+            )
+        )
+
+    if pagination_buttons:
+        builder.row(*pagination_buttons)
+
+    # Кнопка отмены/назад
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Назад к цене",
+            callback_data="set_order_price",
+        )
+    )
+
+    return builder.as_markup()
+
+
 def format_order_preview(
     shop_name: str,
     shop_address: str,
@@ -356,6 +429,7 @@ def format_order_confirmation_text(
     price: float,
     delivery_time: datetime | None = None,
     delivery_time_type: str | None = None,
+    courier_name: str | None = None,
 ) -> str:
     """
     Форматирует финальный текст для подтверждения заказа.
@@ -371,7 +445,6 @@ def format_order_confirmation_text(
 
     text = (
         f"<b>✅ Подтверждение заказа</b>\n"
-        f"{'═' * 25}\n\n"
         f"🏢 <b>Магазин:</b> {shop_name}\n"
         f"📍 <b>Адрес:</b> {shop_address}\n\n"
         f"📝 <b>Описание:</b>\n{description}\n\n"
@@ -382,6 +455,11 @@ def format_order_confirmation_text(
     if order_type == OrderType.TIME.value and delivery_time:
         text += f"🕐 <b>Время доставки:</b> {delivery_time.strftime('%d.%m.%Y %H:%M')}\n"
 
-    text += f"\n{'═' * 25}\n<b>Подтвердите создание заказа</b>"
+    if courier_name:
+        text += f"🚚 <b>Курьер:</b> {courier_name}\n"
+    elif order_type != OrderType.REGULAR.value:
+        text += "🚚 <b>Курьер:</b> Автовыбор (системный)\n"
+
+    text += "\n\n<b>Подтвердите создание заказа</b>"
 
     return text
