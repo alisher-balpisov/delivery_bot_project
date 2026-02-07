@@ -56,3 +56,4 @@ watchfiles==1.1.0
 faker>=40.1.2
 ruff==0.14.14
 rich==14.3.2
+openpyxl==3.1.5

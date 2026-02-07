@@ -1,15 +1,25 @@
 import secrets
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from typing import Any, TypeVar
 
-from sqlalchemy import case, func, select
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
 
 from backend.src.auth.service import mask_sensitive_data
 from backend.src.common.constants import PaginatedResponse
-from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole, UserStatus
+from backend.src.common.enums import (
+    DisputeStatus,
+    OrderStatus,
+    TransactionType,
+    UserRole,
+    UserStatus,
+)
 from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.config import settings
 from backend.src.core.logging import get_logger
@@ -20,6 +30,7 @@ from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
 from backend.src.models.registration_code import RegistrationCode
 from backend.src.models.shop import Shop
+from backend.src.models.transaction import Transaction
 from backend.src.models.user import User
 from backend.src.orders.schemas import OrderCardResponse
 from backend.src.shops.schemas import ShopCardResponse
@@ -503,3 +514,669 @@ async def get_all_disputes(
     response_items = [DisputeCardResponse.from_dispute(d) for d in disputes]
 
     return PaginatedResponse(total=total, items=response_items)
+
+
+async def _get_last_cash_collection_date(db: AsyncSession, shop_id: int) -> datetime | None:
+    """
+    Получить дату последней инкассации (CASH_COLLECTION) для магазина.
+    Если инкассаций не было, вернуть дату первого заказа.
+    """
+    # Ищем последнюю CASH_COLLECTION
+    stmt = (
+        select(Transaction.created_at)
+        .join(Shop, Shop.user_id == Transaction.user_id)
+        .where(
+            and_(
+                Shop.id == shop_id,
+                Transaction.type == TransactionType.CASH_COLLECTION,
+            )
+        )
+        .order_by(Transaction.created_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    last_collection = result.scalar_one_or_none()
+
+    if last_collection:
+        return last_collection
+
+    # Если нет инкассаций, берём дату первого заказа
+    stmt = (
+        select(Order.created_at)
+        .where(Order.shop_id == shop_id)
+        .order_by(Order.created_at.asc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    first_order = result.scalar_one_or_none()
+
+    return first_order
+
+
+async def _get_last_payout_date(db: AsyncSession, courier_id: int) -> datetime | None:
+    """
+    Получить дату последней выплаты (PAYOUT) для курьера.
+    Если выплат не было, вернуть дату первой транзакции ORDER_CREDIT.
+    """
+    # Ищем последнюю PAYOUT
+    stmt = (
+        select(Transaction.created_at)
+        .join(Courier, Courier.user_id == Transaction.user_id)
+        .where(
+            and_(
+                Courier.id == courier_id,
+                Transaction.type == TransactionType.PAYOUT,
+            )
+        )
+        .order_by(Transaction.created_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    last_payout = result.scalar_one_or_none()
+
+    if last_payout:
+        return last_payout
+
+    # Если нет выплат, берём первую ORDER_CREDIT
+    stmt = (
+        select(Transaction.created_at)
+        .join(Courier, Courier.user_id == Transaction.user_id)
+        .where(
+            and_(
+                Courier.id == courier_id,
+                Transaction.type == TransactionType.ORDER_CREDIT,
+            )
+        )
+        .order_by(Transaction.created_at.asc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    first_credit = result.scalar_one_or_none()
+
+    return first_credit
+
+
+def _create_excel_response(workbook: Workbook, filename: str) -> StreamingResponse:
+    """
+    Создаёт StreamingResponse с Excel файлом.
+    """
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+
+    return StreamingResponse(output, headers=headers, media_type=headers["Content-Type"])
+
+
+def _format_header_row(ws, headers: list[str]):
+    """
+    Форматирует заголовок таблицы (жирный шрифт, выравнивание по центру).
+    """
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num, value=header)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+
+def _add_total_row(ws, row_num: int, totals: dict[str, any]):
+    """
+    Добавляет итоговую строку с суммами.
+
+    Args:
+        ws: Worksheet
+        row_num: Номер строки для итогов
+        totals: Словарь {column_letter: value}, например {"A": "ИТОГО:", "G": 15000}
+    """
+    for col_letter, value in totals.items():
+        cell = ws[f"{col_letter}{row_num}"]
+        cell.value = value
+        cell.font = Font(bold=True)
+
+
+async def export_shop_statistics(
+    db: AsyncSession,
+    shop_id: int,
+    date_from: datetime,
+    date_to: datetime,
+    stats_type: str,
+    from_last_payment: bool = False,
+) -> StreamingResponse:
+    """
+    Экспорт статистики по конкретному магазину в Excel.
+
+    Args:
+        db: Сессия базы данных
+        shop_id: ID магазина
+        date_from: Начальная дата (игнорируется если from_last_payment=True)
+        date_to: Конечная дата
+        stats_type: "common" или "advanced"
+        from_last_payment: Если True, берётся дата последней CASH_COLLECTION
+    """
+    # Проверяем существование магазина
+    shop = await db.get(Shop, shop_id)
+    if not shop:
+        raise ValueError(f"Магазин с ID {shop_id} не найден")
+
+    # Определяем начальную дату
+    if from_last_payment:
+        last_payment = await _get_last_cash_collection_date(db, shop_id)
+        if last_payment:
+            date_from = last_payment
+        else:
+            logger.warning(f"Для магазина ID {shop_id} нет ни платежей, ни заказов")
+
+    # Получаем заказы
+    stmt = (
+        select(Order)
+        .where(
+            and_(
+                Order.shop_id == shop_id,
+                Order.created_at >= date_from,
+                Order.created_at <= date_to,
+            )
+        )
+        .order_by(Order.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    orders = result.scalars().all()
+
+    # Создаём Excel
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Статистика заказов"
+
+    # Заголовки
+    if stats_type == "common":
+        headers = [
+            "ID заказа",
+            "Дата создания",
+            "Дата завершения",
+            "Тип заказа",
+            "Описание",
+            "Курьер",
+            "Стоимость",
+            "Спор",
+            "Штраф",
+        ]
+    else:  # advanced
+        headers = [
+            "ID заказа",
+            "Дата создания",
+            "Дата завершения",
+            "Длительность",
+            "Тип заказа",
+            "Описание",
+            "Курьер",
+            "Рейтинг",
+            "Стоимость",
+            "Оплата курьеру",
+            "Комиссия",
+            "Штраф",
+            "Спор",
+        ]
+
+    _format_header_row(ws, headers)
+
+    # Заполняем данные
+    total_price = 0
+    total_courier_payment = 0
+    total_service_fee = 0
+    total_fee = 0
+
+    for idx, order in enumerate(orders, start=2):
+        # Получаем связанные данные
+        courier_name = order.courier.full_name if order.courier else "Не назначен"
+        dispute_text = "Да" if order.dispute else "Нет"
+
+        # Штраф из dispute
+        fee = 0
+        if order.dispute and order.dispute.fine_amount:
+            # Если оштрафован курьер - это плюс для магазина
+            if order.dispute.fined_user_id == order.courier_id:
+                fee = float(order.dispute.fine_amount)
+            # Если оштрафован магазин - это минус
+            elif order.dispute.fined_user_id == shop.user_id:
+                fee = -float(order.dispute.fine_amount)
+
+        total_fee += fee
+
+        if stats_type == "common":
+            ws.cell(row=idx, column=1, value=order.id)
+            ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
+            ws.cell(
+                row=idx,
+                column=3,
+                value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
+            )
+            ws.cell(row=idx, column=4, value=order.order_type.value)
+            ws.cell(row=idx, column=5, value=order.description or "")
+            ws.cell(row=idx, column=6, value=courier_name)
+            ws.cell(row=idx, column=7, value=float(order.price))
+            ws.cell(row=idx, column=8, value=dispute_text)
+            ws.cell(row=idx, column=9, value=fee)
+
+            total_price += float(order.price)
+
+        else:  # advanced
+            # Получаем рейтинг
+            rating = order.rating.rating if order.rating else None
+
+            # Вычисляем courier_payment и service_fee
+            # Предполагаем, что это хранится в транзакциях
+            courier_payment = 0
+            service_fee = 0
+
+            # Находим транзакции по заказу
+            transactions_stmt = select(Transaction).where(Transaction.order_id == order.id)
+            trans_result = await db.execute(transactions_stmt)
+            transactions = trans_result.scalars().all()
+
+            for trans in transactions:
+                if trans.type == TransactionType.ORDER_CREDIT:
+                    courier_payment = float(trans.amount)
+                elif trans.type == TransactionType.SERVICE_FEE:
+                    service_fee = float(trans.amount)
+
+            # Длительность
+            duration = ""
+            if order.completed_at:
+                delta = order.completed_at - order.created_at
+                hours = delta.total_seconds() / 3600
+                duration = f"{hours:.1f}ч"
+
+            ws.cell(row=idx, column=1, value=order.id)
+            ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
+            ws.cell(
+                row=idx,
+                column=3,
+                value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
+            )
+            ws.cell(row=idx, column=4, value=duration)
+            ws.cell(row=idx, column=5, value=order.order_type.value)
+            ws.cell(row=idx, column=6, value=order.description or "")
+            ws.cell(row=idx, column=7, value=courier_name)
+            ws.cell(row=idx, column=8, value=rating if rating else "")
+            ws.cell(row=idx, column=9, value=float(order.price))
+            ws.cell(row=idx, column=10, value=courier_payment)
+            ws.cell(row=idx, column=11, value=service_fee)
+            ws.cell(row=idx, column=12, value=fee)
+            ws.cell(row=idx, column=13, value=dispute_text)
+
+            total_price += float(order.price)
+            total_courier_payment += courier_payment
+            total_service_fee += service_fee
+
+    # Добавляем итоговую строку
+    total_row = len(orders) + 2
+
+    if stats_type == "common":
+        _add_total_row(
+            ws,
+            total_row,
+            {
+                "F": "ИТОГО:",
+                "G": total_price,
+                "I": total_fee,
+            },
+        )
+    else:  # advanced
+        _add_total_row(
+            ws,
+            total_row,
+            {
+                "H": "ИТОГО:",
+                "I": total_price,
+                "J": total_courier_payment,
+                "K": total_service_fee,
+                "L": total_fee,
+            },
+        )
+
+    # Формируем имя файла
+    shop_name = shop.name or f"shop_{shop_id}"
+    filename = f"{shop_name}_{stats_type}_{date_from.strftime('%Y-%m-%d')}_{date_to.strftime('%Y-%m-%d')}.xlsx"
+
+    return _create_excel_response(wb, filename)
+
+
+async def export_courier_statistics(
+    db: AsyncSession,
+    courier_id: int,
+    date_from: datetime,
+    date_to: datetime,
+    stats_type: str,
+    from_last_payout: bool = False,
+) -> StreamingResponse:
+    """
+    Экспорт статистики по конкретному курьеру в Excel.
+    """
+    # Проверяем существование курьера
+    courier = await db.get(Courier, courier_id)
+    if not courier:
+        raise ValueError(f"Курьер с ID {courier_id} не найден")
+
+    # Определяем начальную дату
+    if from_last_payout:
+        last_payout = await _get_last_payout_date(db, courier_id)
+        if last_payout:
+            date_from = last_payout
+        else:
+            logger.warning(f"Для курьера ID {courier_id} нет ни выплат, ни заработков")
+
+    # Получаем заказы
+    stmt = (
+        select(Order)
+        .where(
+            and_(
+                Order.courier_id == courier_id,
+                Order.created_at >= date_from,
+                Order.created_at <= date_to,
+            )
+        )
+        .order_by(Order.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    orders = result.scalars().all()
+
+    # Создаём Excel
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Статистика заказов"
+
+    # Заголовки
+    if stats_type == "common":
+        headers = [
+            "ID заказа",
+            "Дата создания",
+            "Дата завершения",
+            "Длительность",
+            "Магазин",
+            "Тип заказа",
+            "Рейтинг",
+            "Комментарий",
+            "Заработок",
+            "Штраф",
+            "Комиссия",
+            "Спор",
+            "Результат спора",
+        ]
+    else:  # advanced
+        headers = [
+            "ID заказа",
+            "Дата создания",
+            "Дата завершения",
+            "Длительность",
+            "Магазин",
+            "Тип заказа",
+            "Рейтинг",
+            "Комментарий",
+            "Заработок",
+            "Стоимость",
+            "Комиссия",
+            "Штраф",
+            "Спор",
+            "Результат спора",
+        ]
+
+    _format_header_row(ws, headers)
+
+    # Заполняем данные
+    total_earnings = 0
+    total_price = 0
+    total_service_fee = 0
+    total_fee = 0
+
+    for idx, order in enumerate(orders, start=2):
+        shop_name = order.shop.name if order.shop else "Неизвестно"
+        rating = order.rating.rating if order.rating else ""
+        rating_comment = order.rating.comment if order.rating else ""
+
+        dispute_text = "Да" if order.dispute else "Нет"
+        dispute_result = ""
+        if order.dispute and order.dispute.resolution_type:
+            dispute_result = order.dispute.resolution_type.value
+
+        # Штраф
+        fee = 0
+        if order.dispute and order.dispute.fine_amount:
+            # Если оштрафован курьер - это минус
+            if order.dispute.fined_user_id == courier.user_id:
+                fee = -float(order.dispute.fine_amount)
+            # Если оштрафован магазин - это плюс для курьера
+            elif order.dispute.fined_user_id == order.shop.user_id:
+                fee = float(order.dispute.fine_amount)
+
+        total_fee += fee
+
+        # Получаем транзакции
+        earnings = 0
+        service_fee = 0
+
+        transactions_stmt = select(Transaction).where(
+            and_(
+                Transaction.order_id == order.id,
+                Transaction.user_id == courier.user_id,
+            )
+        )
+        trans_result = await db.execute(transactions_stmt)
+        transactions = trans_result.scalars().all()
+
+        for trans in transactions:
+            if trans.type == TransactionType.ORDER_CREDIT:
+                earnings = float(trans.amount)
+            elif trans.type == TransactionType.SERVICE_FEE:
+                service_fee = float(trans.amount)
+
+        # Длительность
+        duration = ""
+        if order.completed_at:
+            delta = order.completed_at - order.created_at
+            hours = delta.total_seconds() / 3600
+            duration = f"{hours:.1f}ч"
+
+        if stats_type == "common":
+            ws.cell(row=idx, column=1, value=order.id)
+            ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
+            ws.cell(
+                row=idx,
+                column=3,
+                value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
+            )
+            ws.cell(row=idx, column=4, value=duration)
+            ws.cell(row=idx, column=5, value=shop_name)
+            ws.cell(row=idx, column=6, value=order.order_type.value)
+            ws.cell(row=idx, column=7, value=rating)
+            ws.cell(row=idx, column=8, value=rating_comment)
+            ws.cell(row=idx, column=9, value=earnings)
+            ws.cell(row=idx, column=10, value=fee)
+            ws.cell(row=idx, column=11, value=service_fee)
+            ws.cell(row=idx, column=12, value=dispute_text)
+            ws.cell(row=idx, column=13, value=dispute_result)
+
+            total_earnings += earnings
+
+        else:  # advanced
+            ws.cell(row=idx, column=1, value=order.id)
+            ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
+            ws.cell(
+                row=idx,
+                column=3,
+                value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
+            )
+            ws.cell(row=idx, column=4, value=duration)
+            ws.cell(row=idx, column=5, value=shop_name)
+            ws.cell(row=idx, column=6, value=order.order_type.value)
+            ws.cell(row=idx, column=7, value=rating)
+            ws.cell(row=idx, column=8, value=rating_comment)
+            ws.cell(row=idx, column=9, value=earnings)
+            ws.cell(row=idx, column=10, value=float(order.price))
+            ws.cell(row=idx, column=11, value=service_fee)
+            ws.cell(row=idx, column=12, value=fee)
+            ws.cell(row=idx, column=13, value=dispute_text)
+            ws.cell(row=idx, column=14, value=dispute_result)
+
+            total_earnings += earnings
+            total_price += float(order.price)
+            total_service_fee += service_fee
+
+    # Добавляем итоговую строку
+    total_row = len(orders) + 2
+
+    if stats_type == "common":
+        _add_total_row(
+            ws,
+            total_row,
+            {
+                "H": "ИТОГО:",
+                "I": total_earnings,
+                "J": total_fee,
+            },
+        )
+    else:  # advanced
+        _add_total_row(
+            ws,
+            total_row,
+            {
+                "H": "ИТОГО:",
+                "I": total_earnings,
+                "J": total_price,
+                "K": total_service_fee,
+                "L": total_fee,
+            },
+        )
+
+    # Формируем имя файла
+    courier_name = courier.full_name or f"courier_{courier_id}"
+    filename = f"{courier_name}_{stats_type}_{date_from.strftime('%Y-%m-%d')}_{date_to.strftime('%Y-%m-%d')}.xlsx"
+
+    return _create_excel_response(wb, filename)
+
+
+async def export_all_shops_statistics(
+    db: AsyncSession,
+    date_from: datetime,
+    date_to: datetime,
+) -> StreamingResponse:
+    """
+    Экспорт статистики по всем заказам всех магазинов в Excel.
+    """
+    # Получаем все заказы за период
+    stmt = (
+        select(Order)
+        .where(
+            and_(
+                Order.created_at >= date_from,
+                Order.created_at <= date_to,
+            )
+        )
+        .order_by(Order.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    orders = result.scalars().all()
+
+    # Создаём Excel
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Все заказы"
+
+    # Заголовки
+    headers = [
+        "ID заказа",
+        "Дата создания",
+        "Дата завершения",
+        "Длительность",
+        "Тип заказа",
+        "Описание",
+        "Курьер",
+        "Рейтинг",
+        "Стоимость",
+        "Оплата курьеру",
+        "Комиссия",
+        "Штраф",
+        "Спор",
+    ]
+
+    _format_header_row(ws, headers)
+
+    # Заполняем данные
+    total_price = 0
+    total_courier_payment = 0
+    total_service_fee = 0
+    total_fee = 0
+
+    for idx, order in enumerate(orders, start=2):
+        courier_name = order.courier.full_name if order.courier else "Не назначен"
+        rating = order.rating.rating if order.rating else ""
+        dispute_text = "Да" if order.dispute else "Нет"
+
+        # Штраф
+        fee = 0
+        if order.dispute and order.dispute.fine_amount:
+            fee = float(order.dispute.fine_amount)
+
+        # Получаем транзакции
+        courier_payment = 0
+        service_fee = 0
+
+        transactions_stmt = select(Transaction).where(Transaction.order_id == order.id)
+        trans_result = await db.execute(transactions_stmt)
+        transactions = trans_result.scalars().all()
+
+        for trans in transactions:
+            if trans.type == TransactionType.ORDER_CREDIT:
+                courier_payment = float(trans.amount)
+            elif trans.type == TransactionType.SERVICE_FEE:
+                service_fee = float(trans.amount)
+
+        # Длительность
+        duration = ""
+        if order.completed_at:
+            delta = order.completed_at - order.created_at
+            hours = delta.total_seconds() / 3600
+            duration = f"{hours:.1f}ч"
+
+        ws.cell(row=idx, column=1, value=order.id)
+        ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
+        ws.cell(
+            row=idx,
+            column=3,
+            value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
+        )
+        ws.cell(row=idx, column=4, value=duration)
+        ws.cell(row=idx, column=5, value=order.order_type.value)
+        ws.cell(row=idx, column=6, value=order.description or "")
+        ws.cell(row=idx, column=7, value=courier_name)
+        ws.cell(row=idx, column=8, value=rating)
+        ws.cell(row=idx, column=9, value=float(order.price))
+        ws.cell(row=idx, column=10, value=courier_payment)
+        ws.cell(row=idx, column=11, value=service_fee)
+        ws.cell(row=idx, column=12, value=fee)
+        ws.cell(row=idx, column=13, value=dispute_text)
+
+        total_price += float(order.price)
+        total_courier_payment += courier_payment
+        total_service_fee += service_fee
+        total_fee += fee
+
+    # Добавляем итоговую строку
+    total_row = len(orders) + 2
+    _add_total_row(
+        ws,
+        total_row,
+        {
+            "H": "ИТОГО:",
+            "I": total_price,
+            "J": total_courier_payment,
+            "K": total_service_fee,
+            "L": total_fee,
+        },
+    )
+
+    # Формируем имя файла
+    filename = f"shops_{date_from.strftime('%Y-%m-%d')}_{date_to.strftime('%Y-%m-%d')}.xlsx"
+
+    return _create_excel_response(wb, filename)
