@@ -14,6 +14,8 @@ from backend.src.common.validation import (
 from backend.src.models.order import Order
 from pydantic import BaseModel, Field
 
+SYSTEM_TELEGRAM_ID = 0
+
 # ==============================================================================
 # Deprecated константы (используйте ValidationRules и CommissionRules)
 # ==============================================================================
@@ -54,10 +56,10 @@ ACTIVE_STATUSES_FOR_COURIER = [
     OrderStatus.DISPUTED,
 ]
 ALLOWED_STATUSES_FOR_CREATE_DISPUTE = [
-        OrderStatus.COURIER_EN_ROUTE,
-        OrderStatus.DELIVERING,
-        OrderStatus.AWAITING_CONFIRMATION,
-    ]
+    OrderStatus.COURIER_EN_ROUTE,
+    OrderStatus.DELIVERING,
+    OrderStatus.AWAITING_CONFIRMATION,
+]
 
 
 # ==============================================================================

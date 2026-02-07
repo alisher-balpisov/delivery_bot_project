@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 sys.path.append(os.getcwd())
+from backend.src.common.constants import SYSTEM_TELEGRAM_ID
 from backend.src.common.enums import (
     ChangeType,
     DeliveryTimeType,
@@ -153,6 +154,17 @@ async def create_users_with_roles(session: AsyncSession):
         if tg_id in telegram_ids_set:
             raise ValueError(f"Дубликат telegram_id: {tg_id}")
         telegram_ids_set.add(tg_id)
+
+    # system
+    add_unique_telegram_id(SYSTEM_TELEGRAM_ID)
+    system_user = User(
+        telegram_id=SYSTEM_TELEGRAM_ID,
+        username="SystemWallet",
+        role=UserRole.SYSTEM,
+        status=UserStatus.ACTIVE,
+        registration_attempts=0,
+    )
+    users.append(system_user)
 
     # 1. Admins - фиксированные
     # Alisher

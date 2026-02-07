@@ -6,6 +6,7 @@ from .order_history import OrderHistory
 from .order_note import OrderNote
 from .registration_code import RegistrationCode
 from .shop import Shop
+from .transaction import Transaction
 from .user import User
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "OrderNote",
     "RegistrationCode",
     "Shop",
+    "Transaction",
     "User",
 ]
