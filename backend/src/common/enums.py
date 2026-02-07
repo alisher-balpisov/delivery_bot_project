@@ -1,46 +1,47 @@
-from enum import StrEnum
+from enum import StrEnum, auto
 
 
 class TokenType(StrEnum):
-    BEARER = "bearer"
-    ACCESS = "access"
-    REFRESH = "refresh"
-    BOT = "bot"
+    BEARER = auto()
+    ACCESS = auto()
+    REFRESH = auto()
+    BOT = auto()
 
 
 class UserRole(StrEnum):
-    GUEST = "guest"
-    ADMIN = "admin"
-    SHOP = "shop"
-    COURIER = "courier"
+    GUEST = auto()
+    ADMIN = auto()
+    SHOP = auto()
+    COURIER = auto()
+    SYSTEM = auto()
 
 
 class UserStatus(StrEnum):
-    PENDING_REGISTRATION = "pending_registration"
-    ACTIVE = "active"
-    BLOCKED = "blocked"
-    INACTIVE = "inactive"
+    PENDING_REGISTRATION = auto()
+    ACTIVE = auto()
+    BLOCKED = auto()
+    INACTIVE = auto()
 
 
 class DeliveryTimeType(StrEnum):
     """Тип времени доставки заказа."""
 
-    ASAP = "ASAP"  # Срочная доставка (как можно быстрее)
-    TODAY = "TODAY"  # В течение дня (по умолчанию)
-    SCHEDULED = "SCHEDULED"  # К конкретному времени (delivery_time)
+    ASAP = auto()  # Срочная доставка (как можно быстрее)
+    TODAY = auto()  # В течение дня (по умолчанию)
+    SCHEDULED = auto()  # К конкретному времени (delivery_time)
 
 
 class OrderStatus(StrEnum):
     """Статусы заказа согласно DBML-схеме."""
 
-    PENDING = "PENDING"  # Заказ создан и ожидает назначения курьера
-    PENDING_COURIER = "PENDING_COURIER"  # Ожидает подтверждения курьера
-    COURIER_EN_ROUTE = "COURIER_EN_ROUTE"  # Курьер назначен и едет за заказом
-    DELIVERING = "DELIVERING"  # Курьер доставляет заказ
-    AWAITING_CONFIRMATION = "AWAITING_CONFIRMATION"  # Доставлен, ожидает подтверждения
-    COMPLETED = "COMPLETED"  # Заказ завершён
-    DISPUTED = "DISPUTED"  # Возник спор
-    CANCELED = "CANCELED"  # Заказ отменён
+    PENDING = auto()  # Заказ создан и ожидает назначения курьера
+    PENDING_COURIER = auto()  # Ожидает подтверждения курьера
+    COURIER_EN_ROUTE = auto()  # Курьер назначен и едет за заказом
+    DELIVERING = auto()  # Курьер доставляет заказ
+    AWAITING_CONFIRMATION = auto()  # Доставлен, ожидает подтверждения
+    COMPLETED = auto()  # Заказ завершён
+    DISPUTED = auto()  # Возник спор
+    CANCELED = auto()  # Заказ отменён
 
     @classmethod
     def active_statuses(cls) -> set[str]:
@@ -64,28 +65,43 @@ class OrderStatus(StrEnum):
 
 
 class OrderType(StrEnum):
-    REGULAR = "REGULAR"
-    TIME = "TIME"
-    DISTANCE = "DISTANCE"
-    CUSTOM = "CUSTOM"
-    SUPPLY = "SUPPLY"
+    REGULAR = auto()
+    TIME = auto()
+    DISTANCE = auto()
+    CUSTOM = auto()
+    SUPPLY = auto()
 
 
 class DisputeStatus(StrEnum):
-    CANCELLED = "CANCELLED"  # Спор отменен
-    PENDING_REVIEW = "PENDING_REVIEW"  # Спор открыт и ожидает рассмотрения
-    IN_REVIEW = "IN_REVIEW"  # Спор находится в процессе активного рассмотрения
-    RESOLVED = "RESOLVED"  # Спор был разрешён
+    CANCELLED = auto()  # Спор отменен
+    PENDING_REVIEW = auto()  # Спор открыт и ожидает рассмотрения
+    IN_REVIEW = auto()  # Спор находится в процессе активного рассмотрения
+    RESOLVED = auto()  # Спор был разрешён
 
 
 class DisputeResolutionType(StrEnum):
-    IN_FAVOR_OF_SHOP = "IN_FAVOR_OF_SHOP"  # Спор решён в пользу магазина
-    IN_FAVOR_OF_COURIER = "IN_FAVOR_OF_COURIER"  # Спор решён в пользу курьера
-    COMPROMISE = "COMPROMISE"  # Найдено компромиссное решение
-    OTHER = "OTHER"  # Другой тип разрешения спора
+    IN_FAVOR_OF_SHOP = auto()  # Спор решён в пользу магазина
+    IN_FAVOR_OF_COURIER = auto()  # Спор решён в пользу курьера
+    COMPROMISE = auto()  # Найдено компромиссное решение
+    OTHER = auto()  # Другой тип разрешения спора
 
 
 class ChangeType(StrEnum):
-    STATUS_UPDATE = "STATUS_UPDATE"
-    DETAILS_UPDATE = "DETAILS_UPDATE"
-    COURIER_REASSIGN = "COURIER_REASSIGN"  # Переназначение курьера на заказ
+    STATUS_UPDATE = auto()
+    DETAILS_UPDATE = auto()
+    COURIER_REASSIGN = auto()  # Переназначение курьера на заказ
+
+
+class TransactionType(StrEnum):
+    # Автоматические начисления при заказе
+    ORDER_DEBIT = auto()  # Списание с магазина (Магазин уходит в минус)
+    ORDER_CREDIT = auto()  # Начисление курьеру (Курьер уходит в плюс)
+    SERVICE_FEE = auto()  # Комиссия сервиса (Прибыль системы)
+
+    # Ручные операции (наличные)
+    CASH_COLLECTION = auto()  # Инкассация (Вы забрали деньги у магазина)
+    PAYOUT = auto()  # Выплата (Вы отдали деньги курьеру)
+
+    # Прочее
+    Fine = auto()  # Штраф
+    ADJUSTMENT = auto()  # Корректировка

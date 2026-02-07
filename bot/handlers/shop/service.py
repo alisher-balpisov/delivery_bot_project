@@ -26,6 +26,13 @@ class DeliveryTimeTypeCallback(CallbackData, prefix="set_del_time"):
     time_type: str  # Значение DeliveryTimeType (ASAP, TODAY, SCHEDULED)
 
 
+class CourierSelectionCallback(CallbackData, prefix="select_courier"):
+    """Callback для выбора курьера"""
+
+    courier_id: int  # 0 для автовыбора
+    page: int = 1
+
+
 # Константы для валидации цены
 MIN_ORDER_PRICE = 3000
 MAX_ORDER_PRICE = 20000
@@ -34,6 +41,7 @@ MAX_ORDER_PRICE = 20000
 def validate_price(price_text: str) -> tuple[Decimal | None, str | None]:
     """
     Валидирует цену заказа.
+    Разрешены только целые положительные числа (без копеек/центов).
 
     Args:
         price_text: Текст с ценой от пользователя
@@ -41,19 +49,30 @@ def validate_price(price_text: str) -> tuple[Decimal | None, str | None]:
     Returns:
         Tuple(цена в Decimal или None, сообщение об ошибке или None)
     """
+    if not price_text:
+        return None, ErrorMessages.Orders.PRICE_FORMAT_ERROR
+
     try:
-        # Очищаем текст от пробелов и заменяем запятую на точку
-        cleaned = price_text.strip().replace(",", ".").replace(" ", "")
+        cleaned = price_text.strip().replace(" ", "")
+
+        if not cleaned.isdigit():
+            return None, ErrorMessages.Orders.PRICE_FORMAT_ERROR
+
         price = Decimal(cleaned)
 
+        if price <= 0:
+            return None, "Цена должна быть больше нуля"
+
+        # Проверка лимитов
         if price < MIN_ORDER_PRICE:
             return None, f"Минимальная цена заказа: {MIN_ORDER_PRICE:,} ₸"
+
         if price > MAX_ORDER_PRICE:
             return None, f"Максимальная цена заказа: {MAX_ORDER_PRICE:,} ₸"
 
         return price, None
 
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, ArithmeticError):
         return None, ErrorMessages.Orders.PRICE_FORMAT_ERROR
 
 

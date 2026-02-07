@@ -47,9 +47,24 @@ async def create_order(
     order_params: OrderCreateRequest,
     shop_id: int,
 ) -> Order:
-    courier_id_to_assign = order_params.courier_id
+    """
+    Создаёт новый заказ с правильной логикой назначения курьера.
+
+    Логика:
+    - REGULAR: Автоматический поиск курьера (обязательно)
+    - Остальные типы: Курьер ДОЛЖЕН быть указан магазином в order_params.courier_id
+    """
+    courier_id_to_assign = None
 
     if order_params.order_type == OrderType.REGULAR:
+        # Для REGULAR - автоматический поиск
+        if order_params.courier_id is not None:
+            # Это уже проверено в схеме, но на всякий случай
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для обычного заказа нельзя указывать курьера вручную",
+            )
+
         found_courier_id = await search_courier(db)
         if not found_courier_id:
             raise HTTPException(
@@ -57,14 +72,27 @@ async def create_order(
                 detail="Нет доступных курьеров для назначения",
             )
         courier_id_to_assign = found_courier_id
-    elif courier_id_to_assign is not None:
-        await _validate_courier_exists(db, courier_id_to_assign)
+
+    else:
+        # Для всех остальных типов - курьер ОБЯЗАТЕЛЕН
+        if order_params.courier_id is None:
+            # Это уже проверено в схеме, но лучше перестраховаться
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Для заказа типа {order_params.order_type.value} необходимо выбрать курьера",
+            )
+
+        # Проверяем что курьер существует И активен
+        await _validate_courier_active(db, order_params.courier_id)
+        courier_id_to_assign = order_params.courier_id
+
+    initial_status = OrderStatus.PENDING_COURIER if courier_id_to_assign else OrderStatus.PENDING
 
     order = Order(
         **order_params.model_dump(exclude={"courier_id"}),
         courier_id=courier_id_to_assign,
         shop_id=shop_id,
-        status=OrderStatus.PENDING,
+        status=initial_status,
     )
 
     db.add(order)
@@ -72,6 +100,39 @@ async def create_order(
     await db.refresh(order)
 
     return order
+
+
+async def _validate_courier_active(db: AsyncSession, courier_id: int) -> None:
+    """
+    Проверяет что курьер существует И активен (is_active=True, status=ACTIVE).
+
+    Raises:
+        HTTPException: Если курьер не найден или неактивен
+    """
+    from sqlalchemy import and_
+
+    result = await db.execute(
+        select(Courier)
+        .join(User, Courier.user_id == User.id)
+        .where(
+            and_(
+                Courier.id == courier_id,
+                Courier.is_active.is_(True),
+                User.status == UserStatus.ACTIVE,
+            )
+        )
+    )
+    courier = result.scalar_one_or_none()
+
+    if courier is None:
+        logger.error(
+            "Попытка назначить неактивного или несуществующего курьера courier_id=%s",
+            courier_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Курьер с ID {courier_id} недоступен или неактивен",
+        )
 
 
 async def search_courier(db: AsyncSession) -> int | None:

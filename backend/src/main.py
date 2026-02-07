@@ -26,7 +26,8 @@ try:
 
     from backend.src.api.routes import api_router
     from backend.src.core.config import ensure_upload_dir_exists, settings
-    from backend.src.core.database import close_db, init_db
+    from backend.src.core.database import close_db, get_db_session, init_db
+    from backend.src.core.init_data import ensure_system_user
     from backend.src.core.logging import get_logger, setup_logging
 
 except Exception:
@@ -51,8 +52,13 @@ DANGEROUS_PATTERNS = [
 async def startup_with_progress():
     """Запуск приложения с визуализацией прогресса"""
 
+    async def init_system_wallet_task():
+        async with get_db_session() as session:
+            await ensure_system_user(session)
+
     tasks = [
         ("Initializing database", init_db),
+        ("Checking system wallet", init_system_wallet_task),
         ("Creating directories", lambda: ensure_upload_dir_exists()),
         ("Loading configuration", lambda: asyncio.sleep(0.09)),
         ("Setting up middleware", lambda: asyncio.sleep(0.07)),
@@ -283,6 +289,9 @@ async def run_api_only():
 
     console.print("[cyan]Starting API-only mode...[/cyan]")
     await init_db()
+
+    async with get_db_session() as session:
+        await ensure_system_user(session)
 
     app = FastAPI(title="API Only")
     app.include_router(api_router, prefix=settings.api_prefix)

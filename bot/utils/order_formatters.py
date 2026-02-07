@@ -23,10 +23,6 @@ def format_order_details(order: dict) -> str:
     updated_at = format_dt_short(order.get("updated_at", ""))
     description = order.get("description") or "Нет описания"
 
-    recipient_address = order.get("recipient_address") or "Нет адреса"
-    recipient_phone = order.get("recipient_phone") or "Нет телефона"
-    client_phone = order.get("client_phone") or "Нет телефона"
-
     shop = order.get("shop")
     shop_name = shop.get("name") if shop else "Не указан"
 
@@ -68,9 +64,6 @@ def format_order_details(order: dict) -> str:
         f"📝 <b>Описание:</b> {description}\n"
         f"💰 <b>Цена:</b> {price_val} ₸\n"
         f"📊 <b>Статус:</b> {f'<u>{status}</u>' if status == 'disputed' or status == 'awaiting_confirmation' else status}\n"
-        f"📍 <b>Адрес:</b> {recipient_address}\n"
-        f"📞 <b>Телефон получателя:</b> {recipient_phone}\n"
-        f"📱 <b>Телефон клиента:</b> {client_phone}\n"
         f"🏪 <b>Магазин:</b> {shop_name}\n"
         f"👤 <b>Курьер:</b> {courier_name.split()[1] if courier_name else '--'}\n"
         f"📅 <b>Создан:</b> {created_at}\n"

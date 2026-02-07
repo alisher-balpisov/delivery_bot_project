@@ -1,12 +1,19 @@
 from fastapi import APIRouter, HTTPException
 
 from backend.src.auth.dependencies import RequireAdminOrShop, RequireCourier
+from backend.src.common.constants import PaginatedResponse
 from backend.src.common.dependencies import PaginationParams
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 
 from . import service
-from .schemas import CourierCardResponse, CourierListItem, CourierListResponse, CourierShiftResponse
+from .schemas import (
+    CourierCardResponse,
+    CourierListItem,
+    CourierListResponse,
+    CourierSelectionItem,
+    CourierShiftResponse,
+)
 
 logger = get_logger(__name__)
 
@@ -37,6 +44,25 @@ async def get_couriers(
     ]
 
     return CourierListResponse(items=items, total=total, page=page, size=limit)
+
+
+@router.get("/active-for-selection", response_model=PaginatedResponse[CourierSelectionItem])
+async def get_active_couriers_for_selection(
+    db: DbSession,
+    current_user: RequireAdminOrShop,
+    pagination: PaginationParams,
+):
+    """
+    Получает список активных курьеров с их статистикой (заказы, рейтинг)
+    для выбора при создании заказа.
+    """
+    page, limit = pagination
+    couriers_data, total = await service.get_active_couriers_for_selection(
+        db=db, page=page, limit=limit
+    )
+
+    items = [CourierSelectionItem(**item) for item in couriers_data]
+    return PaginatedResponse(items=items, total=total)
 
 
 @router.get("/shift")
