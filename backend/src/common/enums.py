@@ -13,6 +13,7 @@ class UserRole(StrEnum):
     ADMIN = auto()
     SHOP = auto()
     COURIER = auto()
+    SYSTEM = auto()
 
 
 class UserStatus(StrEnum):
@@ -89,3 +90,18 @@ class ChangeType(StrEnum):
     STATUS_UPDATE = auto()
     DETAILS_UPDATE = auto()
     COURIER_REASSIGN = auto()  # Переназначение курьера на заказ
+
+
+class TransactionType(StrEnum):
+    # Автоматические начисления при заказе
+    ORDER_DEBIT = auto()  # Списание с магазина (Магазин уходит в минус)
+    ORDER_CREDIT = auto()  # Начисление курьеру (Курьер уходит в плюс)
+    SERVICE_FEE = auto()  # Комиссия сервиса (Прибыль системы)
+
+    # Ручные операции (наличные)
+    CASH_COLLECTION = auto()  # Инкассация (Вы забрали деньги у магазина)
+    PAYOUT = auto()  # Выплата (Вы отдали деньги курьеру)
+
+    # Прочее
+    Fine = auto()  # Штраф
+    ADJUSTMENT = auto()  # Корректировка
