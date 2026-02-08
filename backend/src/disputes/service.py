@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,9 +12,87 @@ from backend.src.models.order import Order
 from backend.src.models.user import User
 
 from .exceptions import DisputeAccessDenied, DisputeActionError
-from .schemas import DisputeCreate, DisputeResponse, DisputeUpdate
+from .schemas import (
+    DisputeCardResponse,
+    DisputeCreate,
+    DisputeResponse,
+    DisputesListResponse,
+    DisputeUpdate,
+)
 
 logger = get_logger(__name__)
+
+
+async def get_disputes(
+    db: AsyncSession,
+    page: int = 1,
+    limit: int = 10,
+    status: DisputeStatus | None = None,
+) -> DisputesListResponse:
+    """
+    Получает список споров с пагинацией и фильтрацией.
+
+    Args:
+        db: Сессия базы данных
+        page: Номер страницы (начиная с 1)
+        limit: Количество элементов на странице
+        status: Фильтр по статусу спора (опционально)
+
+    Returns:
+        DisputesListResponse с элементами и метаданными пагинации
+    """
+    logger.info(f"Fetching disputes: page={page}, limit={limit}, status={status}")
+
+    # Базовый запрос с загрузкой связанных данных
+    query = (
+        select(Dispute)
+        .options(
+            selectinload(Dispute.order).selectinload(Order.shop),
+            selectinload(Dispute.order).selectinload(Order.courier),
+            selectinload(Dispute.opened_by_user),
+        )
+        .order_by(Dispute.created_at.desc())
+    )
+
+    # Применяем фильтр по статусу, если указан
+    if status:
+        query = query.where(Dispute.status == status)
+
+    # Получаем общее количество записей для пагинации
+    count_query = select(func.count()).select_from(Dispute)
+    if status:
+        count_query = count_query.where(Dispute.status == status)
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Применяем пагинацию
+    offset = (page - 1) * limit
+    query = query.offset(offset).limit(limit)
+
+    # Выполняем запрос
+    result = await db.execute(query)
+    disputes = result.scalars().all()
+
+    # Преобразуем в схему ответа
+    items = []
+    for dispute in disputes:
+        try:
+            card = DisputeCardResponse.from_dispute(dispute)
+            items.append(card)
+        except ValueError as e:
+            logger.warning(f"Skipping dispute {dispute.id} due to data error: {e}")
+            continue
+
+    logger.info(f"Found {len(items)} disputes (total: {total})")
+
+    return DisputesListResponse(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+        pages=(total + limit - 1) // limit if limit > 0 else 1,
+    )
 
 
 async def create_dispute(
@@ -77,7 +155,7 @@ async def create_dispute(
         **new_dispute.__dict__,
         courier_id=order.courier_id,
         shop_id=order.shop_id,
-        created_by_role=initiator.role,
+        opened_by_role=initiator.role,
     )
 
 
@@ -129,16 +207,19 @@ async def get_dispute_by_id(
         logger.error(f"Data integrity error: Dispute {dispute_id} has incomplete order data.")
         raise ValueError("Ошибка целостности данных, связанная со спором.")
 
-    created_by_role = dispute.opened_by_user.role if dispute.opened_by_user else UserRole.GUEST
+    opened_by_user = dispute.opened_by_user
+    opened_by_role = opened_by_user.role if opened_by_user else UserRole.GUEST
 
     return DisputeResponse(
         id=dispute.id,
         order_id=dispute.order_id,
         description=dispute.description,
         courier_id=dispute.order.courier_id,
+        courier_full_name=dispute.order.courier.full_name if dispute.order.courier else None,
         shop_id=dispute.order.shop_id,
+        shop_name=dispute.order.shop.name,
         status=dispute.status,
-        created_by_role=created_by_role,
+        opened_by_role=opened_by_role,
         resolution_comment=dispute.resolution_comment,
         created_at=dispute.created_at,
         resolved_at=dispute.resolved_at,
@@ -178,16 +259,19 @@ async def update_dispute(
             logger.error(f"Data integrity error: Dispute {dispute_id} has incomplete order data.")
             raise ValueError("Ошибка целостности данных, связанная со спором.")
 
-        created_by_role = dispute.opened_by_user.role if dispute.opened_by_user else UserRole.GUEST
+        opened_by_user = dispute.opened_by_user
+        opened_by_role = opened_by_user.role if opened_by_user else UserRole.GUEST
 
         return DisputeResponse(
             id=dispute.id,
             order_id=dispute.order_id,
             description=dispute.description,
             courier_id=dispute.order.courier_id,
+            courier_full_name=dispute.order.courier.full_name if dispute.order.courier else None,
             shop_id=dispute.order.shop_id,
+            shop_name=dispute.order.shop.name,
             status=dispute.status,
-            created_by_role=created_by_role,
+            opened_by_role=opened_by_role,
             resolution_comment=dispute.resolution_comment,
             created_at=dispute.created_at,
             resolved_at=dispute.resolved_at,

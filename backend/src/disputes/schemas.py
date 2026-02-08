@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.src.common.enums import DisputeStatus, UserRole
+from backend.src.models import User
 from backend.src.models.dispute import Dispute
 
 
@@ -73,14 +74,14 @@ class DisputeUpdate(BaseModel):
 class DisputeResponse(BaseModel):
     """Полная схема ответа с данными спора."""
 
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     order_id: int
     courier_id: int
+    courier_full_name: str | None
     shop_id: int
+    shop_name: str | None
     status: DisputeStatus
-    created_by_role: UserRole
+    opened_by_role: UserRole
     description: str
     resolution_comment: str | None = None
     created_at: datetime
@@ -128,3 +129,13 @@ class DisputeCardResponse(BaseModel):
             created_at=dispute.created_at,
             resolved_at=dispute.resolved_at,
         )
+
+
+class DisputesListResponse(BaseModel):
+    """Схема ответа для списка споров с пагинацией."""
+
+    items: list[DisputeCardResponse]
+    total: int
+    page: int
+    limit: int
+    pages: int

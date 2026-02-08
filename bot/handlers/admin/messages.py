@@ -42,3 +42,23 @@ class AdminMessages:
     )
     NO_ORDERS_FOUND = "Заказы не найдены."
     ORDER_NOT_FOUND = "Заказ не найден."
+
+    # ==================== Споры (Disputes) ====================
+    DISPUTES_LIST_TITLE = "⚖️ <b>Споры</b>\nВсего: {total_count}"
+    NO_DISPUTES_FOUND = "Споры не найдены."
+    DISPUTE_NOT_FOUND = "Спор не найден."
+
+    DISPUTE_DETAILS_TEMPLATE = (
+        "⚖️ <b>Спор #{dispute_id}</b>\n\n"
+        "📦 <b>Заказ:</b> #{order_id}\n"
+        "📊 <b>Статус спора:</b> {status_emoji} {status}\n"
+        "🏪 <b>Магазин:</b> {shop_name}\n"
+        "👤 <b>Курьер:</b> {courier_name}\n"
+        "🙋 <b>Открыл:</b> {opened_by_role}\n"
+        "📅 <b>Создан:</b> {created_at}\n"
+        "✅ <b>Решён:</b> {resolved_at}\n\n"
+        "📝 <b>Описание проблемы:</b>\n{description}"
+    )
+
+    DISPUTE_STATUS_UPDATED = "✅ Статус спора успешно обновлён!"
+    DISPUTE_STATUS_UPDATE_ERROR = "❌ Ошибка при обновлении статуса спора."

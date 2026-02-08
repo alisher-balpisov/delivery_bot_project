@@ -1,15 +1,51 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from backend.src.auth.dependencies import RequireAdmin, RequireAllRoles, RequireShopOrCourier
+from backend.src.common.enums import DisputeStatus
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
 
 from . import service
 from .exceptions import DisputeAccessDenied, DisputeActionError
-from .schemas import DisputeCreate, DisputeResponse, DisputeUpdate
+from .schemas import DisputeCreate, DisputeResponse, DisputesListResponse, DisputeUpdate
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+
+@router.get(
+    "/admin/disputes",
+    response_model=DisputesListResponse,
+    summary="Получить список споров (для администраторов)",
+    description="Возвращает список всех споров с пагинацией и фильтрацией по статусу.",
+)
+async def get_disputes_list(
+    current_user: RequireAdmin,
+    db: DbSession,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(10, ge=1, le=50, description="Количество элементов на странице"),
+    status: DisputeStatus | None = Query(None, description="Фильтр по статусу спора"),
+):
+    """
+    Получение списка споров для администраторов.
+
+    Возвращает пагинированный список споров с информацией о заказах,
+    магазинах и курьерах. Поддерживает фильтрацию по статусу.
+    """
+    logger.info(
+        f"Admin {current_user.id} requesting disputes list: page={page}, limit={limit}, status={status}"
+    )
+
+    disputes_list = await service.get_disputes(
+        db=db,
+        page=page,
+        limit=limit,
+        status=status,
+    )
+    print(disputes_list)
+
+    logger.info(f"Returning {len(disputes_list.items)} disputes for admin {current_user.id}")
+    return disputes_list
 
 
 @router.post(

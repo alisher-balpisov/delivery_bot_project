@@ -82,3 +82,61 @@ class AdminClient(BaseApiClient):
     async def update_order(self, token: str, order_id: int, data: dict) -> RequestResult:
         """Обновить заказ."""
         return await self._make_request("PATCH", f"/orders/{order_id}", token=token, json_data=data)
+
+    # ==================== Споры (Disputes) ====================
+
+    async def get_disputes(
+        self,
+        token: str,
+        page: int = 1,
+        limit: int = 10,
+        status: str | None = None,
+    ) -> RequestResult:
+        """
+        Получить список всех споров (только для админов).
+
+        Args:
+            token: Токен авторизации
+            page: Номер страницы
+            limit: Количество элементов на странице
+            status: Фильтр по статусу (pending_review, in_review, resolved, cancelled)
+
+        Returns:
+            RequestResult с пагинированным списком споров
+        """
+        params = {"page": page, "limit": limit}
+        if status:
+            params["status"] = status
+
+        return await self._make_request(
+            "GET", "/disputes/admin/disputes", token=token, params=params
+        )
+
+    async def get_dispute_details(self, token: str, dispute_id: int) -> RequestResult:
+        """
+        Получить детали конкретного спора.
+
+        Args:
+            token: Токен авторизации
+            dispute_id: ID спора
+
+        Returns:
+            RequestResult с деталями спора
+        """
+        return await self._make_request("GET", f"/disputes/{dispute_id}", token=token)
+
+    async def update_dispute_status(self, token: str, dispute_id: int, data: dict) -> RequestResult:
+        """
+        Обновить статус спора (для администраторов).
+
+        Args:
+            token: Токен авторизации
+            dispute_id: ID спора
+            data: Данные для обновления (status, resolution_notes)
+
+        Returns:
+            RequestResult с обновленным спором
+        """
+        return await self._make_request(
+            "PATCH", f"/disputes/{dispute_id}", token=token, json_data=data
+        )
