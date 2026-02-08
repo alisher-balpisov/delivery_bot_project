@@ -232,10 +232,11 @@ async def get_paginated_list[ModelType](
     if additional_filters:
         filters.extend(additional_filters)
 
-    # Оптимизация: не делаем JOIN для подсчета, если нет поиска
-    # (предполагаем, что дополнительные фильтры не используют джойны,
-    #  либо они должны быть явно указаны как необходимые для подсчета)
-    apply_joins_for_count = bool(search and search_fields)
+    is_external_status_filter = (
+        status is not None and status_model is not None and status_model is not model
+    )
+
+    apply_joins_for_count = bool((search and search_fields) or is_external_status_filter)
     total = await _get_total_count(db, model, filters, joins, apply_joins=apply_joins_for_count)
 
     if not total:
