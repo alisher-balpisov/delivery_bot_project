@@ -177,7 +177,6 @@ class OrderCardResponse(BaseModel):
     status: OrderStatus
     order_type: OrderType
     price: Decimal
-    recipient_address: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -200,7 +199,6 @@ class OrderCardResponse(BaseModel):
                 "status": v.status,
                 "order_type": v.order_type,
                 "price": v.price,
-                "recipient_address": v.recipient_address,
                 "created_at": v.created_at,
             }
         return v
