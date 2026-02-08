@@ -52,14 +52,16 @@ async def create_order(
 
     Логика:
     - REGULAR: Автоматический поиск курьера (обязательно)
-    - Остальные типы: Курьер ДОЛЖЕН быть указан магазином в order_params.courier_id
+    - Остальные типы:
+        - Если courier_id указан — проверяем и назначаем
+        - Если courier_id=None — используем автовыбор (как для REGULAR)
     """
     courier_id_to_assign = None
+    auto_selected = False  # Флаг для логирования
 
     if order_params.order_type == OrderType.REGULAR:
-        # Для REGULAR - автоматический поиск
+        # Для REGULAR - автоматический поиск обязателен
         if order_params.courier_id is not None:
-            # Это уже проверено в схеме, но на всякий случай
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Для обычного заказа нельзя указывать курьера вручную",
@@ -72,19 +74,30 @@ async def create_order(
                 detail="Нет доступных курьеров для назначения",
             )
         courier_id_to_assign = found_courier_id
+        auto_selected = True
 
     else:
-        # Для всех остальных типов - курьер ОБЯЗАТЕЛЕН
-        if order_params.courier_id is None:
-            # Это уже проверено в схеме, но лучше перестраховаться
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Для заказа типа {order_params.order_type.value} необходимо выбрать курьера",
+        # Для всех остальных типов (TIME, DISTANCE, CUSTOM, SUPPLY)
+        if order_params.courier_id is not None:
+            # Магазин выбрал конкретного курьера — проверяем что он активен
+            await _validate_courier_active(db, order_params.courier_id)
+            courier_id_to_assign = order_params.courier_id
+            logger.info(
+                f"Заказ типа {order_params.order_type.value}: курьер {courier_id_to_assign} выбран магазином"
             )
-
-        # Проверяем что курьер существует И активен
-        await _validate_courier_active(db, order_params.courier_id)
-        courier_id_to_assign = order_params.courier_id
+        else:
+            # Автовыбор курьера для не-REGULAR типа
+            found_courier_id = await search_courier(db)
+            if not found_courier_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Нет доступных курьеров для назначения. Попробуйте позже.",
+                )
+            courier_id_to_assign = found_courier_id
+            auto_selected = True
+            logger.info(
+                f"Заказ типа {order_params.order_type.value}: автовыбор курьера {courier_id_to_assign}"
+            )
 
     initial_status = OrderStatus.PENDING_COURIER if courier_id_to_assign else OrderStatus.PENDING
 
@@ -98,6 +111,9 @@ async def create_order(
     db.add(order)
     await db.flush()
     await db.refresh(order)
+
+    if auto_selected:
+        logger.info(f"Заказ #{order.id} создан с автоподобранным курьером {courier_id_to_assign}")
 
     return order
 

@@ -60,6 +60,11 @@ class OrderCreateRequest(BaseModel):
     def validate_order_logic(self):
         """
         Комплексная валидация логики заказа.
+
+        Для REGULAR: courier_id всегда назначается автоматически.
+        Для остальных типов: courier_id опционален.
+            - Если указан — курьер назначается вручную.
+            - Если None — используется автовыбор (как для REGULAR).
         """
         # --- 1. Валидация связки OrderType и Courier ---
         if self.order_type == OrderType.REGULAR:
@@ -67,11 +72,9 @@ class OrderCreateRequest(BaseModel):
                 raise ValueError(
                     "Для обычного заказа (regular) нельзя указывать courier_id. Он назначается системой."
                 )
-        else:
-            if self.courier_id is None:
-                raise ValueError(
-                    f"Для заказа типа {self.order_type.value} необходимо указать courier_id."
-                )
+        # Для других типов courier_id опционален:
+        # - Если указан — проверка курьера происходит в service
+        # - Если None — система подберёт автоматически
 
         # --- 2. Валидация времени доставки ---
         if self.order_type == OrderType.TIME and self.delivery_time is None:

@@ -300,10 +300,10 @@ def get_courier_selection_keyboard(
     builder = InlineKeyboardBuilder()
     total_pages = (total + limit - 1) // limit
 
-    # Кнопка 'Автовыбор'
+    # Кнопка 'Автовыбор' — система сама подберёт курьера
     builder.row(
         InlineKeyboardButton(
-            text="🔄 Автовыбор (системный)",
+            text="🔄 Автоматический подбор",
             callback_data=CourierSelectionCallback(courier_id=0).pack(),
         )
     )
@@ -458,7 +458,7 @@ def format_order_confirmation_text(
     if courier_name:
         text += f"🚚 <b>Курьер:</b> {courier_name}\n"
     elif order_type != OrderType.REGULAR.value:
-        text += "🚚 <b>Курьер:</b> Автовыбор (системный)\n"
+        text += "🚚 <b>Курьер:</b> Автоматический подбор\n"
 
     text += "\n\n<b>Подтвердите создание заказа</b>"
 

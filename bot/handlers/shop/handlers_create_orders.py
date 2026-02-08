@@ -557,10 +557,10 @@ async def select_courier_handler(
     courier_id = callback_data.courier_id
     courier_name = None
 
-    # 0 означает автовыбор
+    # 0 означает автовыбор — система подберёт курьера при создании заказа
     if courier_id == 0:
         await state.update_data(courier_id=None, courier_name=None)
-        await callback.answer("Выбран автоматический подбор")
+        await callback.answer("Курьер будет подобран автоматически")
     else:
         # Получаем имя курьера для красивостей
         telegram_id = callback.from_user.id

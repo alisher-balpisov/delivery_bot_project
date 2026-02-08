@@ -193,15 +193,20 @@ async def create_order(
 
         if result.success and isinstance(result.data, dict) and result.data.get("id"):
             order_id = result.data["id"]
-            courier_id = result.data["courier_id"]
-            courier_full_name: str = result.data["courier_full_name"]
+            courier_id = result.data.get("courier_id")
+            courier_full_name: str | None = result.data.get("courier_full_name")
 
-            if not courier_id:
+            if not courier_id or not courier_full_name:
                 return (True, OrderMessages.SUCCESSFULLY_CREATED_NO_COURIER.format(order_id))
+
+            # Безопасно извлекаем имя (первое слово или всё имя)
+            name_parts = courier_full_name.split()
+            display_name = name_parts[1] if len(name_parts) > 1 else courier_full_name
+
             return (
                 True,
                 OrderMessages.SUCCESSFULLY_CREATED.format(
-                    order_id=order_id, courier_name=courier_full_name.split()[1]
+                    order_id=order_id, courier_name=display_name
                 ),
             )
         else:
