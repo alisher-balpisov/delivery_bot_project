@@ -21,7 +21,7 @@ router.message.filter(RoleFilter(UserRole.ADMIN))
 router.callback_query.filter(RoleFilter(UserRole.ADMIN))
 
 
-@router.callback_query(F.data == "show_statistics")
+@router.callback_query(F.data == "show_system_stats")
 async def show_statistics_handler(
     callback: CallbackQuery,
     user: UserDTO,

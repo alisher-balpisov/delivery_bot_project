@@ -1,8 +1,13 @@
+from enum import Enum
+
+from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from backend.src.common.enums import UserRole
 from bot.handlers.admin.messages import AdminMainButtons, AdminRegistrationCodesMenuButtons
 from bot.messages import AdminKeyboardMessages
+
+# keyboards/admin.py
 
 
 def get_admin_main_keyboard() -> InlineKeyboardMarkup:
@@ -22,7 +27,14 @@ def get_admin_main_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text=AdminMainButtons.DISPUTES, callback_data="show_disputes"),
                 InlineKeyboardButton(
-                    text=AdminMainButtons.STATISTICS, callback_data="show_statistics"
+                    text="📊 Экспорт статистики",
+                    callback_data="show_statistics_admin",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📈 Системная статистика",
+                    callback_data="show_system_stats",
                 ),
             ],
             [
@@ -212,6 +224,171 @@ def get_back_to_menu_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text=AdminKeyboardMessages.BACK, callback_data="admin_back_to_menu"
+                )
+            ]
+        ]
+    )
+
+
+class StatsType(str, Enum):
+    """Типы статистики для экспорта."""
+
+    COMMON = "common"
+    ADVANCED = "advanced"
+
+
+class StatsCallback(CallbackData, prefix="stats"):
+    """Callback data для работы со статистикой."""
+
+    action: str  # menu, export_shop, export_courier, export_all, select_dates, download
+    entity_type: str | None = None  # shop, courier, all
+    entity_id: int | None = None
+    stats_type: StatsType | None = None
+    from_last_payment: bool = False
+    page: int = 1
+
+
+def get_statistics_main_menu() -> InlineKeyboardMarkup:
+    """Главное меню статистики."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📊 Статистика магазина",
+                    callback_data=StatsCallback(action="select_shop", entity_type="shop").pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🚴 Статистика курьера",
+                    callback_data=StatsCallback(
+                        action="select_courier", entity_type="courier"
+                    ).pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏪 Общая статистика магазинов",
+                    callback_data=StatsCallback(action="export_all", entity_type="all").pack(),
+                )
+            ],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back_to_menu")],
+        ]
+    )
+
+
+def get_stats_type_keyboard(entity_type: str, entity_id: int | None = None) -> InlineKeyboardMarkup:
+    """Выбор типа статистики (common/advanced)."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📋 Базовая",
+            callback_data=StatsCallback(
+                action="select_period",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=StatsType.COMMON,
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="📊 Расширенная",
+            callback_data=StatsCallback(
+                action="select_period",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=StatsType.ADVANCED,
+            ).pack(),
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(text="◀️ Назад", callback_data=StatsCallback(action="menu").pack())
+    )
+
+    return builder.as_markup()
+
+
+def get_period_selection_keyboard(
+    entity_type: str, entity_id: int | None, stats_type: StatsType
+) -> InlineKeyboardMarkup:
+    """Выбор периода для статистики."""
+    builder = InlineKeyboardBuilder()
+
+    # Быстрые периоды
+    builder.row(
+        InlineKeyboardButton(
+            text="📅 Сегодня",
+            callback_data=StatsCallback(
+                action="export_quick",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=stats_type,
+                page=0,  # 0 = today
+            ).pack(),
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📅 Эта неделя",
+            callback_data=StatsCallback(
+                action="export_quick",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=stats_type,
+                page=7,
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="📅 Этот месяц",
+            callback_data=StatsCallback(
+                action="export_quick",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=stats_type,
+                page=30,
+            ).pack(),
+        ),
+    )
+
+    # Специальная опция для магазинов/курьеров
+    if entity_type in ("shop", "courier"):
+        from_last_text = (
+            "💰 С последней инкассации" if entity_type == "shop" else "💵 С последней выплаты"
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=from_last_text,
+                callback_data=StatsCallback(
+                    action="export_from_last",
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    stats_type=stats_type,
+                    from_last_payment=True,
+                ).pack(),
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="◀️ Назад",
+            callback_data=StatsCallback(
+                action="select_type", entity_type=entity_type, entity_id=entity_id
+            ).pack(),
+        )
+    )
+
+    return builder.as_markup()
+
+
+def get_export_loading_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для отображения во время экспорта."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="◀️ Отмена", callback_data=StatsCallback(action="menu").pack()
                 )
             ]
         ]

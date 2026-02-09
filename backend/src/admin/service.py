@@ -672,6 +672,12 @@ async def export_shop_statistics(
     # Получаем заказы
     stmt = (
         select(Order)
+        .options(
+            selectinload(Order.courier),  # ← Загружаем курьера
+            selectinload(Order.dispute),  # ← Загружаем спор
+            selectinload(Order.rating),  # ← Загружаем рейтинг
+            selectinload(Order.shop),  # ← Загружаем магазин
+        )
         .where(
             and_(
                 Order.shop_id == shop_id,
@@ -837,8 +843,7 @@ async def export_shop_statistics(
         )
 
     # Формируем имя файла
-    shop_name = shop.name or f"shop_{shop_id}"
-    filename = f"{shop_name}_{stats_type}_{date_from.strftime('%Y-%m-%d')}_{date_to.strftime('%Y-%m-%d')}.xlsx"
+    filename = f"shop_{shop_id}_{stats_type}_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.xlsx"
 
     return _create_excel_response(wb, filename)
 
@@ -870,6 +875,12 @@ async def export_courier_statistics(
     # Получаем заказы
     stmt = (
         select(Order)
+        .options(
+            selectinload(Order.courier),
+            selectinload(Order.dispute),
+            selectinload(Order.rating),
+            selectinload(Order.shop),
+        )
         .where(
             and_(
                 Order.courier_id == courier_id,
@@ -1050,9 +1061,7 @@ async def export_courier_statistics(
         )
 
     # Формируем имя файла
-    courier_name = courier.full_name or f"courier_{courier_id}"
-    filename = f"{courier_name}_{stats_type}_{date_from.strftime('%Y-%m-%d')}_{date_to.strftime('%Y-%m-%d')}.xlsx"
-
+    filename = f"courier_{courier_id}_{stats_type}_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.xlsx"
     return _create_excel_response(wb, filename)
 
 
@@ -1067,6 +1076,12 @@ async def export_all_shops_statistics(
     # Получаем все заказы за период
     stmt = (
         select(Order)
+        .options(
+            selectinload(Order.courier),
+            selectinload(Order.dispute),
+            selectinload(Order.rating),
+            selectinload(Order.shop),
+        )
         .where(
             and_(
                 Order.created_at >= date_from,
@@ -1177,6 +1192,5 @@ async def export_all_shops_statistics(
     )
 
     # Формируем имя файла
-    filename = f"shops_{date_from.strftime('%Y-%m-%d')}_{date_to.strftime('%Y-%m-%d')}.xlsx"
-
+    filename = f"all_shops_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.xlsx"
     return _create_excel_response(wb, filename)
