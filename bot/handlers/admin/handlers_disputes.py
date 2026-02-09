@@ -17,7 +17,6 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import CallbackQuery
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
-from icecream import ic
 
 from bot.clients.admin_client import AdminClient
 from bot.clients.auth_client import AuthClient
@@ -259,7 +258,6 @@ async def dispute_details_handler(
     dispute = result.data
 
     # Формирование текста
-    ic(dispute)
     text = format_dispute_details(dispute)
 
     # Формируем кнопку назад с учетом сохраненного состояния (страница, фильтр)
@@ -269,6 +267,10 @@ async def dispute_details_handler(
 
     keyboard = get_dispute_details_keyboard(
         dispute_id=dispute_id,
+        shop_name=dispute.get("shop_name") or "Не указан",
+        courier_name=dispute.get("courier_full_name") or "Не указан",
+        shop_id=dispute.get("shop_id"),
+        courier_id=dispute.get("courier_id"),
         dispute_status=dispute.get("status"),
         back_callback_data=back_callback,
     )

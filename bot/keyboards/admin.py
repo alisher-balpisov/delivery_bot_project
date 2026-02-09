@@ -352,6 +352,10 @@ def get_dispute_details_keyboard(
     dispute_id: int,
     dispute_status: str,
     back_callback_data: str,
+    shop_name: str,
+    courier_name: str,
+    shop_id: int,
+    courier_id: int,
 ) -> InlineKeyboardMarkup:
     """
     Генерация клавиатуры для детального просмотра спора.
@@ -360,10 +364,24 @@ def get_dispute_details_keyboard(
         dispute_id: ID спора
         dispute_status: Текущий статус спора
         back_callback_data: Callback data для кнопки "Назад"
+        shop_name: Название магазина
+        courier_name: Имя курьера
+        shop_id: ID магазина для перехода
+        courier_id: ID курьера для перехода
     """
     builder = InlineKeyboardBuilder()
 
-    # Кнопки управления статусом (только для активных споров)
+    # --- Секция информации ---
+    # Добавляем кнопки с данными магазина и курьера
+    # Мы делаем их в одну строку (row), чтобы сэкономить место
+    builder.row(
+        InlineKeyboardButton(text=f"🏪 Магазин: {shop_name}", callback_data=f"view_shop_{shop_id}"),
+        InlineKeyboardButton(
+            text=f"🛵 Курьер: {courier_name}", callback_data=f"view_courier_{courier_id}"
+        ),
+    )
+
+    # --- Секция управления статусом ---
     if dispute_status == "pending_review":
         builder.row(
             InlineKeyboardButton(
@@ -379,7 +397,7 @@ def get_dispute_details_keyboard(
             )
         )
 
-    # Кнопка отмены спора (для активных споров)
+    # --- Кнопка отмены ---
     if dispute_status in ("pending_review", "in_review"):
         builder.row(
             InlineKeyboardButton(
@@ -388,7 +406,7 @@ def get_dispute_details_keyboard(
             )
         )
 
-    # Кнопки навигации
+    # --- Кнопки навигации ---
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback_data),
         InlineKeyboardButton(text="🏠 Главное меню", callback_data="show_main_menu"),

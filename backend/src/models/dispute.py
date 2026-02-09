@@ -77,7 +77,7 @@ class Dispute(Base):
         Text, nullable=True, comment="Комментарий администратора по разрешению спора"
     )
     fine_amount: Mapped[Decimal | None] = mapped_column(
-        DECIMAL(10, 2), nullable=True, comment="Сумма штрафа (если назначен)"
+        DECIMAL(10, 0), nullable=True, comment="Сумма штрафа (если назначен)"
     )
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, comment="Дата и время разрешения спора"

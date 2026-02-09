@@ -53,7 +53,7 @@ class Transaction(Base):
     # amount < 0: Пользователь становится должен системе (или уменьшается долг системы перед ним)
     # amount > 0: Система становится должна пользователю (или уменьшается долг пользователя)
     amount: Mapped[Decimal] = mapped_column(
-        DECIMAL(10, 2), nullable=False, comment="Сумма операции"
+        DECIMAL(10, 0), nullable=False, comment="Сумма операции"
     )
 
     description: Mapped[str | None] = mapped_column(
