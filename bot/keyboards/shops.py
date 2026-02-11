@@ -126,6 +126,7 @@ def get_shop_card_keyboard(
     page: int,
     current_filter: ShopFilter,
     shop_id: int,
+    back_callback_data: str | None = None,
 ) -> InlineKeyboardMarkup:
     """
     Генерация клавиатуры для карточки магазина.
@@ -134,10 +135,20 @@ def get_shop_card_keyboard(
         page: Номер текущей страницы списка
         current_filter: Текущий фильтр списка
         shop_id: ID магазина
+        back_callback_data: Пользовательский callback для кнопки "Назад".
+            Если не передан — возвращаемся к списку магазинов.
 
     Returns:
         InlineKeyboardMarkup: Клавиатура с кнопками "Назад" и "Главное меню"
     """
+    # Определяем callback для кнопки "Назад"
+    if back_callback_data is None:
+        back_callback_data = ShopsCallback(
+            action="list",
+            page=page,
+            filter_type=current_filter,
+        ).pack()
+
     keyboard = [
         [
             InlineKeyboardButton(
@@ -153,11 +164,7 @@ def get_shop_card_keyboard(
         [
             InlineKeyboardButton(
                 text="Назад",
-                callback_data=ShopsCallback(
-                    action="list",
-                    page=page,
-                    filter_type=current_filter,
-                ).pack(),
+                callback_data=back_callback_data,
             ),
             InlineKeyboardButton(
                 text="Главное меню",

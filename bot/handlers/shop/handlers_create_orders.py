@@ -850,7 +850,6 @@ async def confirm_and_create_order(
         order_details=data,
         orders_client=orders_client,
     )
-    print(message)
 
     if success:
         await state.clear()

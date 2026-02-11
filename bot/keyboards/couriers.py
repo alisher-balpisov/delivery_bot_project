@@ -127,6 +127,7 @@ def get_courier_card_keyboard(
     page: int,
     current_filter: CourierFilter,
     courier_id: int,
+    back_callback_data: str | None = None,
 ) -> InlineKeyboardMarkup:
     """
     Генерация клавиатуры для карточки курьера.
@@ -135,7 +136,17 @@ def get_courier_card_keyboard(
         page: Номер текущей страницы списка
         current_filter: Текущий фильтр списка
         courier_id: ID курьера
+        back_callback_data: Пользовательский callback для кнопки "Назад".
+            Если не передан — возвращаемся к списку курьеров.
     """
+    # Определяем callback для кнопки "Назад"
+    if back_callback_data is None:
+        back_callback_data = CouriersCallback(
+            action="list",
+            page=page,
+            filter_type=current_filter,
+        ).pack()
+
     keyboard = [
         [
             InlineKeyboardButton(
@@ -151,11 +162,7 @@ def get_courier_card_keyboard(
         [
             InlineKeyboardButton(
                 text="Назад",
-                callback_data=CouriersCallback(
-                    action="list",
-                    page=page,
-                    filter_type=current_filter,
-                ).pack(),
+                callback_data=back_callback_data,
             ),
             InlineKeyboardButton(
                 text="Главное меню",

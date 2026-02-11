@@ -42,7 +42,6 @@ async def get_disputes_list(
         limit=limit,
         status=status,
     )
-    print(disputes_list)
 
     logger.info(f"Returning {len(disputes_list.items)} disputes for admin {current_user.id}")
     return disputes_list

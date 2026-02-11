@@ -371,40 +371,58 @@ def get_dispute_details_keyboard(
     """
     builder = InlineKeyboardBuilder()
 
-    # --- Секция информации ---
-    # Добавляем кнопки с данными магазина и курьера
-    # Мы делаем их в одну строку (row), чтобы сэкономить место
+    # Импортируем здесь, чтобы избежать циклического импорта
+    from bot.handlers.admin.handlers_disputes import (
+        DisputeViewCourierCallback,
+        DisputeViewShopCallback,
+    )
+
     builder.row(
-        InlineKeyboardButton(text=f"🏪 Магазин: {shop_name}", callback_data=f"view_shop_{shop_id}"),
         InlineKeyboardButton(
-            text=f"🛵 Курьер: {courier_name}", callback_data=f"view_courier_{courier_id}"
+            text=f"🏪 Магазин: {shop_name}",
+            callback_data=DisputeViewShopCallback(
+                shop_id=shop_id,
+                dispute_id=dispute_id,
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text=f"🛵 Курьер: {courier_name}",
+            callback_data=DisputeViewCourierCallback(
+                courier_id=courier_id,
+                dispute_id=dispute_id,
+            ).pack(),
         ),
     )
 
-    # --- Секция управления статусом ---
+    buttons = []
+
+    # --- Управление статусом ---
     if dispute_status == "pending_review":
-        builder.row(
+        buttons.append(
             InlineKeyboardButton(
                 text="🔵 Взять в работу",
                 callback_data=f"dispute_action_{dispute_id}_in_review",
             )
         )
     elif dispute_status == "in_review":
-        builder.row(
+        buttons.append(
             InlineKeyboardButton(
                 text="🟢 Разрешить",
                 callback_data=f"dispute_action_{dispute_id}_resolve",
             )
         )
 
-    # --- Кнопка отмены ---
+    # --- Отмена ---
     if dispute_status in ("pending_review", "in_review"):
-        builder.row(
+        buttons.append(
             InlineKeyboardButton(
                 text="⚫ Отменить спор",
                 callback_data=f"dispute_action_{dispute_id}_cancel",
             )
         )
+
+    if buttons:
+        builder.row(*buttons)
 
     # --- Кнопки навигации ---
     builder.row(

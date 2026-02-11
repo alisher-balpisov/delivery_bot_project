@@ -20,6 +20,8 @@ from backend.src.core.logging import get_logger
 
 from bot.clients.admin_client import AdminClient
 from bot.clients.auth_client import AuthClient
+from bot.clients.couriers_client import CouriersClient
+from bot.clients.shops_client import ShopsClient
 from bot.filters.filters import RoleFilter
 from bot.handlers.admin.messages import AdminMessages as AM
 from bot.keyboards.admin import (
@@ -28,6 +30,8 @@ from bot.keyboards.admin import (
     get_dispute_details_keyboard,
     get_disputes_list_keyboard,
 )
+from bot.keyboards.couriers import CourierFilter, get_courier_card_keyboard
+from bot.keyboards.shops import ShopFilter, get_shop_card_keyboard
 from bot.redis_storage import UserDataStorage
 from bot.utils.formatters import format_dt_short
 from bot.utils.token_manager import TokenManager
@@ -64,6 +68,26 @@ class DisputeActionCallback(CallbackData, prefix="admin_dispute_act"):
 
     dispute_id: int
     action: str  # in_review, resolve, cancel
+
+
+class DisputeViewShopCallback(CallbackData, prefix="dsp_shop"):
+    """
+    CallbackData для перехода к карточке магазина из контекста спора.
+    Позволяет корректно вернуться назад к карточке спора.
+    """
+
+    shop_id: int
+    dispute_id: int
+
+
+class DisputeViewCourierCallback(CallbackData, prefix="dsp_cour"):
+    """
+    CallbackData для перехода к карточке курьера из контекста спора.
+    Позволяет корректно вернуться назад к карточке спора.
+    """
+
+    courier_id: int
+    dispute_id: int
 
 
 # ==================== Вспомогательные функции ====================
@@ -350,3 +374,127 @@ async def dispute_action_handler(
             result.data.get("detail", "Неизвестная ошибка") if result.data else "Ошибка сети"
         )
         await callback.answer(f"{AM.DISPUTE_STATUS_UPDATE_ERROR}: {error_msg}", show_alert=True)
+
+
+# ==================== Просмотр магазина/курьера из спора ====================
+
+
+@router.callback_query(DisputeViewShopCallback.filter())
+async def view_shop_from_dispute(
+    callback: CallbackQuery,
+    callback_data: DisputeViewShopCallback,
+    auth_client: AuthClient,
+    shops_client: ShopsClient,
+    user_storage: UserDataStorage,
+):
+    """
+    Открывает карточку магазина из контекста спора.
+    Кнопка "Назад" ведёт обратно к карточке спора.
+    """
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(callback.from_user.id)
+
+    try:
+        from backend.src.common.enums import UserStatus
+
+        shop = await shops_client.get_shop_by_id(
+            token=token,
+            shop_id=callback_data.shop_id,
+        )
+
+        status_emoji = "🟢" if shop.status == UserStatus.ACTIVE else "🔴"
+        status_text = "Активен" if shop.status == UserStatus.ACTIVE else "Неактивен"
+
+        username_text = f"@{shop.username}" if shop.username else "Нет"
+        phones = ", ".join(shop.phone_numbers) if shop.phone_numbers else "Нет"
+
+        text = (
+            f"🏪 <b>Магазин: {shop.name or 'Не указано'}</b>\n\n"
+            f"📱 Телеграм: {username_text}\n"
+            f"📞 Телефон: {phones}\n"
+            f"📍 Адрес: {shop.address or 'Не указано'}\n"
+            f"🔗 Ссылка на адрес: {shop.address_link or 'Нет'}\n"
+            f"🔒 Статус: {status_emoji} {status_text}\n"
+        )
+
+        # Формируем callback "Назад" к карточке спора
+        back_callback = DisputeDetailCallback(
+            dispute_id=callback_data.dispute_id,
+        ).pack()
+
+        keyboard = get_shop_card_keyboard(
+            page=1,
+            current_filter=ShopFilter.ACTIVE,
+            shop_id=callback_data.shop_id,
+            back_callback_data=back_callback,
+        )
+
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
+
+    except Exception as e:
+        logger.exception("Ошибка при загрузке магазина из спора: %s", e)
+        await callback.answer(f"❌ Ошибка при загрузке информации: {e!s}", show_alert=True)
+
+
+@router.callback_query(DisputeViewCourierCallback.filter())
+async def view_courier_from_dispute(
+    callback: CallbackQuery,
+    callback_data: DisputeViewCourierCallback,
+    auth_client: AuthClient,
+    couriers_client: CouriersClient,
+    user_storage: UserDataStorage,
+):
+    """
+    Открывает карточку курьера из контекста спора.
+    Кнопка "Назад" ведёт обратно к карточке спора.
+    """
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(callback.from_user.id)
+
+    result = await execute_api_call(
+        token_manager,
+        callback.from_user.id,
+        couriers_client.get_courier_details,
+        courier_id=callback_data.courier_id,
+    )
+
+    if not result.success:
+        await callback.answer("Не удалось загрузить данные курьера", show_alert=True)
+        return
+
+    courier = result.data
+
+    full_name = courier.get("full_name")
+    username = courier.get("username")
+    username_text = f"@{username}" if username else "Нет"
+    phones = ", ".join(courier.get("phone_numbers", [])) or "Нет"
+    rating = courier.get("rating")
+    rating_text = f"{rating:.1f} ⭐️" if rating else "Нет оценок"
+
+    status_emoji = "🟢 На смене" if courier.get("is_active") else "🔴 Не на смене"
+    user_status = courier.get("status", "unknown")
+
+    text = (
+        f"👤 <b>Курьер: {full_name.split()[1] if full_name else 'Не указано'}</b>\n\n"
+        f"📱 Телеграм: {username_text}\n"
+        f"📞 Телефон: {phones}\n"
+        f"⭐️ Рейтинг: {rating_text}\n"
+        f"🔄 Статус смены: {status_emoji}\n"
+        f"🔒 Статус аккаунта: {user_status}\n"
+    )
+
+    # Формируем callback "Назад" к карточке спора
+    back_callback = DisputeDetailCallback(
+        dispute_id=callback_data.dispute_id,
+    ).pack()
+
+    keyboard = get_courier_card_keyboard(
+        page=1,
+        current_filter=CourierFilter.ACTIVE,
+        courier_id=callback_data.courier_id,
+        back_callback_data=back_callback,
+    )
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()

@@ -56,5 +56,6 @@
     // Добавлять финальный перенос строки
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
-    "files.trimTrailingWhitespace": true
+    "files.trimTrailingWhitespace": true,
+    "git.ignoreLimitWarning": true
 }
