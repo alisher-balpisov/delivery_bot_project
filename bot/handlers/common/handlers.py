@@ -14,8 +14,8 @@ from bot.dto import UserDTO
 from bot.handlers.admin import service as admin_service
 from bot.handlers.auth.service import get_user_profile_by_token
 from bot.handlers.courier.keyboards import get_courier_main_keyboard
-from bot.handlers.shop.keyboards import get_shop_main_menu_keyboard
-from bot.handlers.shop.messages import ShopMessages
+from bot.handlers.shop.keyboards.main import get_main_menu_keyboard
+from bot.handlers.shop.messages import MainMenuMessages
 from bot.messages import AuthMessages
 from bot.redis_storage import UserDataStorage
 from bot.states import RegistrationStates
@@ -42,7 +42,7 @@ async def show_menu_by_role(
         if shops_client and token:
             try:
                 stats = await shops_client.get_shop_stats(token)
-                text = ShopMessages.MAIN_MENU.format(
+                text = MainMenuMessages.MAIN_MENU.format(
                     active_orders=stats.active_orders,
                     today_orders=stats.orders_today,
                     active_disputes=stats.active_disputes,
@@ -50,7 +50,7 @@ async def show_menu_by_role(
             except Exception as e:
                 logger.error(f"Ошибка при получении статистики магазина: {e}")
 
-        keyboard = get_shop_main_menu_keyboard()
+        keyboard = get_main_menu_keyboard()
         if isinstance(event, CallbackQuery):
             await event.message.edit_text(text, reply_markup=keyboard)
         else:

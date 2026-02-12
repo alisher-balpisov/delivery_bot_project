@@ -1,16 +1,18 @@
-# __init__.py — Сборщик роутеров магазина
+"""
+Модуль обработчиков для магазинов.
+Объединяет все роутеры в единую точку входа.
+"""
+
 from aiogram import Router
 
-from .handlers import router as main_router
-from .handlers_create_orders import router as create_orders_router
-from .handlers_current_orders import router as current_orders_router
+from .main import router as main_router
+from .orders import router as orders_router
 
-# Создаем главный роутер магазина
+# Главный роутер магазина
 router = Router(name="shop")
 
-# Подключаем все дочерние роутеры
+# Подключение модулей
 router.include_router(main_router)
-router.include_router(create_orders_router)
-router.include_router(current_orders_router)
+router.include_router(orders_router)
 
 __all__ = ["router"]

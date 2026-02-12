@@ -40,7 +40,7 @@ async def get_available_orders_messages(
             text = OrderMessages.AVAILABLE_ORDER_TEMPLATE.format(
                 order_id=order_id,
                 pickup_address=order.get("pickup_address", "N/A"),
-                recipient_address=order.get("recipient_address", "N/A"),
+                description=order.get("description", "Нет описания"),
                 price=order.get("price", "N/A"),
             )
             keyboard = InlineKeyboardMarkup(

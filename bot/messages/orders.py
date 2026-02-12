@@ -44,7 +44,7 @@ class OrderMessages:
     AVAILABLE_ORDER_TEMPLATE: Final = (
         "📦 **Заказ #{order_id}**\n"
         "📍 Откуда: {pickup_address}\n"
-        "🎯 Куда: {recipient_address}\n"
+        "📝 Описание/Адрес: {description}\n"
         "💰 Оплата: {price} ₸\n"
     )
 
