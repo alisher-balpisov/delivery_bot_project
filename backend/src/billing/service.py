@@ -1,7 +1,10 @@
-from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from backend.src.common.enums import TransactionType, UserRole
-from backend.src.models import Order, Transaction, User
+from backend.src.models import Transaction, User
+
+if TYPE_CHECKING:
+    from backend.src.models import Order
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +22,7 @@ class BillingService:
             raise ValueError("System user not found! Run init_data.")
         return user_id
 
-    async def get_balance(self, user_id: int) -> Decimal:
+    async def get_balance(self, user_id: int) -> int:
         """
         Возвращает текущий баланс пользователя.
         Отрицательный = пользователь должен нам.
@@ -28,14 +31,14 @@ class BillingService:
         stmt = select(func.sum(Transaction.amount)).where(Transaction.user_id == user_id)
         result = await self.session.execute(stmt)
         balance = result.scalar()
-        return balance if balance is not None else Decimal(0)
+        return int(balance) if balance is not None else 0
 
     async def process_order_completion(
         self,
         order: Order,
         shop_user_id: int,
         courier_user_id: int,
-        commission_rate: Decimal = Decimal("0.20"),  # 20%
+        commission_rate: float = 0.20,  # 20%
     ) -> None:
         """
         Распределяет деньги после завершения заказа.
@@ -43,8 +46,8 @@ class BillingService:
         """
         system_user_id = await self._get_system_user_id()
 
-        total_price = order.price  # 1000
-        service_profit = total_price * commission_rate  # 200
+        total_price = order.price or 0  # 1000
+        service_profit = int(total_price * commission_rate)  # 200
         courier_earning = total_price - service_profit  # 800
 
         transactions = [
@@ -78,7 +81,7 @@ class BillingService:
         # Commit делается на уровне контроллера/роутера
 
     async def process_cash_collection(
-        self, shop_user_id: int, amount: Decimal, admin_id: int
+        self, shop_user_id: int, amount: int, admin_id: int
     ) -> Transaction:
         """
         Магазин отдает наличные админу.
@@ -110,7 +113,7 @@ class BillingService:
         return shop_txn
 
     async def process_courier_payout(
-        self, courier_user_id: int, amount: Decimal, admin_id: int
+        self, courier_user_id: int, amount: int, admin_id: int
     ) -> Transaction:
         """
         Админ отдает наличные курьеру.

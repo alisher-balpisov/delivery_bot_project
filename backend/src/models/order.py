@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Index, String, Text, or_
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, or_
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -62,9 +61,7 @@ class Order(Base):
         default=OrderType.REGULAR,
     )
 
-    price: Mapped[Decimal] = mapped_column(
-        DECIMAL(10, 0), nullable=False, comment="Стоимость доставки"
-    )
+    price: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Стоимость доставки")
 
     delivery_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True, comment="Желаемое время доставки"
@@ -99,13 +96,13 @@ class Order(Base):
         back_populates="order", cascade="all, delete-orphan", lazy="selectin"
     )
     dispute: Mapped[Dispute | None] = relationship(
-        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="select"
+        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="selectin"
     )
     rating: Mapped[CourierRating | None] = relationship(
-        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="select"
+        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="selectin"
     )
     notes: Mapped[list[OrderNote]] = relationship(
-        back_populates="order", cascade="all, delete-orphan", lazy="select"
+        back_populates="order", cascade="all, delete-orphan", lazy="selectin"
     )
 
     __table_args__ = (

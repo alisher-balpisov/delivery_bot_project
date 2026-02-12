@@ -78,7 +78,7 @@ async def take_order(
     payload = {"status": OrderStatus.COURIER_EN_ROUTE.value}
 
     try:
-        result = await orders_client.update_order_status(token, order_id, payload)
+        result = await orders_client.update_order(token, order_id, payload)
 
         if result.success:
             return OrderMessages.ORDER_ACCEPTED.format(order_id)

@@ -33,3 +33,18 @@ class EditProfileStates(StatesGroup):
     waiting_for_address = State()
     # Ожидание нового телефона
     waiting_for_phone = State()
+
+
+class OrderActionStates(StatesGroup):
+    """Состояния для действий с существующим заказом"""
+
+    # Ожидание ввода цены (если она не была указана при создании)
+    waiting_for_price = State()
+    # Ожидание ввода заметки к заказу
+    waiting_for_note = State()
+    # Ожидание ввода нового адреса
+    waiting_for_address = State()
+    # Ожидание ввода нового описания
+    waiting_for_description = State()
+    # Ожидание ввода нового курьера
+    waiting_for_courier_change = State()

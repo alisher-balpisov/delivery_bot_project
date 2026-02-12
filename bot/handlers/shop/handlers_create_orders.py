@@ -9,6 +9,8 @@
 5. Подтверждение и создание заказа (confirmation)
 """
 
+import html
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -127,11 +129,13 @@ async def get_description_handler(
     )
 
     # Формируем текст предпросмотра
+    data = await state.get_data()
     text = format_order_preview(
         shop_name=shop_name,
         shop_address=shop_address,
         description=description,
         order_type=order_type,
+        price=data.get("price"),
     )
 
     # Отправляем предпросмотр
@@ -140,6 +144,7 @@ async def get_description_handler(
         reply_markup=get_order_settings_keyboard(
             order_type=order_type,
             delivery_time_type=DeliveryTimeType.TODAY,
+            price=data.get("price"),
         ),
         parse_mode="HTML",
     )
@@ -287,7 +292,7 @@ async def process_delivery_time_input(message: Message, state: FSMContext):
             shop_address=data.get("shop_address", "Адрес"),
             description=data.get("description", ""),
             order_type=data.get("order_type", OrderType.REGULAR.value),
-            price=float(data.get("price", 0)),
+            price=data.get("price"),
             delivery_time=delivery_time,
             delivery_time_type=data.get("delivery_time_type"),
         )
@@ -317,6 +322,7 @@ async def process_delivery_time_input(message: Message, state: FSMContext):
         reply_markup=get_order_settings_keyboard(
             order_type=order_type,
             delivery_time_type=DeliveryTimeType.SCHEDULED,
+            price=data.get("price"),
         ),
         parse_mode="HTML",
     )
@@ -360,6 +366,7 @@ async def back_to_order_preview(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_order_settings_keyboard(
             order_type=order_type,
             delivery_time_type=delivery_time_type_enum,
+            price=data.get("price"),  # Added price parameter
         ),
         parse_mode="HTML",
     )
@@ -468,8 +475,57 @@ async def process_price_input(
         return
 
     # Запрашиваем активных курьеров (страница 1)
+    await _request_courier_selection(message, state, token, couriers_client, page=1)
+
+
+@router.callback_query(F.data == "skip_price", RoleFilter(UserRole.SHOP))
+async def skip_price_handler(
+    callback: CallbackQuery,
+    state: FSMContext,
+    couriers_client: CouriersClient,
+    auth_client: AuthClient,
+    user_storage: UserDataStorage,
+):
+    """Пропускает этап ввода цены"""
+    data = await state.get_data()
+    is_editing = data.get("is_editing", False)
+
+    # Устанавливаем цену в None
+    await state.update_data(price=None, is_editing=False)
+    data = await state.get_data()
+
+    # Если это редактирование цены - возвращаемся к подтверждению
+    if is_editing:
+        await _proceed_to_confirmation(callback.message, state)
+        await callback.answer()
+        return
+
+    # Если REGULAR - пропускаем выбор курьера
+    order_type = data.get("order_type", OrderType.REGULAR.value)
+    if order_type == OrderType.REGULAR.value:
+        await _proceed_to_confirmation(callback.message, state)
+        await callback.answer()
+        return
+
+    # Для других типов - показываем выбор курьера
+    telegram_id = callback.from_user.id
+    token_manager = TokenManager(auth_client, user_storage)
+    token = await token_manager.get_token(telegram_id)
+
+    if not token:
+        await callback.message.answer("⚠️ Ошибка авторизации. Попробуйте начать заново.")
+        return
+
+    await _request_courier_selection(callback.message, state, token, couriers_client, page=1)
+    await callback.answer()
+
+
+async def _request_courier_selection(
+    message: Message, state: FSMContext, token: str, couriers_client: CouriersClient, page: int = 1
+):
+    """Вспомогательная функция для запроса и отображения списка курьеров"""
     await message.answer("⏳ Загружаем список курьеров...")
-    result = await couriers_client.get_active_couriers_for_selection(token, page=1)
+    result = await couriers_client.get_active_couriers_for_selection(token, page=page)
 
     if result.success and isinstance(result.data, dict) and result.data.get("items"):
         # Пагинированный ответ
@@ -582,7 +638,7 @@ async def select_courier_handler(
         shop_address=data.get("shop_address", "Адрес"),
         description=data.get("description", ""),
         order_type=data.get("order_type", OrderType.REGULAR.value),
-        price=float(data.get("price", 0)),
+        price=data.get("price"),
         delivery_time=data.get("delivery_time"),
         delivery_time_type=data.get("delivery_time_type"),
         courier_name=data.get("courier_name"),
@@ -605,7 +661,7 @@ async def _proceed_to_confirmation(message: Message, state: FSMContext):
         shop_address=data.get("shop_address", "Адрес"),
         description=data.get("description", ""),
         order_type=data.get("order_type", OrderType.REGULAR.value),
-        price=float(data.get("price", 0)),
+        price=data.get("price"),
         delivery_time=data.get("delivery_time"),
         delivery_time_type=data.get("delivery_time_type"),
         courier_name=data.get("courier_name"),
@@ -694,7 +750,7 @@ async def back_to_confirmation_handler(callback: CallbackQuery, state: FSMContex
         shop_address=data.get("shop_address", "Адрес"),
         description=data.get("description", ""),
         order_type=data.get("order_type", OrderType.REGULAR.value),
-        price=float(data.get("price", 0)),
+        price=data.get("price"),
         delivery_time=data.get("delivery_time"),
         delivery_time_type=data.get("delivery_time_type"),
         courier_name=data.get("courier_name"),
@@ -755,7 +811,7 @@ async def cancel_edit_description_handler(callback: CallbackQuery, state: FSMCon
         shop_address=data.get("shop_address", "Адрес"),
         description=data.get("description", ""),
         order_type=data.get("order_type", OrderType.REGULAR.value),
-        price=float(data.get("price", 0)),
+        price=data.get("price"),
         delivery_time=data.get("delivery_time"),
         delivery_time_type=data.get("delivery_time_type"),
         courier_name=data.get("courier_name"),
@@ -796,7 +852,7 @@ async def save_edited_description_handler(message: Message, state: FSMContext):
         shop_address=data.get("shop_address", "Адрес"),
         description=new_description,
         order_type=data.get("order_type", OrderType.REGULAR.value),
-        price=float(data.get("price", 0)),
+        price=data.get("price"),
         delivery_time=data.get("delivery_time"),
         delivery_time_type=data.get("delivery_time_type"),
         courier_name=data.get("courier_name"),
@@ -827,7 +883,7 @@ async def confirm_and_create_order(
     data = await state.get_data()
 
     # Проверяем наличие всех обязательных данных
-    if not data.get("description") or not data.get("price"):
+    if not data.get("description"):
         await callback.answer("⚠️ Недостаточно данных для создания заказа", show_alert=True)
         await create_order_handler(callback, state)
         return
@@ -855,8 +911,9 @@ async def confirm_and_create_order(
         await state.clear()
         await callback.message.edit_text(text=message, reply_markup=back_to_menu())
     else:
+        escaped_message = html.escape(message)
         await callback.message.edit_text(
-            text=f"❌ <b>Ошибка создания заказа</b>\n\n{message}",
+            text=f"❌ <b>Ошибка создания заказа</b>\n\n{escaped_message}",
             reply_markup=get_order_confirmation_keyboard(),
             parse_mode="HTML",
         )

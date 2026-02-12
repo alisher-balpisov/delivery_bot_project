@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -17,12 +16,12 @@ class OrderCreateRequest(BaseModel):
     delivery_time: datetime | None = None
     delivery_time_type: DeliveryTimeType = Field(DeliveryTimeType.TODAY)
     order_type: OrderType = Field(OrderType.REGULAR, description="Тип заказа")
-    price: Decimal = Field(
-        ...,
+    price: int | None = Field(
+        None,
         ge=3000,
         le=20000,
         multiple_of=1,
-        description="Цена доставки, устанавливаемая магазином",
+        description="Цена доставки, устанавливаемая магазином (необязательно)",
     )
     description: str | None = Field(None, max_length=1000)
 
@@ -103,6 +102,32 @@ class OrderUpdate(BaseModel):
     courier_id: int | None = Field(None, description="ID курьера для назначения или изменения")
     courier_notes: str | None = Field(None, max_length=1000)
     completion_notes: str | None = Field(None, max_length=1000)
+    price: int | None = Field(
+        None,
+        ge=3000,
+        le=20000,
+        description="Цена доставки (обновление магазином)",
+    )
+    description: str | None = Field(None, max_length=1000, description="Описание заказа")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderNoteCreate(BaseModel):
+    """Схема для создания заметки к заказу."""
+
+    content: str = Field(..., min_length=1, max_length=1000, description="Текст заметки")
+
+
+class OrderNoteResponse(BaseModel):
+    """Схема ответа с заметкой."""
+
+    id: int
+    order_id: int
+    author_user_id: int
+    author_role: str
+    content: str
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -138,6 +163,14 @@ class OrderResponse(BaseModel):
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    dispute: Any | None = Field(None, exclude=True)
+    notes: list[OrderNoteResponse] = []
+    order_history: list[Any] = []
+
+    @computed_field
+    @property
+    def dispute_id(self) -> int | None:
+        return self.dispute.id if self.dispute else None
 
     @computed_field
     @property
@@ -154,7 +187,7 @@ class OrderResponse(BaseModel):
 
 class OrderResponseForShop(OrderResponse):
     courier: CourierInfoForShop | None = None
-    price: Decimal
+    price: int | None = None
 
 
 class OrderResponseForCourier(OrderResponse):
@@ -176,7 +209,7 @@ class OrderCardResponse(BaseModel):
     courier_name: str | None
     status: OrderStatus
     order_type: OrderType
-    price: Decimal
+    price: int | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -223,7 +256,7 @@ class OrderListItemForShop(BaseModel):
     id: int
     status: OrderStatus
     order_type: OrderType
-    price: Decimal
+    price: int | None = None
     recipient_address: str | None = None
     delivery_time: datetime | None = None
     created_at: datetime
@@ -253,7 +286,7 @@ class OrderListItemForAdmin(BaseModel):
     id: int
     status: OrderStatus
     order_type: OrderType
-    price: Decimal
+    price: int | None = None
     recipient_address: str | None = None
     delivery_time: datetime | None = None
     created_at: datetime

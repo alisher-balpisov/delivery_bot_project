@@ -18,6 +18,8 @@ from .schemas import (
     OrderListItemForAdmin,
     OrderListItemForCourier,
     OrderListItemForShop,
+    OrderNoteCreate,
+    OrderNoteResponse,
     OrderResponse,
     OrderResponseForAdmin,
     OrderResponseForCourier,
@@ -184,6 +186,42 @@ async def complete_order(
         raise
     except Exception as e:
         logger.error(f"Неожиданная ошибка при завершении заказа {order_id=}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Внутренняя ошибка сервера",
+        )
+
+
+@router.post(
+    "/{order_id}/notes",
+    response_model=OrderNoteResponse,
+    status_code=http_status.HTTP_201_CREATED,
+    summary="Добавить заметку к заказу",
+    tags=["Orders - All Roles"],
+)
+async def add_order_note(
+    order_id: int,
+    note_in: OrderNoteCreate,
+    current_user: RequireAllRoles,
+    db: DbSession,
+):
+    """
+    Добавляет заметку к заказу.
+
+    Доступно для всех ролей, связанных с заказом.
+    """
+    try:
+        note = await service.add_order_note(
+            db=db,
+            user=current_user,
+            order_id=order_id,
+            content=note_in.content,
+        )
+        return note
+    except OrderException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding note to order {order_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Внутренняя ошибка сервера",

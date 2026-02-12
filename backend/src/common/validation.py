@@ -5,7 +5,6 @@
 и утилиты для проверки бизнес-правил.
 """
 
-from decimal import Decimal
 from typing import Any, ClassVar
 
 # ==============================================================================
@@ -17,8 +16,8 @@ class ValidationRules:
     """Константы для валидации данных приложения."""
 
     # Заказы
-    MIN_ORDER_PRICE: Decimal = Decimal("100")  # минимальная цена заказа в тенге
-    MAX_ORDER_PRICE: Decimal = Decimal("1000000")  # максимальная цена заказа
+    MIN_ORDER_PRICE: int = 100  # минимальная цена заказа в тенге
+    MAX_ORDER_PRICE: int = 1000000  # максимальная цена заказа
     MAX_DESCRIPTION_LENGTH: int = 500
     MAX_ADDRESS_LENGTH: int = 200
 
@@ -71,8 +70,8 @@ VALIDATION = {
 class CommissionRules:
     """Правила комиссий и платежей."""
 
-    PLATFORM_FEE_PERCENT: Decimal = Decimal("10")  # комиссия платформы в процентах
-    MIN_COMMISSION: Decimal = Decimal("50")  # минимальная комиссия в тенге
+    PLATFORM_FEE_PERCENT: int = 10  # комиссия платформы в процентах
+    MIN_COMMISSION: int = 50  # минимальная комиссия в тенге
     PAYMENT_METHODS: ClassVar[list[str]] = ["cash", "card", "kaspi"]
 
 
@@ -110,7 +109,7 @@ def validate_telegram_id(cls, v: int) -> int:
     return v
 
 
-def validate_order_price(cls, v: Decimal) -> Decimal:
+def validate_order_price(cls, v: int) -> int:
     """
     Валидатор для цены заказа.
 
@@ -209,7 +208,7 @@ def validate_pagination_params(page: int, limit: int) -> tuple[int, int]:
 # ==============================================================================
 
 
-def is_valid_price_range(price: Decimal) -> bool:
+def is_valid_price_range(price: int) -> bool:
     """
     Проверка, находится ли цена в допустимом диапазоне.
 
@@ -222,7 +221,7 @@ def is_valid_price_range(price: Decimal) -> bool:
     return ValidationRules.MIN_ORDER_PRICE <= price <= ValidationRules.MAX_ORDER_PRICE
 
 
-def calculate_commission(price: Decimal) -> Decimal:
+def calculate_commission(price: int) -> int:
     """
     Расчет комиссии платформы.
 
@@ -232,7 +231,7 @@ def calculate_commission(price: Decimal) -> Decimal:
     Returns:
         Сумма комиссии
     """
-    commission = price * CommissionRules.PLATFORM_FEE_PERCENT / Decimal("100")
+    commission = int(price * CommissionRules.PLATFORM_FEE_PERCENT / 100)
     return max(commission, CommissionRules.MIN_COMMISSION)
 
 

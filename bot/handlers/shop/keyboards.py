@@ -1,14 +1,16 @@
+import html
 from datetime import datetime
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from backend.src.common.enums import DeliveryTimeType, OrderType
+from backend.src.common.enums import DeliveryTimeType, OrderStatus, OrderType
 
 from bot.handlers.shop.messages import ShopMainKeyboardsButtons, ShopOrder
 from bot.handlers.shop.service import (
     CourierSelectionCallback,
     DeliveryTimeTypeCallback,
     OrderTypeCallback,
+    ShopOrderActionCallback,
 )
 
 
@@ -63,6 +65,7 @@ def back_to_menu() -> InlineKeyboardMarkup:
 def get_order_settings_keyboard(
     order_type: str = OrderType.REGULAR.value,
     delivery_time_type: DeliveryTimeType = DeliveryTimeType.TODAY,
+    price: int | None = None,
 ) -> InlineKeyboardMarkup:
     """
     Возвращает клавиатуру настройки заказа магазина.
@@ -105,15 +108,37 @@ def get_order_settings_keyboard(
             ]
         )
 
-    # Ряд 3: Далее (к установке цены)
-    keyboard.append(
-        [
-            InlineKeyboardButton(
-                text="💰 Далее (установить цену)",
-                callback_data="set_order_price",
-            )
-        ]
-    )
+    # Ряд 3: Цена и Продолжение
+    if price is None:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="💰 Установить цену",
+                    callback_data="set_order_price",
+                ),
+                InlineKeyboardButton(
+                    text="⏩ Без цены",
+                    callback_data="skip_price",
+                ),
+            ]
+        )
+    else:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=f"💰 Изменить цену ({price:,} ₸)",
+                    callback_data="set_order_price",
+                )
+            ]
+        )
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="✅ Далее к подтверждению",
+                    callback_data="skip_price",  # skip_price уже умеет переходить к подтверждению
+                )
+            ]
+        )
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -199,6 +224,12 @@ def get_price_input_keyboard(back_callback: str = "back_to_preview") -> InlineKe
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text="⏩ Пропустить (без цены)",
+                    callback_data="skip_price",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="🔙 Назад",
                     callback_data=back_callback,
                 ),
@@ -206,7 +237,7 @@ def get_price_input_keyboard(back_callback: str = "back_to_preview") -> InlineKe
                     text="◀️ Главное меню",
                     callback_data="shop_main_menu",
                 ),
-            ]
+            ],
         ]
     )
 
@@ -367,7 +398,7 @@ def format_order_preview(
     order_type: str,
     delivery_time: datetime | None = None,
     delivery_time_type: str | None = None,
-    price: float | None = None,
+    price: int | None = None,
 ) -> str:
     """
     Форматирует текст предпросмотра заказа.
@@ -390,6 +421,11 @@ def format_order_preview(
         OrderType.SUPPLY.value: "🏭 Со склада",
     }
     order_type_display = order_type_labels.get(order_type, order_type)
+
+    # Экранируем динамические данные
+    shop_name = html.escape(shop_name)
+    shop_address = html.escape(shop_address)
+    description = html.escape(description)
 
     # Формируем текст
     text = ShopOrder.PREVIEW.format(
@@ -414,7 +450,9 @@ def format_order_preview(
 
     # Добавляем цену если установлена
     if price is not None:
-        text += f"\n💰 <b>Цена доставки:</b> {price:,.0f} ₸\n"
+        text += f"\n💰 <b>Цена доставки:</b> {price:,} ₸\n"
+    else:
+        text += "\n💰 <b>Цена доставки:</b> <i>Не указана</i>\n"
 
     text += "<i>Настройте параметры заказа используя кнопки ниже.</i>"
 
@@ -426,7 +464,7 @@ def format_order_confirmation_text(
     shop_address: str,
     description: str,
     order_type: str,
-    price: float,
+    price: int | None = None,
     delivery_time: datetime | None = None,
     delivery_time_type: str | None = None,
     courier_name: str | None = None,
@@ -443,13 +481,21 @@ def format_order_confirmation_text(
     }
     order_type_display = order_type_labels.get(order_type, order_type)
 
+    # Экранируем динамические данные
+    shop_name = html.escape(shop_name)
+    shop_address = html.escape(shop_address)
+    description = html.escape(description)
+    if courier_name:
+        courier_name = html.escape(courier_name)
+
+    price_str = f"{price:,} ₸" if price is not None else "<i>Не указана</i>"
     text = (
         f"<b>✅ Подтверждение заказа</b>\n"
         f"🏢 <b>Магазин:</b> {shop_name}\n"
         f"📍 <b>Адрес:</b> {shop_address}\n\n"
         f"📝 <b>Описание:</b>\n{description}\n\n"
         f"📦 <b>Тип:</b> {order_type_display}\n"
-        f"💰 <b>Цена:</b> {price:,.0f} ₸\n"
+        f"💰 <b>Цена:</b> {price_str}\n"
     )
 
     if order_type == OrderType.TIME.value and delivery_time:
@@ -463,3 +509,133 @@ def format_order_confirmation_text(
     text += "\n\n<b>Подтвердите создание заказа</b>"
 
     return text
+
+
+def get_shop_order_details_keyboard(
+    order_id: int,
+    status: str,
+    back_callback: str,
+    courier_id: int | None = None,
+    dispute_id: int | None = None,
+    has_price: bool = True,
+) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для карточки заказа магазина с динамическими кнопками на основе статуса.
+    """
+    builder = InlineKeyboardBuilder()
+
+    # 1. Посмотреть курьера (если назначен)
+    if courier_id:
+        builder.button(
+            text="👤 Посмотреть курьера",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="view_courier").pack(),
+        )
+
+    # 2. Споры
+    if dispute_id:
+        builder.button(
+            text="⚖️ Посмотреть спор",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="view_dispute").pack(),
+        )
+    elif courier_id and status in [
+        OrderStatus.COURIER_EN_ROUTE.value,
+        OrderStatus.DELIVERING.value,
+        OrderStatus.AWAITING_CONFIRMATION.value,
+        OrderStatus.COMPLETED.value,
+    ]:
+        builder.button(
+            text="⚖️ Открыть спор",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="open_dispute").pack(),
+        )
+
+    # 3. Редактировать (только для активных заказов)
+    if status not in [OrderStatus.COMPLETED.value, OrderStatus.CANCELED.value]:
+        builder.button(
+            text="✏️ Редактировать",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="edit").pack(),
+        )
+
+    # 4. Добавить заметку
+    builder.button(
+        text="📝 Добавить заметку",
+        callback_data=ShopOrderActionCallback(order_id=order_id, action="add_note").pack(),
+    )
+
+    # 5. Завершить (только если ожидает подтверждения и есть цена)
+    if status == OrderStatus.AWAITING_CONFIRMATION.value and has_price:
+        builder.button(
+            text="✅ Завершить заказ",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="complete").pack(),
+        )
+
+    # 6. Установить цену (если нет цены и заказ активен)
+    if not has_price and status not in [OrderStatus.COMPLETED.value, OrderStatus.CANCELED.value]:
+        builder.button(
+            text="💰 Установить цену",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="set_price").pack(),
+        )
+
+    # 7. Отменить (только на ранних этапах)
+    if status in [OrderStatus.PENDING.value, OrderStatus.PENDING_COURIER.value]:
+        builder.button(
+            text="❌ Отменить заказ",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="cancel").pack(),
+        )
+
+    builder.adjust(1)  # Делаем кнопки в столбик
+
+    # 8. Кнопка назад
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback))
+
+    return builder.as_markup()
+
+
+def get_shop_edit_menu_keyboard(
+    order_id: int,
+    back_callback: str,
+    can_edit_price: bool = True,
+    can_edit_address: bool = True,
+    can_edit_description: bool = True,
+    can_edit_courier: bool = False,
+) -> InlineKeyboardMarkup:
+    """
+    Клавиатура меню изменения заказа.
+    """
+    builder = InlineKeyboardBuilder()
+
+    # Изменить цену
+    if can_edit_price:
+        builder.button(
+            text="💰 Изменить цену",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="set_price").pack(),
+        )
+
+    # Изменить описание
+    if can_edit_description:
+        builder.button(
+            text="📝 Изменить описание",
+            callback_data=ShopOrderActionCallback(
+                order_id=order_id, action="edit_order_description"
+            ).pack(),
+        )
+
+    # Изменить адрес
+    if can_edit_address:
+        builder.button(
+            text="📍 Изменить адрес",
+            callback_data=ShopOrderActionCallback(order_id=order_id, action="edit_address").pack(),
+        )
+
+    # Изменить курьера
+    if can_edit_courier:
+        builder.button(
+            text="👤 Изменить курьера",
+            callback_data=ShopOrderActionCallback(
+                order_id=order_id, action="change_courier"
+            ).pack(),
+        )
+
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback))
+
+    return builder.as_markup()

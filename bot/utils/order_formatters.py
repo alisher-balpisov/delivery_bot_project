@@ -1,3 +1,5 @@
+import html
+
 from bot.utils.formatters import format_dt_short
 
 
@@ -21,33 +23,39 @@ def format_order_details(order: dict) -> str:
 
     created_at = format_dt_short(order.get("created_at", ""))
     updated_at = format_dt_short(order.get("updated_at", ""))
-    description = order.get("description") or "Нет описания"
+    description = html.escape(order.get("description") or "Нет описания")
 
     shop = order.get("shop")
-    shop_name = shop.get("name") if shop else "Не указан"
+    shop_name = html.escape(shop.get("name")) if shop else "Не указан"
 
     courier = order.get("courier")
-    courier_name = courier.get("full_name") if courier else "Не назначен"
+    courier_name = html.escape(courier.get("full_name")) if courier else "Не назначен"
 
     extra_info = ""
     if order.get("courier_notes"):
-        extra_info += f"\n🗒 <b>Заметки курьера:</b> {order.get('courier_notes')}"
+        courier_notes = html.escape(order.get("courier_notes"))
+        extra_info += f"\n🗒 <b>Заметки курьера:</b> {courier_notes}"
 
-    # Заметки (order_notes)
-    order_notes = order.get("order_notes")
-    if order_notes:
-        if isinstance(order_notes, list):
+    # Заметки (notes)
+    notes = order.get("notes")
+    if notes:
+        if isinstance(notes, list):
             extra_info += "\n\n📝 <b>Заметки:</b>"
-            for note in order_notes:
+            for note in notes:
                 if isinstance(note, dict):
                     author = note.get("author_role", "Система")
-                    content = note.get("content", "")
+                    author_name = (
+                        "Магазин"
+                        if author == "shop"
+                        else ("Курьер" if author == "courier" else author)
+                    )
+                    content = html.escape(note.get("content", ""))
                     created = format_dt_short(note.get("created_at", ""))
-                    extra_info += f"\n• {created} ({author}): {content}"
+                    extra_info += f"\n• {created} ({author_name}): {content}"
                 else:
-                    extra_info += f"\n• {note}"
+                    extra_info += f"\n• {html.escape(str(note))}"
         else:
-            extra_info += f"\n\n📝 <b>Заметки:</b> {order_notes}"
+            extra_info += f"\n\n📝 <b>Заметки:</b> {html.escape(str(notes))}"
 
     # История изменений (order_history)
     order_history = order.get("order_history")
@@ -65,7 +73,7 @@ def format_order_details(order: dict) -> str:
         f"💰 <b>Цена:</b> {price_val} ₸\n"
         f"📊 <b>Статус:</b> {f'<u>{status}</u>' if status == 'disputed' or status == 'awaiting_confirmation' else status}\n"
         f"🏪 <b>Магазин:</b> {shop_name}\n"
-        f"👤 <b>Курьер:</b> {courier_name.split()[1] if courier_name else '--'}\n"
+        f"👤 <b>Курьер:</b> {courier_name}\n"
         f"📅 <b>Создан:</b> {created_at}\n"
         f"🔄 <b>Обновлен:</b> {updated_at}"
         f"{extra_info}\n"

@@ -8,9 +8,7 @@
 - Управление статусом спора (в работу, разрешить, отменить)
 """
 
-from collections.abc import Callable
 from contextlib import suppress
-from typing import Any
 
 from aiogram import F, Router
 from aiogram.filters.callback_data import CallbackData
@@ -24,16 +22,12 @@ from bot.clients.couriers_client import CouriersClient
 from bot.clients.shops_client import ShopsClient
 from bot.filters.filters import RoleFilter
 from bot.handlers.admin.messages import AdminMessages as AM
-from bot.keyboards.admin import (
-    DISPUTE_STATUS_EMOJIS,
-    DISPUTE_STATUS_LABELS,
-    get_dispute_details_keyboard,
-    get_disputes_list_keyboard,
-)
+from bot.keyboards.admin import get_dispute_details_keyboard, get_disputes_list_keyboard
 from bot.keyboards.couriers import CourierFilter, get_courier_card_keyboard
 from bot.keyboards.shops import ShopFilter, get_shop_card_keyboard
 from bot.redis_storage import UserDataStorage
-from bot.utils.formatters import format_dt_short
+from bot.utils.api_helper import execute_api_call
+from bot.utils.formatters import format_dispute_details
 from bot.utils.token_manager import TokenManager
 
 logger = get_logger(__name__)
@@ -91,75 +85,6 @@ class DisputeViewCourierCallback(CallbackData, prefix="dsp_cour"):
 
 
 # ==================== Вспомогательные функции ====================
-
-
-async def execute_api_call(
-    token_manager: TokenManager, user_id: int, func: Callable[..., Any], **kwargs
-) -> Any:
-    """
-    Выполняет API-запрос с автоматическим обновлением токена при 401 ошибке.
-    """
-    token = await token_manager.get_token(user_id)
-    result = await func(token=token, **kwargs)
-
-    if result.status_code == 401:
-        token = await token_manager.get_token(user_id, force_refresh=True)
-        if token:
-            result = await func(token=token, **kwargs)
-
-    return result
-
-
-def format_role_name(role: str) -> str:
-    """Преобразует роль пользователя в читаемый формат."""
-    role_names = {
-        "shop": "🏪 Магазин",
-        "courier": "👤 Курьер",
-        "admin": "👑 Администратор",
-    }
-    return role_names.get(role.lower(), role)
-
-
-def format_dispute_details(dispute: dict) -> str:
-    """
-    Форматирует детали спора для отображения.
-
-    Args:
-        dispute: Словарь с данными спора
-
-    Returns:
-        Отформатированная строка с деталями спора
-    """
-    dispute_id = dispute.get("id")
-    order_id = dispute.get("order_id")
-    status = dispute.get("status", "unknown")
-    shop_name = dispute.get("shop_name") or "Не указан"
-    full_name = dispute.get("courier_full_name")
-    courier_name = full_name.split()[1] if full_name else "Не указан"
-    opened_by_role = dispute.get("opened_by_role", "unknown")
-    description = dispute.get("description", "Нет описания")
-    created_at = format_dt_short(dispute.get("created_at", ""))
-    resolved_at = dispute.get("resolved_at")
-
-    # Эмодзи и читаемый статус
-    status_emoji = DISPUTE_STATUS_EMOJIS.get(status, "⚪")
-    status_label = DISPUTE_STATUS_LABELS.get(status, status)
-
-    # Форматируем дату разрешения
-    resolved_at_str = format_dt_short(resolved_at) if resolved_at else "—"
-
-    return AM.DISPUTE_DETAILS_TEMPLATE.format(
-        dispute_id=dispute_id,
-        order_id=order_id,
-        status_emoji=status_emoji,
-        status=status_label,
-        shop_name=shop_name,
-        courier_name=courier_name,
-        opened_by_role=format_role_name(opened_by_role),
-        created_at=created_at,
-        resolved_at=resolved_at_str,
-        description=description,
-    )
 
 
 # ==================== Хендлеры ====================
@@ -282,7 +207,7 @@ async def dispute_details_handler(
     dispute = result.data
 
     # Формирование текста
-    text = format_dispute_details(dispute)
+    text = format_dispute_details(dispute, templates=AM)
 
     # Формируем кнопку назад с учетом сохраненного состояния (страница, фильтр)
     back_callback = DisputesListCallback(

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, Text, and_, or_
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Text, and_, or_
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -76,8 +75,8 @@ class Dispute(Base):
     resolution_comment: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Комментарий администратора по разрешению спора"
     )
-    fine_amount: Mapped[Decimal | None] = mapped_column(
-        DECIMAL(10, 0), nullable=True, comment="Сумма штрафа (если назначен)"
+    fine_amount: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="Сумма штрафа (если назначен)"
     )
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, comment="Дата и время разрешения спора"

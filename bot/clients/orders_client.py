@@ -22,12 +22,25 @@ class OrdersClient(BaseApiClient):
         """Получить заказы пользователя (в зависимости от роли)."""
         return await self._make_request("GET", "/orders/my", token=token)
 
-    async def update_order_status(
-        self, token: str, order_id: int, status_data: dict
-    ) -> RequestResult:
-        """Обновить статус заказа."""
+    async def update_order(self, token: str, order_id: int, data: dict) -> RequestResult:
+        """Обновить данные заказа (статус, цена и т.д.)."""
         return await self._make_request(
-            "PATCH", f"/orders/{order_id}", token=token, json_data=status_data
+            "PATCH",
+            f"/orders/{order_id}",
+            token=token,
+            json_data=data,
+            custom_headers={"Content-Type": "application/json"},
+        )
+
+    async def add_order_note(self, token: str, order_id: int, content: str) -> RequestResult:
+        """Добавить заметку к заказу."""
+        return await self._make_request(
+            "POST",
+            f"/orders/{order_id}/notes",
+            token=token,
+            json_data={"content": content},
+            custom_headers={"Content-Type": "application/json"},
+            expected_status=201,
         )
 
     async def get_available_orders(self, token: str) -> RequestResult:

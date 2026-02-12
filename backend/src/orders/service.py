@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from fake_db import OrderType, UserStatus
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,12 +11,13 @@ from backend.src.common.constants import (
     COURIER_ALLOWED_FIELDS,
     PaginatedResponse,
 )
-from backend.src.common.enums import OrderStatus, UserRole
+from backend.src.common.enums import OrderStatus, OrderType, UserRole, UserStatus
 from backend.src.common.types import RESPONSE_SCHEMAS
 from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.logging import get_logger
 from backend.src.models.courier import Courier
 from backend.src.models.order import Order
+from backend.src.models.order_note import OrderNote
 from backend.src.models.shop import Shop
 from backend.src.models.user import User
 from backend.src.users.exceptions import UserNotFoundException
@@ -312,7 +312,9 @@ async def _verify_shop_can_update(user: User, order: Order, update_payload: dict
 
     Магазин может:
     - Изменять только свои заказы
-    - Только отменять их (status -> CANCELED)
+    - Отменять заказ (status -> CANCELED)
+    - Подтверждать завершение (status -> COMPLETED, только из AWAITING_CONFIRMATION)
+    - Обновлять цену (price)
     """
     if not user.shop:
         raise OrderUpdateForbiddenException("У вас нет профиля магазина")
@@ -323,13 +325,32 @@ async def _verify_shop_can_update(user: User, order: Order, update_payload: dict
         raise OrderUpdateForbiddenException("Вы можете изменять только свои заказы")
 
     # Проверяем разрешённые поля
-    allowed_fields = {"status"}
+    allowed_fields = {"status", "price", "description"}
     if not set(update_payload.keys()).issubset(allowed_fields):
-        raise OrderUpdateForbiddenException("Магазин может изменять только статус заказа")
+        raise OrderUpdateForbiddenException(
+            "Магазин может изменять только статус, цену и описание заказа"
+        )
 
     # Проверяем допустимый статус
-    if "status" in update_payload and update_payload["status"] != OrderStatus.CANCELED:
-        raise OrderUpdateForbiddenException("Магазин может только отменить заказ")
+    if "status" in update_payload:
+        new_status = update_payload["status"]
+        if new_status == OrderStatus.CANCELED:
+            pass  # Отмена всегда разрешена (для незавершённых)
+        elif new_status == OrderStatus.COMPLETED:
+            # Завершение доступно только из AWAITING_CONFIRMATION
+            if order.status != OrderStatus.AWAITING_CONFIRMATION:
+                raise OrderUpdateForbiddenException(
+                    "Подтверждение завершения доступно только для заказов в статусе 'Ожидает подтверждения'"
+                )
+            # Проверяем наличие цены
+            # Цена может быть передана в этом же запросе
+            new_price = update_payload.get("price")
+            if order.price is None and new_price is None:
+                raise OrderUpdateForbiddenException("Нельзя завершить заказ без установленной цены")
+        else:
+            raise OrderUpdateForbiddenException(
+                "Магазин может только отменить или подтвердить завершение заказа"
+            )
 
 
 async def _verify_courier_can_update(
@@ -465,6 +486,8 @@ async def _fetch_order_with_relations(db: AsyncSession, order_id: int) -> Order:
             joinedload(Order.shop).joinedload(Shop.user),
             joinedload(Order.courier).joinedload(Courier.user),
             joinedload(Order.history),
+            joinedload(Order.dispute),
+            joinedload(Order.notes),
         )
     )
 
@@ -688,3 +711,38 @@ async def complete_order(
     logger.info(f"Заказ {order_id} завершён курьером {current_user.courier.id}")
 
     return order
+
+
+async def add_order_note(
+    db: AsyncSession,
+    user: User,
+    order_id: int,
+    content: str,
+) -> OrderNote:
+    """
+    Добавляет заметку к заказу.
+    """
+    order = await _fetch_order_or_404(db, order_id)
+
+    # Проверка прав доступа к заказу
+    if user.role == UserRole.SHOP:
+        if not user.shop or order.shop_id != user.shop.id:
+            raise OrderAccessForbiddenException()
+    elif user.role == UserRole.COURIER:
+        if not user.courier or order.courier_id != user.courier.id:
+            raise OrderAccessForbiddenException()
+
+    note = OrderNote(
+        order_id=order_id,
+        author_user_id=user.id,
+        author_role=user.role,
+        content=content,
+    )
+    db.add(note)
+    # Используем flush, чтобы получить ID
+    await db.flush()
+    await db.refresh(note)
+
+    logger.info(f"Добавлена заметка к заказу {order_id} от {user.role.value} {user.id}")
+
+    return note

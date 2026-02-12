@@ -1,5 +1,5 @@
+import html
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 
 from aiogram.filters.callback_data import CallbackData
@@ -33,12 +33,17 @@ class CourierSelectionCallback(CallbackData, prefix="select_courier"):
     page: int = 1
 
 
+class ShopOrderActionCallback(CallbackData, prefix="shop_order_act"):
+    order_id: int
+    action: str  # cancel, etc.
+
+
 # Константы для валидации цены
 MIN_ORDER_PRICE = 3000
 MAX_ORDER_PRICE = 20000
 
 
-def validate_price(price_text: str) -> tuple[Decimal | None, str | None]:
+def validate_price(price_text: str) -> tuple[int | None, str | None]:
     """
     Валидирует цену заказа.
     Разрешены только целые положительные числа (без копеек/центов).
@@ -47,7 +52,7 @@ def validate_price(price_text: str) -> tuple[Decimal | None, str | None]:
         price_text: Текст с ценой от пользователя
 
     Returns:
-        Tuple(цена в Decimal или None, сообщение об ошибке или None)
+        Tuple(цена в int или None, сообщение об ошибке или None)
     """
     if not price_text:
         return None, ErrorMessages.Orders.PRICE_FORMAT_ERROR
@@ -58,7 +63,7 @@ def validate_price(price_text: str) -> tuple[Decimal | None, str | None]:
         if not cleaned.isdigit():
             return None, ErrorMessages.Orders.PRICE_FORMAT_ERROR
 
-        price = Decimal(cleaned)
+        price = int(cleaned)
 
         if price <= 0:
             return None, "Цена должна быть больше нуля"
@@ -164,10 +169,10 @@ async def create_order(
     if not token:
         return False, ErrorMessages.Auth.UNAUTHORIZED
 
-    # Формируем данные для API
+    price = order_details.get("price")
     order_data = {
         "description": order_details.get("description"),
-        "price": float(order_details.get("price", 0)),
+        "price": int(price) if price is not None else None,
         "order_type": order_details.get("order_type", OrderType.REGULAR.value),
         "delivery_time_type": order_details.get("delivery_time_type", DeliveryTimeType.TODAY.value),
     }
@@ -202,16 +207,18 @@ async def create_order(
             # Безопасно извлекаем имя (первое слово или всё имя)
             name_parts = courier_full_name.split()
             display_name = name_parts[1] if len(name_parts) > 1 else courier_full_name
+            escaped_name = html.escape(display_name)
 
             return (
                 True,
                 OrderMessages.SUCCESSFULLY_CREATED.format(
-                    order_id=order_id, courier_name=display_name
+                    order_id=order_id, courier_name=escaped_name
                 ),
             )
         else:
             error_msg = result.detail or ShopMessages.UNKNOWN_ERROR
-            return False, ErrorMessages.Orders.ORDER_CREATION_ERROR(error=error_msg)
+            escaped_error = html.escape(error_msg)
+            return False, ErrorMessages.Orders.ORDER_CREATION_ERROR(error=escaped_error)
 
     except Exception as e:
         logger.error(f"Критическая ошибка при создании заказа: {e}", exc_info=True)

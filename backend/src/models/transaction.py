@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DECIMAL, CheckConstraint, DateTime, ForeignKey, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,9 +51,7 @@ class Transaction(Base):
 
     # amount < 0: Пользователь становится должен системе (или уменьшается долг системы перед ним)
     # amount > 0: Система становится должна пользователю (или уменьшается долг пользователя)
-    amount: Mapped[Decimal] = mapped_column(
-        DECIMAL(10, 0), nullable=False, comment="Сумма операции"
-    )
+    amount: Mapped[int] = mapped_column(Integer, nullable=False, comment="Сумма операции")
 
     description: Mapped[str | None] = mapped_column(
         String(255), nullable=True, comment="Описание транзакции"
