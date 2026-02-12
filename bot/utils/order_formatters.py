@@ -1,14 +1,16 @@
 import html
 
+from backend.src.common.enums import UserRole
 from bot.utils.formatters import format_dt_short
 
 
-def format_order_details(order: dict) -> str:
+def format_order_details(order: dict, role: str = UserRole.ADMIN.value) -> str:
     """
-    Форматирует детали заказа в едином стиле для всех ролей.
+    Форматирует детали заказа в едином стиле с учетом роли пользователя.
 
     Args:
         order: Словарь с данными заказа
+        role: Роль пользователя (UserRole.SHOP, UserRole.ADMIN, etc.)
 
     Returns:
         Отформатированная строка с деталями заказа
@@ -46,8 +48,8 @@ def format_order_details(order: dict) -> str:
                     author = note.get("author_role", "Система")
                     author_name = (
                         "Магазин"
-                        if author == "shop"
-                        else ("Курьер" if author == "courier" else author)
+                        if author == UserRole.SHOP.value
+                        else ("Курьер" if author == UserRole.COURIER.value else author)
                     )
                     content = html.escape(note.get("content", ""))
                     created = format_dt_short(note.get("created_at", ""))
@@ -67,13 +69,17 @@ def format_order_details(order: dict) -> str:
                 c_type = entry.get("change_type", "Изменение")
                 extra_info += f"\n• {dt} — {c_type}"
 
+    # Поле магазина скрываем для магазина, поле курьера — для курьера
+    shop_field = f"🏪 <b>Магазин:</b> {shop_name}\n" if role != UserRole.SHOP.value else ""
+    courier_field = f"👤 <b>Курьер:</b> {courier_name}\n" if role != UserRole.COURIER.value else ""
+
     text = (
         f"📦 <b>Заказ #{order_id}</b>\n\n"
         f"📝 <b>Описание:</b> {description}\n"
         f"💰 <b>Цена:</b> {price_val} ₸\n"
-        f"📊 <b>Статус:</b> {f'<u>{status}</u>' if status == 'disputed' or status == 'awaiting_confirmation' else status}\n"
-        f"🏪 <b>Магазин:</b> {shop_name}\n"
-        f"👤 <b>Курьер:</b> {courier_name}\n"
+        f"📊 <b>Статус:</b> {f'<u>{status}</u>' if status in ('disputed', 'awaiting_confirmation') else status}\n"
+        f"{shop_field}"
+        f"{courier_field}"
         f"📅 <b>Создан:</b> {created_at}\n"
         f"🔄 <b>Обновлен:</b> {updated_at}"
         f"{extra_info}\n"

@@ -273,7 +273,7 @@ async def courier_order_detail_handler(
     order = result.data
 
     # Формирование текста деталей заказа с использованием унифицированного форматтера
-    text = format_order_details(order)
+    text = format_order_details(order, role=UserRole.ADMIN.value)
 
     back_callback = CouriersCallback(
         action="history",

@@ -50,7 +50,7 @@ async def shop_order_details_handler(
     order = result.data
 
     # Формирование текста
-    text = format_order_details(order)
+    text = format_order_details(order, role=UserRole.SHOP.value)
 
     # Кнопка назад с сохранением контекста
     back_callback = OrdersListCallback(

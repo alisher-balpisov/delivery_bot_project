@@ -404,7 +404,7 @@ async def process_order_description_update(
         return
 
     order = result.data
-    text = format_order_details(order)
+    text = format_order_details(order, role=UserRole.SHOP.value)
 
     # Кнопка "Назад" в список заказов
     from bot.handlers.shop.orders.callbacks import OrdersListCallback

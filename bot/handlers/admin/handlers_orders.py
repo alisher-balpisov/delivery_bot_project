@@ -174,7 +174,7 @@ async def order_details_handler(
     order = result.data
 
     # Формирование текста
-    text = format_order_details(order)
+    text = format_order_details(order, role=UserRole.ADMIN.value)
 
     # Формируем кнопку назад с учетом сохраненного состояния (страница, фильтр)
     back_callback = OrdersListCallback(
