@@ -31,3 +31,4 @@ class OrderActionStates(StatesGroup):
     waiting_for_note = State()
     waiting_for_description = State()
     waiting_for_courier_change = State()
+    waiting_for_dispute_description = State()

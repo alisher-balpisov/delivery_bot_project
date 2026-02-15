@@ -33,7 +33,11 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=MainMenuButtons.EDIT_PROFILE,
                     callback_data="edit_profile",
-                )
+                ),
+                InlineKeyboardButton(
+                    text=MainMenuButtons.MY_DISPUTES,
+                    callback_data="show_my_disputes",
+                ),
             ],
         ]
     )

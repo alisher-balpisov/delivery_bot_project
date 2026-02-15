@@ -25,6 +25,7 @@ class MainMenuButtons:
     ORDER_HISTORY = "История заказов"
     STATISTICS = "Статистика"
     EDIT_PROFILE = "Редактировать профиль"
+    MY_DISPUTES = "🗂 Мои споры"
 
 
 class ProfileMessages:
@@ -123,4 +124,52 @@ class OrderActionsMessages:
     )
     ADD_NOTE_PROMPT = (
         "📝 <b>Добавление заметки к заказу</b>\n\nВведите текст заметки. Она будет видна курьеру."
+    )
+    DISPUTE_PROMPT = (
+        "⚠️ <b>Открытие спора по заказу #{order_id}</b>\n\n"
+        "Пожалуйста, подробно опишите причину открытия спора.\n"
+        "<i>Эта информация будет передана администратору.</i>"
+    )
+    DISPUTE_SUCCESS = "✅ <b>Спор успешно открыт!</b>\nАдминистратор рассмотрит ваше обращение."
+    DISPUTE_ERROR = "❌ <b>Ошибка при открытии спора</b>\n\n{error}"
+    DISPUTE_DETAILS = (
+        "⚖️ <b>Детали спора по заказу #{order_id}</b>\n\n"
+        "<b>Статус:</b> {status}\n"
+        "<b>Причина:</b>\n<blockquote>{description}</blockquote>\n\n"
+        "<i>Администратор свяжется с вами для решения вопроса.</i>"
+    )
+
+
+class DisputeMessages:
+    """Сообщения для споров."""
+
+    PRE_DISPUTE_WARNING = (
+        "<b>Спор по заказу: {order_id}</b>\n"
+        "Описание: {order_description}\n\n"
+        "Перед тем как открыть спор попробуйте урегулировать вопрос лично с {other_side_role}\n\n"
+        "<b>Контакт {other_side_role}:</b>\n"
+        "Телефон: {phone}"
+    )
+
+    REASON_PROMPT = (
+        "Опишите причину спорной ситуации или жалобу.\n"
+        "Админы рассмотрят обращение и примут решение."
+    )
+
+    CREATED_SUCCESS = "✅ <b>Спор создан.</b>\nОжидайте решения админов."
+
+    CANCELLED = "✅ <b>Спор отменён.</b>"
+
+    CARD_DETAILS = (
+        "<b>Спор по заказу: {order_id}</b>\n\n"
+        "<b>Описание заказа:</b>\n{order_description}\n\n"
+        "<b>Открыт:</b> {opener_role}\n\n"
+        "<b>Курьер:</b> {courier_name}\n"
+        "<b>Магазин:</b> {shop_name}\n\n"
+        "<b>Описание спора:</b>\n{dispute_description}\n\n"
+        "<b>Контакты:</b>\n"
+        "Курьера: {courier_phone}\n"
+        "Магазина: {shop_phone}\n\n"
+        "<b>Статус:</b> {status}\n\n"
+        "<b>История изменений:</b>\n{history}"
     )

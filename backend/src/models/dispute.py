@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Text, and_, or_
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, and_, or_, text
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,9 +28,7 @@ class Dispute(Base):
 
     order_id: Mapped[int] = mapped_column(
         ForeignKey("orders.id"),
-        unique=True,
         nullable=False,
-        index=True,
         comment="ID заказа, по которому открыт спор",
     )
     opened_by_user_id: Mapped[int] = mapped_column(
@@ -83,7 +81,7 @@ class Dispute(Base):
     )
 
     # Связи
-    order: Mapped[Order] = relationship(back_populates="dispute", lazy="joined")
+    order: Mapped[Order] = relationship(back_populates="disputes", lazy="joined")
     opened_by_user: Mapped[User] = relationship(
         back_populates="opened_disputes", foreign_keys=[opened_by_user_id], lazy="joined"
     )
@@ -114,5 +112,11 @@ class Dispute(Base):
                 and_(status == DisputeStatus.RESOLVED, fined_user_id.is_not(None)),
             ),
             name="check_fine_logic",
+        ),
+        Index(
+            "uq_active_dispute_per_order",
+            "order_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending_review', 'in_review')"),
         ),
     )

@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
 
+from bot.clients import DisputesClient
 from bot.clients.auth_client import AuthClient
 from bot.clients.shops_client import ShopsClient
 from bot.filters.filters import RoleFilter
@@ -66,6 +67,20 @@ async def main_menu_callback_handler(
 
     await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard())
     await callback.answer()
+
+
+@router.callback_query(F.data == "show_my_disputes", RoleFilter(UserRole.SHOP))
+async def show_my_disputes_handler(
+    callback: CallbackQuery,
+    auth_client: AuthClient,
+    disputes_client: DisputesClient,
+    user_storage: UserDataStorage,
+    state: FSMContext,
+):
+    """Отображение списка споров магазина."""
+    from bot.handlers.shop.orders.dispute.list import dispute_list_handler
+
+    await dispute_list_handler(callback, auth_client, disputes_client, user_storage, page=1)
 
 
 @router.callback_query(F.data == "show_statistics", RoleFilter(UserRole.SHOP))

@@ -2,7 +2,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from backend.src.auth.dependencies import User
-from backend.src.common.enums import OrderStatus
 
 # Импорт констант валидации из нового модуля
 from backend.src.common.validation import (
@@ -48,18 +47,6 @@ RetrievePermissionCheck = Callable[[User, Order], Awaitable[None]]
 # ==============================================================================
 
 COURIER_ALLOWED_FIELDS = {"status", "courier_notes", "completion_notes"}
-FINAL_STATUSES = {OrderStatus.COMPLETED, OrderStatus.CANCELED}
-ACTIVE_STATUSES_FOR_COURIER = [
-    OrderStatus.COURIER_EN_ROUTE,
-    OrderStatus.DELIVERING,
-    OrderStatus.AWAITING_CONFIRMATION,
-    OrderStatus.DISPUTED,
-]
-ALLOWED_STATUSES_FOR_CREATE_DISPUTE = [
-    OrderStatus.COURIER_EN_ROUTE,
-    OrderStatus.DELIVERING,
-    OrderStatus.AWAITING_CONFIRMATION,
-]
 
 
 # ==============================================================================
@@ -81,7 +68,6 @@ class PaginatedResponse[T](BaseModel):
 __all__ = [
     "COMMISSION",
     "COURIER_ALLOWED_FIELDS",
-    "FINAL_STATUSES",
     "HOURS_IN_DAY",
     "MINUTES_IN_HOUR",
     "SECONDS_IN_MINUTE",

@@ -28,6 +28,8 @@ class OrderActionCallback(CallbackData, prefix="shop_order_act"):
 
     order_id: int
     action: str
+    page: int = 1
+    status: str = "all"
 
 
 class OrdersListCallback(CallbackData, prefix="shop_orders"):
@@ -43,3 +45,28 @@ class OrderDetailCallback(CallbackData, prefix="shop_order_det"):
     order_id: int
     from_page: int = 1
     from_status: str = "all"
+
+
+class OrderRefundCallback(CallbackData, prefix="shop_dispute"):
+    """Callback data for dispute actions."""
+
+    dispute_id: int
+    action: str
+    page: int = 1
+    status: str = "all"
+
+
+class DisputeReasonCallback(CallbackData, prefix="shop_dispute_reason"):
+    """Callback data for dispute reason selection."""
+
+    reason_id: int
+    order_id: int
+    page: int = 1
+    status: str = "all"
+
+
+class DisputesListCallback(CallbackData, prefix="shop_disps"):
+    """Пагинация списка споров."""
+
+    page: int = 1
+    status: str | None = None

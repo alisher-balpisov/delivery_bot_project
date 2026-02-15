@@ -1,11 +1,9 @@
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.src.common.constants import ALLOWED_STATUSES_FOR_CREATE_DISPUTE
-from backend.src.common.enums import DisputeStatus, UserRole
+from backend.src.common.enums import DisputeStatus, OrderStatus, UserRole
 from backend.src.core.logging import get_logger
 from backend.src.models.dispute import Dispute
 from backend.src.models.order import Order
@@ -111,7 +109,7 @@ async def create_dispute(
         logger.warning(f"Order {dispute_data.order_id} not found.")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
 
-    if order.status not in ALLOWED_STATUSES_FOR_CREATE_DISPUTE:
+    if order.status not in OrderStatus.allowed_statuses_for_create_dispute():
         raise DisputeActionError(f"Нельзя открыть спор для заказа в статусе {order.status}")
 
     user_shop_id = getattr(initiator.shop, "id", None) if initiator.shop else None
@@ -122,6 +120,16 @@ async def create_dispute(
 
     if not (is_shop_owner or is_courier_owner):
         raise DisputeAccessDenied("Вы можете открывать споры только по своим заказам")
+
+    # 4. Проверка на наличие активного спора
+    active_dispute_query = select(Dispute).where(
+        Dispute.order_id == dispute_data.order_id,
+        Dispute.status.in_(DisputeStatus.active_statuses()),
+    )
+    active_dispute_result = await db.execute(active_dispute_query)
+    if active_dispute_result.scalar_one_or_none():
+        logger.warning(f"Active dispute for order {dispute_data.order_id} already exists.")
+        raise DisputeActionError("По этому заказу уже есть активный спор")
 
     new_dispute = Dispute(
         order_id=dispute_data.order_id,
@@ -134,16 +142,14 @@ async def create_dispute(
         db.add(new_dispute)
         await db.commit()
         await db.refresh(new_dispute)
-
         logger.info(f"Dispute created successfully with ID {new_dispute.id}")
 
-    except IntegrityError:
-        await db.rollback()
-        # Если нарушение уникальности (спор уже есть)
-        logger.warning(f"Dispute for order {dispute_data.order_id} already exists.")
-        raise DisputeActionError("Спор по этому заказу уже существует")
-
     except Exception as e:
+        await db.rollback()
+        logger.error(f"Error creating dispute: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Ошибка при создании спора"
+        )
         await db.rollback()
         logger.error(f"Error creating dispute: {e}")
         raise HTTPException(
@@ -154,7 +160,9 @@ async def create_dispute(
     return DisputeResponse(
         **new_dispute.__dict__,
         courier_id=order.courier_id,
+        courier_full_name=order.courier.full_name if order.courier else None,
         shop_id=order.shop_id,
+        shop_name=order.shop.name if order.shop else None,
         opened_by_role=initiator.role,
     )
 
@@ -281,3 +289,82 @@ async def update_dispute(
         await db.rollback()
         logger.error(f"Error updating dispute ID {dispute_id}: {e}")
         raise
+
+
+async def get_user_disputes(
+    db: AsyncSession,
+    user: User,
+    page: int = 1,
+    limit: int = 10,
+    status: DisputeStatus | None = None,
+) -> DisputesListResponse:
+    """
+    Получает список споров для конкретного пользователя (магазина или курьера).
+    """
+    logger.info(
+        f"Fetching disputes for user {user.id}: page={page}, limit={limit}, status={status}"
+    )
+
+    # Базовый запрос
+    query = (
+        select(Dispute)
+        .options(
+            selectinload(Dispute.order).selectinload(Order.shop),
+            selectinload(Dispute.order).selectinload(Order.courier),
+            selectinload(Dispute.opened_by_user),
+        )
+        .order_by(Dispute.created_at.desc())
+    )
+
+    # Фильтрация по роли пользователя
+    if user.role == UserRole.SHOP:
+        query = query.join(Order).where(Order.shop_id == user.shop.id)
+    elif user.role == UserRole.COURIER:
+        query = query.join(Order).where(Order.courier_id == user.courier.id)
+    else:
+        # Для других ролей (кроме админа, который использует другой метод)
+        # возвращаем пустой список или фильтруем по открывшему
+        query = query.where(Dispute.opened_by_user_id == user.id)
+
+    # Применяем фильтр по статусу, если указан
+    if status:
+        query = query.where(Dispute.status == status)
+
+    # Подсчет общего количества
+    count_query = select(func.count()).select_from(Dispute)
+    if user.role == UserRole.SHOP:
+        count_query = count_query.join(Order).where(Order.shop_id == user.shop.id)
+    elif user.role == UserRole.COURIER:
+        count_query = count_query.join(Order).where(Order.courier_id == user.courier.id)
+    else:
+        count_query = count_query.where(Dispute.opened_by_user_id == user.id)
+
+    if status:
+        count_query = count_query.where(Dispute.status == status)
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Пагинация
+    offset = (page - 1) * limit
+    query = query.offset(offset).limit(limit)
+
+    # Выполнение
+    result = await db.execute(query)
+    disutes_objs = result.scalars().all()
+
+    items = []
+    for d in disutes_objs:
+        try:
+            items.append(DisputeCardResponse.from_dispute(d))
+        except ValueError as e:
+            logger.warning(f"Skipping dispute {d.id} due to data error: {e}")
+            continue
+
+    return DisputesListResponse(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+        pages=(total + limit - 1) // limit if limit > 0 else 1,
+    )

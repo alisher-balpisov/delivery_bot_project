@@ -63,6 +63,24 @@ class OrderStatus(StrEnum):
             cls.CANCELED.value,
         }
 
+    @classmethod
+    def allowed_statuses_for_create_dispute(cls) -> set[str]:
+        return {
+            cls.COURIER_EN_ROUTE.value,
+            cls.DELIVERING.value,
+            cls.AWAITING_CONFIRMATION.value,
+            cls.COMPLETED.value,
+        }
+
+    @classmethod
+    def active_statuses_for_courier(cls) -> set[str]:
+        return {
+            cls.COURIER_EN_ROUTE.value,
+            cls.DELIVERING.value,
+            cls.AWAITING_CONFIRMATION.value,
+            cls.DISPUTED.value,
+        }
+
 
 class OrderType(StrEnum):
     REGULAR = auto()
@@ -77,6 +95,22 @@ class DisputeStatus(StrEnum):
     PENDING_REVIEW = auto()  # Спор открыт и ожидает рассмотрения
     IN_REVIEW = auto()  # Спор находится в процессе активного рассмотрения
     RESOLVED = auto()  # Спор был разрешён
+
+    @classmethod
+    def active_statuses(cls) -> set[str]:
+        """Возвращает множество активных статусов спора."""
+        return {
+            cls.PENDING_REVIEW.value,
+            cls.IN_REVIEW.value,
+        }
+
+    @classmethod
+    def completed_statuses(cls) -> set[str]:
+        """Возвращает множество завершённых статусов спора."""
+        return {
+            cls.RESOLVED.value,
+            cls.CANCELLED.value,
+        }
 
 
 class DisputeResolutionType(StrEnum):

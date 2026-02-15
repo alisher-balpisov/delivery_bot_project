@@ -86,6 +86,32 @@ async def create_dispute(
 
 
 @router.get(
+    "/my",
+    response_model=DisputesListResponse,
+    summary="Получить список моих споров",
+    description="Возвращает список споров, в которых участвует текущий пользователь.",
+)
+async def get_my_disputes(
+    current_user: RequireShopOrCourier,
+    db: DbSession,
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(10, ge=1, le=50, description="Количество элементов на странице"),
+    status: DisputeStatus | None = Query(None, description="Фильтр по статусу спора"),
+):
+    """
+    Получение списка споров для текущего пользователя (магазина или курьера).
+    """
+    logger.info(f"User {current_user.id} requesting their disputes: page={page}, limit={limit}")
+    return await service.get_user_disputes(
+        db=db,
+        user=current_user,
+        page=page,
+        limit=limit,
+        status=status,
+    )
+
+
+@router.get(
     "/{dispute_id}",
     response_model=DisputeResponse,
     summary="Получить спор по ID",
@@ -127,20 +153,18 @@ async def get_dispute(
     "/{dispute_id}",
     response_model=DisputeResponse,
     summary="Обновить спор",
-    description="Обновляет данные спора. Доступно только администраторам.",
+    description="Обновляет данные спора.",
 )
 async def update_dispute(
     dispute_id: int,
     dispute_in: DisputeUpdate,
-    current_user: RequireAdmin,
+    current_user: RequireAllRoles,
     db: DbSession,
 ):
     """
-    Обновление спора (только для админов).
-
-    Администратор может обновить статус спора и добавить заметки о решении.
+    Обновление спора.
     """
-    logger.info(f"Admin {current_user.id} updating dispute {dispute_id}")
+    logger.info(f"User {current_user.id} updating dispute {dispute_id}")
 
     updated_dispute = await service.update_dispute(
         db=db, dispute_id=dispute_id, update_data=dispute_in

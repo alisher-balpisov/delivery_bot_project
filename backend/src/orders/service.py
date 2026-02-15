@@ -6,11 +6,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, joinedload
 
-from backend.src.common.constants import (
-    ACTIVE_STATUSES_FOR_COURIER,
-    COURIER_ALLOWED_FIELDS,
-    PaginatedResponse,
-)
+from backend.src.common.constants import COURIER_ALLOWED_FIELDS, PaginatedResponse
 from backend.src.common.enums import OrderStatus, OrderType, UserRole, UserStatus
 from backend.src.common.types import RESPONSE_SCHEMAS
 from backend.src.common.utils.paginaters import get_paginated_list
@@ -161,7 +157,10 @@ async def search_courier(db: AsyncSession) -> int | None:
         select(Courier.id)
         .outerjoin(
             Order,
-            and_(Order.courier_id == Courier.id, Order.status.in_(ACTIVE_STATUSES_FOR_COURIER)),
+            and_(
+                Order.courier_id == Courier.id,
+                Order.status.in_(OrderStatus.active_statuses_for_courier()),
+            ),
         )
         .where(Courier.is_active.is_(True), Courier.user.has(User.status == UserStatus.ACTIVE))
         .group_by(Courier.id)
@@ -486,7 +485,7 @@ async def _fetch_order_with_relations(db: AsyncSession, order_id: int) -> Order:
             joinedload(Order.shop).joinedload(Shop.user),
             joinedload(Order.courier).joinedload(Courier.user),
             joinedload(Order.history),
-            joinedload(Order.dispute),
+            joinedload(Order.disputes),
             joinedload(Order.notes),
         )
     )

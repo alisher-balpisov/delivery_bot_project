@@ -95,8 +95,8 @@ class Order(Base):
     history: Mapped[list[OrderHistory]] = relationship(
         back_populates="order", cascade="all, delete-orphan", lazy="selectin"
     )
-    dispute: Mapped[Dispute | None] = relationship(
-        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="selectin"
+    disputes: Mapped[list[Dispute]] = relationship(
+        back_populates="order", cascade="all, delete-orphan", lazy="selectin"
     )
     rating: Mapped[CourierRating | None] = relationship(
         back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="selectin"

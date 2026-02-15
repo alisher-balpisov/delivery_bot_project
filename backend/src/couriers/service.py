@@ -4,8 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager
 
-from backend.src.common.constants import ACTIVE_STATUSES_FOR_COURIER
-from backend.src.common.enums import UserStatus
+from backend.src.common.enums import OrderStatus, UserStatus
 from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.database import DbSession
 from backend.src.core.logging import get_logger
@@ -127,7 +126,7 @@ async def get_active_couriers_for_selection(
     # Подзапрос для подсчета активных заказов
     active_orders_subq = (
         select(Order.courier_id, func.count(Order.id).label("active_orders_count"))
-        .where(Order.status.in_(ACTIVE_STATUSES_FOR_COURIER))
+        .where(Order.status.in_(OrderStatus.active_statuses_for_courier()))
         .group_by(Order.courier_id)
         .subquery()
     )

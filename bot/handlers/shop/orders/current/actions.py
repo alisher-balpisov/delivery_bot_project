@@ -425,25 +425,3 @@ async def process_order_description_update(
         f"✅ Описание обновлено.\n\n{text}", reply_markup=keyboard, parse_mode="HTML"
     )
     await state.clear()
-
-
-# =============================================================================
-# Заглушки
-# =============================================================================
-
-
-@router.callback_query(
-    OrderActionCallback.filter(F.action == "change_courier"), RoleFilter(UserRole.SHOP)
-)
-async def shop_change_courier_handler(callback: CallbackQuery):
-    """Заглушка для смены курьера."""
-    await callback.answer("Функция смены курьера в разработке", show_alert=True)
-
-
-@router.callback_query(
-    OrderActionCallback.filter(F.action.in_(["view_dispute", "open_dispute"])),
-    RoleFilter(UserRole.SHOP),
-)
-async def shop_action_placeholder_handler(callback: CallbackQuery):
-    """Заглушка для споров."""
-    await callback.answer("Этот функционал будет доступен в ближайшем обновлении", show_alert=True)

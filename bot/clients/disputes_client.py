@@ -26,6 +26,11 @@ class DisputesClient(BaseApiClient):
             "PATCH", f"/disputes/{dispute_id}", token=token, json_data=status_data
         )
 
-    async def get_my_disputes(self, token: str) -> RequestResult:
+    async def get_my_disputes(
+        self, token: str, page: int = 1, limit: int = 10, status: str | None = None
+    ) -> RequestResult:
         """Получить споры пользователя (в зависимости от роли)."""
-        return await self._make_request("GET", "/disputes/my", token=token)
+        params = {"page": page, "limit": limit}
+        if status:
+            params["status"] = status
+        return await self._make_request("GET", "/disputes/my", token=token, params=params)

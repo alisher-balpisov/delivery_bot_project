@@ -61,9 +61,12 @@ async def shop_order_details_handler(
         order_id=order_id,
         status=order.get("status"),
         back_callback=back_callback,
+        page=callback_data.from_page,
+        orders_status=callback_data.from_status,
         courier_id=order.get("courier_id")
         or (order.get("courier").get("id") if order.get("courier") else None),
         dispute_id=order.get("dispute_id"),
+        dispute_status=order.get("dispute_status"),
         has_price=order.get("price") is not None,
     )
 

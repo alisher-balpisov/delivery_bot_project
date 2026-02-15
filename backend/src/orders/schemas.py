@@ -137,6 +137,7 @@ class ShopInfoForCourier(BaseModel):
 
     id: int
     name: str
+    phone_number: list[str] | None = None
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
@@ -146,6 +147,7 @@ class CourierInfoForShop(BaseModel):
 
     id: int
     full_name: str
+    phone_number: list[str] | None = None
 
     model_config = ConfigDict(from_attributes=True, extra="ignore", populate_by_name=True)
 
@@ -163,14 +165,16 @@ class OrderResponse(BaseModel):
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-    dispute: Any | None = Field(None, exclude=True)
+    disputes: Any | None = Field(None, exclude=True)
     notes: list[OrderNoteResponse] = []
     order_history: list[Any] = []
 
     @computed_field
     @property
-    def dispute_id(self) -> int | None:
-        return self.dispute.id if self.dispute else None
+    def dispute_ids(self) -> list[int] | None:
+        if self.disputes is None:
+            return None
+        return [d.id for d in self.disputes]
 
     @computed_field
     @property

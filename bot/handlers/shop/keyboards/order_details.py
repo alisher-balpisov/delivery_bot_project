@@ -11,8 +11,11 @@ def get_shop_order_details_keyboard(
     order_id: int,
     status: str,
     back_callback: str,
+    page: int,
+    orders_status: str,
     courier_id: int | None = None,
     dispute_id: int | None = None,
+    dispute_status: str | None = None,
     has_price: bool = True,
 ) -> InlineKeyboardMarkup:
     """Клавиатура деталей заказа с динамическими кнопками."""
@@ -26,21 +29,33 @@ def get_shop_order_details_keyboard(
         )
 
     # 2. Споры
-    if dispute_id:
+    # Если есть активный спор - показываем "Посмотреть спор"
+    if dispute_id and dispute_status in DisputeStatus.active_statuses():
         builder.button(
             text="⚖️ Посмотреть спор",
-            callback_data=OrderActionCallback(order_id=order_id, action="view_dispute").pack(),
+            callback_data=OrderActionCallback(
+                order_id=order_id, action="view_dispute", page=page, status=orders_status
+            ).pack(),
         )
-    elif courier_id and status in [
-        OrderStatus.COURIER_EN_ROUTE.value,
-        OrderStatus.DELIVERING.value,
-        OrderStatus.AWAITING_CONFIRMATION.value,
-        OrderStatus.COMPLETED.value,
-    ]:
-        builder.button(
-            text="⚖️ Открыть спор",
-            callback_data=OrderActionCallback(order_id=order_id, action="open_dispute").pack(),
-        )
+    # Если спора нет ИЛИ последний спор завершен/отменен - показываем "Открыть спор"
+    elif courier_id and status in OrderStatus.allowed_statuses_for_create_dispute():
+        if not dispute_id or dispute_status in DisputeStatus.completed_statuses():
+            builder.button(
+                text="⚖️ Открыть спор",
+                callback_data=OrderActionCallback(
+                    order_id=order_id, action="open_dispute", page=page, status=orders_status
+                ).pack(),
+            )
+        # Если есть завершенный спор, также даем возможность посмотреть историю (опционально,
+        # но в данном случае dispute_id будет указывать на последний, так что "Посмотреть спор"
+        # может работать как "Посмотреть последний спор")
+        if dispute_id and dispute_status in DisputeStatus.completed_statuses():
+            builder.button(
+                text="⚖️ Посмотреть спор",
+                callback_data=OrderActionCallback(
+                    order_id=order_id, action="view_dispute", page=page, status=orders_status
+                ).pack(),
+            )
 
     # 3. Редактировать
     if status not in [OrderStatus.COMPLETED.value, OrderStatus.CANCELED.value]:
