@@ -1,6 +1,8 @@
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 
 from backend.src.auth.dependencies import RequireAdmin
 from backend.src.auth.service import mask_sensitive_data
@@ -246,3 +248,166 @@ async def get_all_disputes(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Не удалось получить список споров")
+
+
+@router.get("/shops/{shop_id}/stats/export")
+async def export_shop_statistics(
+    shop_id: int,
+    db: DbSession,
+    current_user: RequireAdmin,
+    date_from: datetime = Query(..., description="Начальная дата периода"),
+    date_to: datetime = Query(..., description="Конечная дата периода"),
+    type: Literal["common", "advanced"] = Query(
+        "common", description="Тип статистики: common - базовая, advanced - расширенная"
+    ),
+    from_last_payment: bool = Query(
+        False,
+        description="Начать с даты последней инкассации (CASH_COLLECTION) или первого заказа",
+    ),
+) -> StreamingResponse:
+    """
+    Экспорт статистики по конкретному магазину в Excel.
+
+    Доступно только для админов.
+
+    Common: базовая статистика по заказам
+    Advanced: расширенная статистика с финансовыми деталями
+
+    Параметр from_last_payment:
+    - True: date_from игнорируется, период начинается с последней инкассации (CASH_COLLECTION)
+      или с первого заказа если инкассаций не было
+    - False: используется указанный date_from
+
+    Возвращает файл: shop_{shop_name}_{type}_{date_from}_{date_to}.xlsx
+    """
+    logger.info(
+        f"Администратор {current_user} запрашивает экспорт статистики магазина ID {shop_id}: "
+        f"{date_from=}, {date_to=}, {type=}, {from_last_payment=}"
+    )
+
+    try:
+        excel_file = await service.export_shop_statistics(
+            db=db,
+            shop_id=shop_id,
+            date_from=date_from,
+            date_to=date_to,
+            stats_type=type,
+            from_last_payment=from_last_payment,
+        )
+
+        logger.info(
+            f"Успешно сгенерирован Excel-файл статистики ({type}) для магазина ID {shop_id}"
+        )
+        return excel_file
+
+    except ValueError as e:
+        logger.warning(f"Магазин ID {shop_id} не найден: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(
+            f"Ошибка при экспорте статистики магазина ID {shop_id} "
+            f"для администратора {current_user}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Не удалось сгенерировать файл статистики")
+
+
+@router.get("/couriers/{courier_id}/stats/export")
+async def export_courier_statistics(
+    courier_id: int,
+    db: DbSession,
+    current_user: RequireAdmin,
+    date_from: datetime = Query(..., description="Начальная дата периода"),
+    date_to: datetime = Query(..., description="Конечная дата периода"),
+    type: Literal["common", "advanced"] = Query(
+        "common", description="Тип статистики: common - базовая, advanced - расширенная"
+    ),
+    from_last_payout: bool = Query(
+        False, description="Начать с даты последней выплаты (PAYOUT) или первого ORDER_CREDIT"
+    ),
+) -> StreamingResponse:
+    """
+    Экспорт статистики по конкретному курьеру в Excel.
+
+    Доступно только для админов.
+
+    Common: базовая статистика по заказам и заработку
+    Advanced: расширенная статистика с полной финансовой информацией
+
+    Параметр from_last_payout:
+    - True: date_from игнорируется, период начинается с последней выплаты (PAYOUT)
+      или с первой транзакции ORDER_CREDIT если выплат не было
+    - False: используется указанный date_from
+
+    Возвращает файл: courier_{courier_name}_{type}_{date_from}_{date_to}.xlsx
+    """
+    logger.info(
+        f"Администратор {current_user} запрашивает экспорт статистики курьера ID {courier_id}: "
+        f"{date_from=}, {date_to=}, {type=}, {from_last_payout=}"
+    )
+
+    try:
+        excel_file = await service.export_courier_statistics(
+            db=db,
+            courier_id=courier_id,
+            date_from=date_from,
+            date_to=date_to,
+            stats_type=type,
+            from_last_payout=from_last_payout,
+        )
+
+        logger.info(
+            f"Успешно сгенерирован Excel-файл статистики ({type}) для курьера ID {courier_id}"
+        )
+        return excel_file
+
+    except ValueError as e:
+        logger.warning(f"Курьер ID {courier_id} не найден: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(
+            f"Ошибка при экспорте статистики курьера ID {courier_id} "
+            f"для администратора {current_user}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Не удалось сгенерировать файл статистики")
+
+
+@router.get("/shops/stats/export")
+async def export_all_shops_statistics(
+    db: DbSession,
+    current_user: RequireAdmin,
+    date_from: datetime = Query(..., description="Начальная дата периода"),
+    date_to: datetime = Query(..., description="Конечная дата периода"),
+) -> StreamingResponse:
+    """
+    Экспорт статистики по всем заказам всех магазинов в Excel.
+
+    Доступно только для админов.
+
+    Возвращает объединённую таблицу всех заказов всех магазинов с детальной информацией.
+
+    Возвращает файл: shops_{date_from}_{date_to}.xlsx
+    """
+    logger.info(
+        f"Администратор {current_user} запрашивает экспорт общей статистики магазинов: "
+        f"{date_from=}, {date_to=}"
+    )
+
+    try:
+        excel_file = await service.export_all_shops_statistics(
+            db=db,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        logger.info("Успешно сгенерирован Excel-файл общей статистики магазинов")
+        return excel_file
+
+    except Exception as e:
+        logger.error(
+            f"Ошибка при экспорте общей статистики магазинов "
+            f"для администратора {current_user}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Не удалось сгенерировать файл статистики")

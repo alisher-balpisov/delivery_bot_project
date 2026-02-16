@@ -1,8 +1,13 @@
+from enum import Enum
+
+from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from backend.src.common.enums import UserRole
 from bot.handlers.admin.messages import AdminMainButtons, AdminRegistrationCodesMenuButtons
 from bot.messages import AdminKeyboardMessages
+
+# keyboards/admin.py
 
 
 def get_admin_main_keyboard() -> InlineKeyboardMarkup:
@@ -22,7 +27,14 @@ def get_admin_main_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text=AdminMainButtons.DISPUTES, callback_data="show_disputes"),
                 InlineKeyboardButton(
-                    text=AdminMainButtons.STATISTICS, callback_data="show_statistics"
+                    text="📊 Экспорт статистики",
+                    callback_data="show_statistics_admin",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📈 Системная статистика",
+                    callback_data="show_system_stats",
                 ),
             ],
             [
@@ -218,6 +230,19 @@ def get_back_to_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def get_back_to_menu_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для возврата в главное меню."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=AdminKeyboardMessages.BACK, callback_data="admin_back_to_menu"
+                )
+            ]
+        ]
+    )
+
+
 # ==================== Споры (Disputes) ====================
 
 # Эмодзи для статусов споров
@@ -245,17 +270,7 @@ def get_disputes_list_keyboard(
     callback_factory: callable = None,
     filter_callback_factory: callable = None,
 ) -> InlineKeyboardMarkup:
-    """
-    Генерация клавиатуры со списком споров и пагинацией.
-
-    Args:
-        disputes: Список споров (dict)
-        page: Текущая страница
-        total_pages: Всего страниц
-        filter_status: Текущий фильтр (all, pending_review, in_review, resolved)
-        callback_factory: Функция для создания callback_data
-        filter_callback_factory: Функция для создания callback_data фильтров
-    """
+    """Генерация клавиатуры со списком споров и пагинацией."""
     builder = InlineKeyboardBuilder()
 
     # Кнопки фильтров
@@ -291,10 +306,7 @@ def get_disputes_list_keyboard(
         order_id = dispute.get("order_id")
         shop_name = dispute.get("shop_name") or "Магазин"
 
-        # Эмодзи статуса
         status_emoji = DISPUTE_STATUS_EMOJIS.get(status, "⚪")
-
-        # Краткое отображение магазина (максимум 15 символов)
         shop_short = shop_name[:15] + "..." if len(shop_name) > 15 else shop_name
 
         button_text = f"{status_emoji} #{dispute_id} | 📦#{order_id} | {shop_short}"
@@ -321,10 +333,7 @@ def get_disputes_list_keyboard(
         )
 
     pagination_buttons.append(
-        InlineKeyboardButton(
-            text=f"{page}/{total_pages}",
-            callback_data="noop",
-        )
+        InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop")
     )
 
     if page < total_pages:
@@ -357,21 +366,9 @@ def get_dispute_details_keyboard(
     shop_id: int,
     courier_id: int,
 ) -> InlineKeyboardMarkup:
-    """
-    Генерация клавиатуры для детального просмотра спора.
-
-    Args:
-        dispute_id: ID спора
-        dispute_status: Текущий статус спора
-        back_callback_data: Callback data для кнопки "Назад"
-        shop_name: Название магазина
-        courier_name: Имя курьера
-        shop_id: ID магазина для перехода
-        courier_id: ID курьера для перехода
-    """
+    """Генерация клавиатуры для детального просмотра спора."""
     builder = InlineKeyboardBuilder()
 
-    # Импортируем здесь, чтобы избежать циклического импорта
     from bot.handlers.admin.handlers_disputes import (
         DisputeViewCourierCallback,
         DisputeViewShopCallback,
@@ -396,7 +393,6 @@ def get_dispute_details_keyboard(
 
     buttons = []
 
-    # --- Управление статусом ---
     if dispute_status == "pending_review":
         buttons.append(
             InlineKeyboardButton(
@@ -412,7 +408,6 @@ def get_dispute_details_keyboard(
             )
         )
 
-    # --- Отмена ---
     if dispute_status in ("pending_review", "in_review"):
         buttons.append(
             InlineKeyboardButton(
@@ -424,10 +419,175 @@ def get_dispute_details_keyboard(
     if buttons:
         builder.row(*buttons)
 
-    # --- Кнопки навигации ---
     builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback_data),
         InlineKeyboardButton(text="🏠 Главное меню", callback_data="show_main_menu"),
     )
 
     return builder.as_markup()
+
+
+# ==================== Статистика ====================
+
+
+class StatsType(str, Enum):
+    """Типы статистики для экспорта."""
+
+    COMMON = "common"
+    ADVANCED = "advanced"
+
+
+class StatsCallback(CallbackData, prefix="stats"):
+    """Callback data для работы со статистикой."""
+
+    action: str
+    entity_type: str | None = None
+    entity_id: int | None = None
+    stats_type: StatsType | None = None
+    from_last_payment: bool = False
+    page: int = 1
+
+
+def get_statistics_main_menu() -> InlineKeyboardMarkup:
+    """Главное меню статистики."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📊 Статистика магазина",
+                    callback_data=StatsCallback(action="select_shop", entity_type="shop").pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🚴 Статистика курьера",
+                    callback_data=StatsCallback(
+                        action="select_courier", entity_type="courier"
+                    ).pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏪 Общая статистика магазинов",
+                    callback_data=StatsCallback(action="export_all", entity_type="all").pack(),
+                )
+            ],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back_to_menu")],
+        ]
+    )
+
+
+def get_stats_type_keyboard(entity_type: str, entity_id: int | None = None) -> InlineKeyboardMarkup:
+    """Выбор типа статистики (common/advanced)."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📋 Базовая",
+            callback_data=StatsCallback(
+                action="select_period",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=StatsType.COMMON,
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="📊 Расширенная",
+            callback_data=StatsCallback(
+                action="select_period",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=StatsType.ADVANCED,
+            ).pack(),
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(text="◀️ Назад", callback_data=StatsCallback(action="menu").pack())
+    )
+
+    return builder.as_markup()
+
+
+def get_period_selection_keyboard(
+    entity_type: str, entity_id: int | None, stats_type: StatsType
+) -> InlineKeyboardMarkup:
+    """Выбор периода для статистики."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📅 Сегодня",
+            callback_data=StatsCallback(
+                action="export_quick",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=stats_type,
+                page=0,
+            ).pack(),
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📅 Эта неделя",
+            callback_data=StatsCallback(
+                action="export_quick",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=stats_type,
+                page=7,
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="📅 Этот месяц",
+            callback_data=StatsCallback(
+                action="export_quick",
+                entity_type=entity_type,
+                entity_id=entity_id,
+                stats_type=stats_type,
+                page=30,
+            ).pack(),
+        ),
+    )
+
+    if entity_type in ("shop", "courier"):
+        from_last_text = (
+            "💰 С последней инкассации" if entity_type == "shop" else "💵 С последней выплаты"
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=from_last_text,
+                callback_data=StatsCallback(
+                    action="export_from_last",
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    stats_type=stats_type,
+                    from_last_payment=True,
+                ).pack(),
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="◀️ Назад",
+            callback_data=StatsCallback(
+                action="select_type", entity_type=entity_type, entity_id=entity_id
+            ).pack(),
+        )
+    )
+
+    return builder.as_markup()
+
+
+def get_export_loading_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для отображения во время экспорта."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="◀️ Отмена", callback_data=StatsCallback(action="menu").pack()
+                )
+            ]
+        ]
+    )

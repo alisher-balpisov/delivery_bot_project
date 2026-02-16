@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Literal
+
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
 
@@ -139,4 +142,74 @@ class AdminClient(BaseApiClient):
         """
         return await self._make_request(
             "PATCH", f"/disputes/{dispute_id}", token=token, json_data=data
+        )
+
+    async def export_shop_statistics(
+        self,
+        token: str,
+        shop_id: int,
+        date_from: datetime,
+        date_to: datetime,
+        stats_type: Literal["common", "advanced"] = "common",
+        from_last_payment: bool = False,
+    ) -> RequestResult:
+        """Экспортировать статистику по магазину в Excel."""
+        params = {
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "type": stats_type,
+            "from_last_payment": str(from_last_payment).lower(),
+        }
+
+        return await self._make_request(
+            "GET",
+            f"/admin/shops/{shop_id}/stats/export",
+            token=token,
+            params=params,
+            parse_json=False,  # ← НЕ парсим как JSON, получаем bytes
+        )
+
+    async def export_courier_statistics(
+        self,
+        token: str,
+        courier_id: int,
+        date_from: datetime,
+        date_to: datetime,
+        stats_type: Literal["common", "advanced"] = "common",
+        from_last_payout: bool = False,
+    ) -> RequestResult:
+        """Экспортировать статистику по курьеру в Excel."""
+        params = {
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "type": stats_type,
+            "from_last_payout": str(from_last_payout).lower(),
+        }
+
+        return await self._make_request(
+            "GET",
+            f"/admin/couriers/{courier_id}/stats/export",
+            token=token,
+            params=params,
+            parse_json=False,  # ← НЕ парсим как JSON
+        )
+
+    async def export_all_shops_statistics(
+        self,
+        token: str,
+        date_from: datetime,
+        date_to: datetime,
+    ) -> RequestResult:
+        """Экспортировать общую статистику всех магазинов в Excel."""
+        params = {
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+        }
+
+        return await self._make_request(
+            "GET",
+            "/admin/shops/stats/export",
+            token=token,
+            params=params,
+            parse_json=False,  # ← НЕ парсим как JSON
         )

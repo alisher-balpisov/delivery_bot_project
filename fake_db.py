@@ -308,11 +308,11 @@ async def create_users_with_roles(session: AsyncSession):
 
     # 1. Admins - фиксированные
     # Alisher
-    alisher_tg_id = 5040147542
+    alisher_tg_id = 790095251
     add_unique_telegram_id(alisher_tg_id)
     alisher = User(
         telegram_id=alisher_tg_id,
-        username="alisher_balpisov",
+        username="eshkereee",
         role=UserRole.ADMIN,
         status=UserStatus.ACTIVE,
         registration_attempts=0,

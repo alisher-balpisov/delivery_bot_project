@@ -96,6 +96,7 @@ class BaseApiClient:
         custom_headers: dict[str, str] | None = None,
         expected_status: int = 200,
         retry_count: int = 3,
+        parse_json: bool = True,
     ) -> RequestResult:
         """
         Выполняет HTTP-запрос, координируя подготовку, выполнение с ретраями и обработку ответа.
@@ -104,7 +105,14 @@ class BaseApiClient:
             method, endpoint, token, custom_headers
         )
         return await self._execute_with_retry(
-            method_str, url, headers, json_data, params, expected_status, retry_count
+            method_str,
+            url,
+            headers,
+            json_data,
+            params,
+            expected_status,
+            retry_count,
+            parse_json,
         )
 
     def _prepare_request_params(
@@ -144,12 +152,15 @@ class BaseApiClient:
         params: dict[str, Any] | None,
         expected_status: int,
         retry_count: int,
+        parse_json: bool = True,
     ) -> RequestResult:
         """Выполняет запрос с логикой повторных попыток при сбоях."""
         for attempt in range(retry_count):
             try:
                 response = await self._execute_request(method, url, headers, json_data, params)
-                result = self._handle_response(response, expected_status)
+                result = self._handle_response(
+                    response, expected_status, parse_json
+                )  # ← parse_json добавлен
 
                 if result.success or not self._should_retry(
                     response.status_code, attempt, retry_count
@@ -167,7 +178,6 @@ class BaseApiClient:
             except (httpx.TimeoutException, httpx.RequestError) as e:
                 if self._should_retry_on_exception(e, attempt, retry_count):
                     self._log_retry_exception(e, url, attempt, retry_count)
-                    # Уменьшаем задержку для более быстрой реакции на сетевые "чихи"
                     await asyncio.sleep(0.2 * (2**attempt) + self.rng.uniform(0, 0.1))
                     continue
                 return self._handle_final_exception(e, method, url)
@@ -242,10 +252,15 @@ class BaseApiClient:
             success=False, detail=BaseClientMessages.UNEXPECTED_CLIENT_ERROR, status_code=500
         )
 
-    def _handle_response(self, response: httpx.Response, expected_status: int) -> RequestResult:
+    def _handle_response(
+        self,
+        response: httpx.Response,
+        expected_status: int,
+        parse_json: bool = True,  # ← ДОБАВЬ
+    ) -> RequestResult:
         """Обрабатывает HTTP-ответ и возвращает структурированный результат."""
         if response.status_code == expected_status:
-            return self._parse_success_response(response)
+            return self._parse_success_response(response, parse_json)  # ← ПЕРЕДАЙ
 
         try:
             error_data = response.json()
@@ -260,13 +275,26 @@ class BaseApiClient:
         )
         return RequestResult(success=False, detail=detail, status_code=response.status_code)
 
-    def _parse_success_response(self, response: httpx.Response) -> RequestResult:
-        """Парсит успешный JSON-ответ."""
+    def _parse_success_response(
+        self,
+        response: httpx.Response,
+        parse_json: bool = True,
+    ) -> RequestResult:
+        """Парсит успешный ответ (JSON или бинарные данные)."""
+
+        # Если не нужно парсить JSON - возвращаем сырые байты
+        if not parse_json:
+            return RequestResult(
+                success=True,
+                data=response.content,  # ← Бинарные данные
+                status_code=response.status_code,
+            )
+
+        # Стандартная логика парсинга JSON
         try:
             data = response.json()
             return RequestResult(success=True, data=data, status_code=response.status_code)
         except (ValueError, TypeError):
-            # Если тело ответа пустое, но статус успешный - это тоже успех
             if not response.text.strip():
                 return RequestResult(success=True, data=None, status_code=response.status_code)
             logger.warning(f"Не удалось распарсить JSON из успешного ответа: {response.text[:200]}")
