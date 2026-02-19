@@ -81,15 +81,15 @@ class Dispute(Base):
     )
 
     # Связи
-    order: Mapped[Order] = relationship(back_populates="disputes", lazy="joined")
+    order: Mapped[Order] = relationship(back_populates="disputes", lazy="noload")
     opened_by_user: Mapped[User] = relationship(
-        back_populates="opened_disputes", foreign_keys=[opened_by_user_id], lazy="joined"
+        back_populates="opened_disputes", foreign_keys=[opened_by_user_id], lazy="noload"
     )
     fined_user: Mapped[User | None] = relationship(
-        back_populates="fined_in_disputes", foreign_keys=[fined_user_id], lazy="joined"
+        back_populates="fined_in_disputes", foreign_keys=[fined_user_id], lazy="noload"
     )
     resolved_by_admin: Mapped[User | None] = relationship(
-        foreign_keys=[resolved_by_admin_id], lazy="joined"
+        foreign_keys=[resolved_by_admin_id], lazy="noload"
     )
 
     __table_args__ = (

@@ -4,6 +4,7 @@ from aiogram import F, Router
 from aiogram.types import BufferedInputFile, CallbackQuery
 from backend.src.common.enums import UserRole
 from backend.src.core.logging import get_logger
+from backend.src.couriers.schemas import CourierListItem
 
 from bot.clients.admin_client import AdminClient
 from bot.clients.couriers_client import CouriersClient
@@ -18,7 +19,11 @@ from bot.keyboards.admin import (
     get_statistics_main_menu,
     get_stats_type_keyboard,
 )
-from bot.keyboards.couriers import CourierFilter, CouriersCallback, get_couriers_list_keyboard
+from bot.keyboards.couriers import (
+    CourierFilter,
+    CouriersCallback,
+    get_couriers_list_for_stats_keyboard,
+)
 from bot.keyboards.shops import ShopFilter, ShopsCallback, get_shops_list_for_stats_keyboard
 from bot.utils.token_manager import TokenManager
 
@@ -27,6 +32,9 @@ logger = get_logger(__name__)
 router = Router(name="admin_statistics_handlers")
 router.message.filter(RoleFilter(UserRole.ADMIN))
 router.callback_query.filter(RoleFilter(UserRole.ADMIN))
+
+
+# ==================== Главное меню ====================
 
 
 @router.callback_query(F.data == "show_statistics_admin")
@@ -45,6 +53,9 @@ async def back_to_stats_menu(callback: CallbackQuery):
     await show_statistics_menu(callback)
 
 
+# ==================== Выбор магазина ====================
+
+
 @router.callback_query(StatsCallback.filter(F.action == "select_shop"))
 async def select_shop_for_stats(
     callback: CallbackQuery, token_manager: TokenManager, shops_client: ShopsClient, user: UserDTO
@@ -55,7 +66,6 @@ async def select_shop_for_stats(
     try:
         result = await shops_client.get_shops(token=token, page=1, limit=10)
 
-        # Используем НОВУЮ клавиатуру для статистики
         keyboard = get_shops_list_for_stats_keyboard(
             shops=result.items,
             page=1,
@@ -73,7 +83,6 @@ async def select_shop_for_stats(
         await callback.answer("Ошибка при загрузке списка магазинов", show_alert=True)
 
 
-# Добавь хендлер для пагинации списка магазинов в статистике
 @router.callback_query(ShopsCallback.filter(F.action == "stats_list"))
 async def stats_shops_pagination(
     callback: CallbackQuery,
@@ -86,7 +95,8 @@ async def stats_shops_pagination(
     token = await token_manager.get_token(user.telegram_id)
 
     try:
-        # Маппинг фильтра
+        await callback.answer()
+
         status = (
             None if callback_data.filter_type == ShopFilter.ALL else callback_data.filter_type.value
         )
@@ -105,7 +115,6 @@ async def stats_shops_pagination(
         text = "🏪 <b>Выберите магазин</b>\n\nДля какого магазина экспортировать статистику?"
 
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-        await callback.answer()
 
     except Exception as e:
         logger.error(f"Ошибка при загрузке магазинов: {e}", exc_info=True)
@@ -114,7 +123,7 @@ async def stats_shops_pagination(
 
 @router.callback_query(ShopsCallback.filter(F.action == "stats_select_shop"))
 async def shop_selected_for_stats(callback: CallbackQuery, callback_data: ShopsCallback):
-    """Магазин выбран - переход к выбору типа статистики."""
+    """Магазин выбран — переход к выбору типа статистики."""
     shop_id = callback_data.shop_id
 
     text = (
@@ -130,6 +139,9 @@ async def shop_selected_for_stats(callback: CallbackQuery, callback_data: ShopsC
     await callback.answer()
 
 
+# ==================== Выбор курьера ====================
+
+
 @router.callback_query(StatsCallback.filter(F.action == "select_courier"))
 async def select_courier_for_stats(
     callback: CallbackQuery,
@@ -143,21 +155,22 @@ async def select_courier_for_stats(
     try:
         result = await couriers_client.get_couriers(token=token, page=1, size=10)
 
-        # Проверяем успешность через result.success (у CouriersClient может быть RequestResult)
         if not result.success:
             await callback.answer("Ошибка при загрузке списка курьеров", show_alert=True)
             return
 
         data = result.data
-        items = data.get("items", [])
+        items_raw = data.get("items", [])
         total = data.get("total", 0)
 
-        keyboard = get_couriers_list_keyboard(
+        items = [CourierListItem.model_validate(item) for item in items_raw]
+
+        # Используем специализированную клавиатуру для статистики
+        keyboard = get_couriers_list_for_stats_keyboard(
             couriers=items,
             page=1,
-            total_pages=(total + 9) // 10,
+            total_pages=max(1, (total + 9) // 10),
             current_filter=CourierFilter.ALL,
-            custom_action="stats_select_courier",
         )
 
         text = "🚴 <b>Выберите курьера</b>\n\nДля какого курьера экспортировать статистику?"
@@ -170,9 +183,63 @@ async def select_courier_for_stats(
         await callback.answer("Ошибка при загрузке списка курьеров", show_alert=True)
 
 
+@router.callback_query(CouriersCallback.filter(F.action == "stats_list_couriers"))
+async def stats_couriers_pagination(
+    callback: CallbackQuery,
+    callback_data: CouriersCallback,
+    token_manager: TokenManager,
+    couriers_client: CouriersClient,
+    user: UserDTO,
+):
+    """Пагинация и фильтрация списка курьеров в режиме статистики."""
+    token = await token_manager.get_token(user.telegram_id)
+
+    try:
+        await callback.answer()
+
+        # Маппинг фильтра
+        filter_params = {}
+        if callback_data.filter_type != CourierFilter.ALL:
+            if callback_data.filter_type == CourierFilter.ACTIVE:
+                filter_params["is_active"] = True
+            elif callback_data.filter_type == CourierFilter.INACTIVE:
+                filter_params["is_active"] = False
+            elif callback_data.filter_type == CourierFilter.ON_SHIFT:
+                filter_params["on_shift"] = True
+
+        result = await couriers_client.get_couriers(
+            token=token, page=callback_data.page, size=10, **filter_params
+        )
+
+        if not result.success:
+            await callback.answer("Ошибка при загрузке курьеров", show_alert=True)
+            return
+
+        data = result.data
+        items_raw = data.get("items", [])
+        total = data.get("total", 0)
+
+        items = [CourierListItem.model_validate(item) for item in items_raw]
+
+        keyboard = get_couriers_list_for_stats_keyboard(
+            couriers=items,
+            page=callback_data.page,
+            total_pages=max(1, (total + 9) // 10),
+            current_filter=callback_data.filter_type,
+        )
+
+        text = "🚴 <b>Выберите курьера</b>\n\nДля какого курьера экспортировать статистику?"
+
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке курьеров: {e}", exc_info=True)
+        await callback.answer("Ошибка при загрузке курьеров", show_alert=True)
+
+
 @router.callback_query(CouriersCallback.filter(F.action == "stats_select_courier"))
 async def courier_selected_for_stats(callback: CallbackQuery, callback_data: CouriersCallback):
-    """Курьер выбран - переход к выбору типа статистики."""
+    """Курьер выбран — переход к выбору типа статистики."""
     courier_id = callback_data.courier_id
 
     text = (
@@ -184,6 +251,39 @@ async def courier_selected_for_stats(callback: CallbackQuery, callback_data: Cou
 
     keyboard = get_stats_type_keyboard(entity_type="courier", entity_id=courier_id)
 
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+# ==================== Выбор типа и периода ====================
+
+
+@router.callback_query(StatsCallback.filter(F.action == "select_type"))
+async def back_to_select_type(callback: CallbackQuery, callback_data: StatsCallback):
+    """Возврат к выбору типа статистики (кнопка Назад из выбора периода)."""
+    entity_type = callback_data.entity_type
+    entity_id = callback_data.entity_id
+
+    if entity_type == "shop":
+        text = (
+            f"📊 <b>Статистика магазина #{entity_id}</b>\n\n"
+            "Выберите тип отчета:\n\n"
+            "📋 <b>Базовая</b> - основная информация по заказам\n"
+            "📊 <b>Расширенная</b> - детальная финансовая информация"
+        )
+    elif entity_type == "courier":
+        text = (
+            f"📊 <b>Статистика курьера #{entity_id}</b>\n\n"
+            "Выберите тип отчета:\n\n"
+            "📋 <b>Базовая</b> - заказы и заработок\n"
+            "📊 <b>Расширенная</b> - полная финансовая информация"
+        )
+    else:
+        # Для "all" — возвращаемся в главное меню статистики
+        await show_statistics_menu(callback)
+        return
+
+    keyboard = get_stats_type_keyboard(entity_type=entity_type, entity_id=entity_id)
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
@@ -212,6 +312,9 @@ async def select_period_for_stats(callback: CallbackQuery, callback_data: StatsC
 
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
+
+
+# ==================== Экспорт ====================
 
 
 @router.callback_query(StatsCallback.filter(F.action == "export_quick"))
@@ -251,10 +354,14 @@ async def export_from_last_payment(
     admin_client: AdminClient,
     user: UserDTO,
 ):
-    """Экспорт с последней инкассации/выплаты."""
-    # Используем текущую дату как date_to, date_from будет определен на бэкенде
+    """Экспорт с последней инкассации/выплаты.
+
+    date_from устанавливается на минимально возможную дату (1 января 2020),
+    так как реальная дата будет определена на бэкенде при from_last_payment=True.
+    """
     date_to = datetime.now()
-    date_from = datetime.now() - timedelta(days=365)  # Заглушка, будет переопределено
+    # Минимальная дата — бэкенд переопределит при from_last_payment=True
+    date_from = datetime(2020, 1, 1)
 
     await _perform_export(
         callback=callback,
@@ -272,7 +379,7 @@ async def export_from_last_payment(
 async def export_all_shops(
     callback: CallbackQuery, token_manager: TokenManager, admin_client: AdminClient, user: UserDTO
 ):
-    """Экспорт общей статистики всех магазинов."""
+    """Экспорт общей статистики всех магазинов — переход к выбору периода."""
     text = (
         "📅 <b>Выбор периода</b>\n\n"
         "Тип отчета: Общая статистика всех магазинов\n\n"
@@ -282,11 +389,14 @@ async def export_all_shops(
     keyboard = get_period_selection_keyboard(
         entity_type="all",
         entity_id=None,
-        stats_type=StatsType.ADVANCED,  # Для all всегда расширенная
+        stats_type=StatsType.ADVANCED,
     )
 
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
+
+
+# ==================== Общая логика экспорта ====================
 
 
 async def _perform_export(
@@ -298,8 +408,12 @@ async def _perform_export(
     date_from: datetime,
     date_to: datetime,
     from_last_payment: bool,
-):
-    """Общая логика экспорта статистики."""
+) -> None:
+    """Общая логика экспорта статистики.
+
+    Отправляет запрос на бэкенд, получает Excel-файл и отправляет
+    его пользователю через Telegram.
+    """
     # Показываем индикатор загрузки
     loading_text = "⏳ <b>Генерация отчета...</b>\n\nПожалуйста, подождите."
     keyboard = get_export_loading_keyboard()
@@ -314,7 +428,7 @@ async def _perform_export(
     token = await token_manager.get_token(user.telegram_id)
 
     try:
-        # Выбираем правильный метод API
+        # Выбираем метод API в зависимости от типа сущности
         if callback_data.entity_type == "shop":
             result = await admin_client.export_shop_statistics(
                 token=token,
@@ -344,25 +458,29 @@ async def _perform_export(
             return
 
         if not result.success:
-            error_text = (
-                f"❌ <b>Ошибка при генерации отчета</b>\n\n{result.detail or 'Неизвестная ошибка'}"
-            )
+            error_detail = result.detail or "Неизвестная ошибка"
+            error_text = f"❌ <b>Ошибка при генерации отчета</b>\n\n{error_detail}"
             await callback.message.edit_text(
                 error_text, reply_markup=get_statistics_main_menu(), parse_mode="HTML"
             )
             return
 
-        # result.data содержит бинарные данные Excel-файла
-        filename = f"statistics_{callback_data.entity_type}_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.xlsx"
+        # Формируем имя файла и отправляем
+        filename = (
+            f"statistics_{callback_data.entity_type}"
+            f"_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.xlsx"
+        )
 
-        # Отправляем файл через BufferedInputFile (для бинарных данных из памяти)
         await callback.message.answer_document(
             document=BufferedInputFile(result.data, filename=filename),
-            caption=f"✅ <b>Отчет готов</b>\n\nПериод: {date_from.strftime('%Y-%m-%d')} - {date_to.strftime('%Y-%m-%d')}",
+            caption=(
+                f"✅ <b>Отчет готов</b>\n\n"
+                f"Период: {date_from.strftime('%Y-%m-%d')} — {date_to.strftime('%Y-%m-%d')}"
+            ),
             parse_mode="HTML",
         )
 
-        # Возвращаемся в меню
+        # Возвращаемся в меню статистики
         await callback.message.edit_text(
             "✅ Файл отправлен!", reply_markup=get_statistics_main_menu()
         )
@@ -370,5 +488,8 @@ async def _perform_export(
     except Exception as e:
         logger.error(f"Ошибка при экспорте статистики: {e}", exc_info=True)
         await callback.message.edit_text(
-            f"❌ <b>Ошибка</b>\n\n{e!s}", reply_markup=get_statistics_main_menu(), parse_mode="HTML"
+            "❌ <b>Произошла ошибка при генерации отчета</b>\n\n"
+            "Попробуйте позже или обратитесь к разработчику.",
+            reply_markup=get_statistics_main_menu(),
+            parse_mode="HTML",
         )

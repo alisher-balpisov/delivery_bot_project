@@ -3,6 +3,7 @@ from enum import StrEnum
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from backend.src.couriers.schemas import CourierListItem
+from icecream import ic
 
 
 class CourierFilter(StrEnum):
@@ -61,6 +62,7 @@ def get_couriers_list_keyboard(
 
     # 2. Courier List
     for courier in couriers:
+        ic(courier, courier.is_active)
         status_emoji = "🟢" if courier.is_active else "🔴"
         keyboard.append(
             [
@@ -170,5 +172,111 @@ def get_courier_card_keyboard(
             ),
         ],
     ]
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_couriers_list_for_stats_keyboard(
+    couriers: list[CourierListItem],
+    page: int,
+    total_pages: int,
+    current_filter: CourierFilter,
+) -> InlineKeyboardMarkup:
+    """Клавиатура списка курьеров для выбора в статистике.
+
+    Аналог get_shops_list_for_stats_keyboard: использует отдельные
+    action-ы (stats_list_couriers, stats_select_courier), чтобы
+    не конфликтовать со стандартными хендлерами списка курьеров.
+    """
+    keyboard = []
+
+    # 1. Фильтры
+    filter_rows = [
+        [
+            (CourierFilter.ACTIVE, "Активные"),
+            (CourierFilter.INACTIVE, "Инактив"),
+        ],
+        [
+            (CourierFilter.ON_SHIFT, "На смене"),
+            (CourierFilter.ALL, "Все"),
+        ],
+    ]
+
+    for row in filter_rows:
+        keyboard_row = []
+        for filter_val, text in row:
+            display_text = f"✅ {text}" if filter_val == current_filter else text
+            keyboard_row.append(
+                InlineKeyboardButton(
+                    text=display_text,
+                    callback_data=CouriersCallback(
+                        action="stats_list_couriers",
+                        page=1,
+                        filter_type=filter_val,
+                    ).pack(),
+                )
+            )
+        keyboard.append(keyboard_row)
+
+    # 2. Список курьеров — с action "stats_select_courier"
+    for courier in couriers:
+        status_emoji = "🟢" if courier.is_active else "🔴"
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{status_emoji} {courier.full_name}",
+                    callback_data=CouriersCallback(
+                        action="stats_select_courier",
+                        courier_id=courier.id,
+                        page=page,
+                        filter_type=current_filter,
+                    ).pack(),
+                )
+            ]
+        )
+
+    # 3. Пагинация
+    pagination_row = []
+    if page > 1:
+        pagination_row.append(
+            InlineKeyboardButton(
+                text="⬅️",
+                callback_data=CouriersCallback(
+                    action="stats_list_couriers",
+                    page=page - 1,
+                    filter_type=current_filter,
+                ).pack(),
+            )
+        )
+
+    pagination_row.append(
+        InlineKeyboardButton(
+            text=f"{page}/{total_pages}",
+            callback_data="noop",
+        )
+    )
+
+    if page < total_pages:
+        pagination_row.append(
+            InlineKeyboardButton(
+                text="➡️",
+                callback_data=CouriersCallback(
+                    action="stats_list_couriers",
+                    page=page + 1,
+                    filter_type=current_filter,
+                ).pack(),
+            )
+        )
+    keyboard.append(pagination_row)
+
+    # 4. Кнопка "Назад" — возврат в меню статистики
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="Назад",
+                callback_data="show_statistics_admin",
+            )
+        ]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

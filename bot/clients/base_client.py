@@ -45,7 +45,6 @@ class ConnectionPool:
         return cls._instance
 
     async def get_client(self) -> httpx.AsyncClient:
-        """Возвращает активный экземпляр httpx.AsyncClient, создавая его при необходимости."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(5.0, connect=2.0),
@@ -54,6 +53,8 @@ class ConnectionPool:
                     max_connections=100,
                     keepalive_expiry=30.0,
                 ),
+                # Автоматически повторяет запрос при обрыве keep-alive соединения
+                transport=httpx.AsyncHTTPTransport(retries=1),
                 headers={"User-Agent": "DeliveryBot/1.0"},
             )
         return self._client
@@ -72,7 +73,7 @@ class BaseApiClient:
         self,
         pool: ConnectionPool,
         api_base_url: str | None = None,
-        timeout: float = 10.0,
+        timeout: float = 100,
     ):
         if timeout <= 0:
             raise ValueError("Тайм-аут должен быть положительным числом.")

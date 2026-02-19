@@ -66,7 +66,7 @@ class Transaction(Base):
     )
 
     # Связи
-    user: Mapped[User] = relationship(foreign_keys=[user_id], lazy="joined")
+    user: Mapped[User] = relationship(foreign_keys=[user_id], lazy="noload")
     order: Mapped[Order] = relationship(lazy="select")
     admin: Mapped[User | None] = relationship(foreign_keys=[created_by_admin_id], lazy="select")
 

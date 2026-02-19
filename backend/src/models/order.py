@@ -89,20 +89,20 @@ class Order(Base):
     )
 
     # Связи
-    shop: Mapped[Shop] = relationship(back_populates="orders", lazy="selectin")
-    courier: Mapped[Courier | None] = relationship(back_populates="orders", lazy="selectin")
+    shop: Mapped[Shop] = relationship(back_populates="orders", lazy="noload")
+    courier: Mapped[Courier | None] = relationship(back_populates="orders", lazy="noload")
 
     history: Mapped[list[OrderHistory]] = relationship(
-        back_populates="order", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="order", cascade="all, delete-orphan", lazy="noload"
     )
     disputes: Mapped[list[Dispute]] = relationship(
-        back_populates="order", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="order", cascade="all, delete-orphan", lazy="noload"
     )
     rating: Mapped[CourierRating | None] = relationship(
-        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="selectin"
+        back_populates="order", cascade="all, delete-orphan", uselist=False, lazy="noload"
     )
     notes: Mapped[list[OrderNote]] = relationship(
-        back_populates="order", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="order", cascade="all, delete-orphan", lazy="noload"
     )
 
     __table_args__ = (

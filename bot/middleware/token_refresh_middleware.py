@@ -74,15 +74,15 @@ class TokenRefreshMiddleware(BaseMiddleware):
         try:
             telegram_id = user_data.telegram_id
 
-            # Проверяем, нужно ли обновлять токен
-            if not user_data.needs_token_refresh:
-                logger.debug(f"Токен пользователя {telegram_id} не требует обновления")
-                return
-
             # Проверяем валидность refresh токена
             if not user_data.refresh_token_valid:
                 logger.warning(f"Refresh токен пользователя {telegram_id} истек, выполняем logout")
                 await self._handle_expired_refresh_token(telegram_id, data)
+                return
+
+            # Проверяем, нужно ли обновлять токен
+            if not user_data.needs_token_refresh:
+                logger.debug(f"Токен пользователя {telegram_id} не требует обновления")
                 return
 
             # ОПТИМИЗАЦИЯ: Если токен еще валиден (хотя и близок к истечению),

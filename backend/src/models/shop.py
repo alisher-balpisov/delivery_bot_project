@@ -46,10 +46,8 @@ class Shop(Base):
 
     # Связи
     user: Mapped[User] = relationship(back_populates="shop", uselist=False, lazy="selectin")
-    orders: Mapped[list[Order]] = relationship(back_populates="shop", lazy="selectin")
-    ratings_given: Mapped[list[CourierRating]] = relationship(
-        back_populates="shop", lazy="selectin"
-    )
+    orders: Mapped[list[Order]] = relationship(back_populates="shop", lazy="noload")
+    ratings_given: Mapped[list[CourierRating]] = relationship(back_populates="shop", lazy="noload")
 
     __table_args__ = (
         CheckConstraint("name IS NULL OR length(trim(name)) > 0", name="check_shop_name_not_empty"),

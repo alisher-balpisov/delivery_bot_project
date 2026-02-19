@@ -285,6 +285,13 @@ async def export_shop_statistics(
         f"{date_from=}, {date_to=}, {type=}, {from_last_payment=}"
     )
 
+    # Валидация дат (если не используем from_last_payment)
+    if not from_last_payment and date_from >= date_to:
+        raise HTTPException(
+            status_code=400,
+            detail="Начальная дата должна быть раньше конечной",
+        )
+
     try:
         excel_file = await service.export_shop_statistics(
             db=db,
@@ -346,6 +353,13 @@ async def export_courier_statistics(
         f"{date_from=}, {date_to=}, {type=}, {from_last_payout=}"
     )
 
+    # Валидация дат (если не используем from_last_payout)
+    if not from_last_payout and date_from >= date_to:
+        raise HTTPException(
+            status_code=400,
+            detail="Начальная дата должна быть раньше конечной",
+        )
+
     try:
         excel_file = await service.export_courier_statistics(
             db=db,
@@ -393,6 +407,13 @@ async def export_all_shops_statistics(
         f"Администратор {current_user} запрашивает экспорт общей статистики магазинов: "
         f"{date_from=}, {date_to=}"
     )
+
+    # Валидация дат
+    if date_from >= date_to:
+        raise HTTPException(
+            status_code=400,
+            detail="Начальная дата должна быть раньше конечной",
+        )
 
     try:
         excel_file = await service.export_all_shops_statistics(

@@ -205,6 +205,7 @@ async def dispute_details_handler(
         return
 
     dispute = result.data
+    print(dispute)
 
     # Формирование текста
     text = format_dispute_details(dispute, templates=AM)

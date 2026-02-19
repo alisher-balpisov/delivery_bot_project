@@ -53,7 +53,7 @@ class OrderNote(Base):
 
     # Связи
     order: Mapped[Order] = relationship(back_populates="notes", lazy="select")
-    author: Mapped[User] = relationship(lazy="joined")
+    author: Mapped[User] = relationship(lazy="noload")
 
     __table_args__ = (
         CheckConstraint(

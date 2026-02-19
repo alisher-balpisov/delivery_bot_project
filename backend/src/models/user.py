@@ -75,13 +75,13 @@ class User(Base):
 
     # Связи один-ко-многим
     order_history_entries: Mapped[list[OrderHistory]] = relationship(
-        back_populates="changed_by_user", lazy="selectin"
+        back_populates="changed_by_user", lazy="noload"
     )
     opened_disputes: Mapped[list[Dispute]] = relationship(
-        back_populates="opened_by_user", foreign_keys="[Dispute.opened_by_user_id]", lazy="selectin"
+        back_populates="opened_by_user", foreign_keys="[Dispute.opened_by_user_id]", lazy="noload"
     )
     fined_in_disputes: Mapped[list[Dispute]] = relationship(
-        back_populates="fined_user", foreign_keys="[Dispute.fined_user_id]", lazy="selectin"
+        back_populates="fined_user", foreign_keys="[Dispute.fined_user_id]", lazy="noload"
     )
 
     __table_args__ = (

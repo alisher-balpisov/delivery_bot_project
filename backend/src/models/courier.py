@@ -48,9 +48,9 @@ class Courier(Base):
     # Связь обратно к пользователю
     user: Mapped[User] = relationship(back_populates="courier", uselist=False, lazy="selectin")
     # Связь с заказами, назначенными курьеру
-    orders: Mapped[list[Order]] = relationship(back_populates="courier", lazy="selectin")
+    orders: Mapped[list[Order]] = relationship(back_populates="courier", lazy="noload")
     ratings_received: Mapped[list[CourierRating]] = relationship(
-        back_populates="courier", lazy="selectin"
+        back_populates="courier", lazy="noload"
     )
 
     __table_args__ = (

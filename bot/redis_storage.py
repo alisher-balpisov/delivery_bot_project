@@ -69,10 +69,8 @@ class UserCacheData:
 
     @property
     def needs_token_refresh(self) -> bool:
-        """Проверяет необходимость обновления токена (за 5 минут до истечения)"""
         if not self.token_expires_at:
-            # Если нет времени истечения, но есть refresh token - пробуем обновить
-            return bool(self.refresh_token)
+            return False  # Нет информации — не трогаем
         return datetime.now(UTC) >= self.token_expires_at - timedelta(minutes=5)
 
     @property

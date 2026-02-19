@@ -50,9 +50,9 @@ class CourierRating(Base):
     )
 
     # Связи
-    order: Mapped[Order] = relationship(back_populates="rating", lazy="joined")
-    shop: Mapped[Shop] = relationship(back_populates="ratings_given", lazy="joined")
-    courier: Mapped[Courier] = relationship(back_populates="ratings_received", lazy="joined")
+    order: Mapped[Order] = relationship(back_populates="rating", lazy="noload")
+    shop: Mapped[Shop] = relationship(back_populates="ratings_given", lazy="noload")
+    courier: Mapped[Courier] = relationship(back_populates="ratings_received", lazy="noload")
 
     __table_args__ = (
         CheckConstraint("rating IS NULL OR rating BETWEEN 1 AND 5", name="check_rating_range"),

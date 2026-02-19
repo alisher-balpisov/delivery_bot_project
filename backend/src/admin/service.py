@@ -1,4 +1,5 @@
 import secrets
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from typing import Any, TypeVar
@@ -349,7 +350,7 @@ async def get_order_by_id(db: AsyncSession, order_id: int) -> Order | None:
             selectinload(Order.shop),
             selectinload(Order.courier),
             selectinload(Order.history),
-            selectinload(Order.dispute),
+            selectinload(Order.disputes),
             selectinload(Order.rating),
         )
     )
@@ -597,9 +598,7 @@ async def _get_last_payout_date(db: AsyncSession, courier_id: int) -> datetime |
 
 
 def _create_excel_response(workbook: Workbook, filename: str) -> StreamingResponse:
-    """
-    Создаёт StreamingResponse с Excel файлом.
-    """
+    """Создаёт StreamingResponse с Excel файлом."""
     output = BytesIO()
     workbook.save(output)
     output.seek(0)
@@ -612,19 +611,16 @@ def _create_excel_response(workbook: Workbook, filename: str) -> StreamingRespon
     return StreamingResponse(output, headers=headers, media_type=headers["Content-Type"])
 
 
-def _format_header_row(ws, headers: list[str]):
-    """
-    Форматирует заголовок таблицы (жирный шрифт, выравнивание по центру).
-    """
+def _format_header_row(ws, headers: list[str]) -> None:
+    """Форматирует заголовок таблицы (жирный шрифт, выравнивание по центру)."""
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_num, value=header)
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
 
-def _add_total_row(ws, row_num: int, totals: dict[str, any]):
-    """
-    Добавляет итоговую строку с суммами.
+def _add_total_row(ws, row_num: int, totals: dict[str, any]) -> None:
+    """Добавляет итоговую строку с суммами в Excel.
 
     Args:
         ws: Worksheet
@@ -637,6 +633,160 @@ def _add_total_row(ws, row_num: int, totals: dict[str, any]):
         cell.font = Font(bold=True)
 
 
+# ==================== Хелперы экспорта статистики ====================
+
+
+def _safe_price(price: int | None) -> float:
+    """Безопасное приведение цены к float (None → 0.0)."""
+    return float(price) if price is not None else 0.0
+
+
+def _prepare_naive_date(dt: datetime | None) -> datetime | None:
+    """Убирает timezone из datetime для корректной записи в Excel."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=None)
+
+
+def _calculate_order_duration(order: Order) -> str:
+    """Вычисляет длительность выполнения заказа в формате 'X.Yч'.
+
+    Returns:
+        Строка длительности или пустая строка, если заказ не завершён.
+    """
+    if not order.completed_at:
+        return ""
+    delta = order.completed_at - order.created_at
+    hours = delta.total_seconds() / 3600
+    return f"{hours:.1f}ч"
+
+
+def _has_disputes_text(disputes: list) -> str:
+    """Текстовое представление наличия споров ('Да'/'Нет')."""
+    return "Да" if disputes else "Нет"
+
+
+def _get_dispute_resolution_text(disputes: list) -> str:
+    """Получает текст результата спора из списка споров.
+
+    Берёт resolution_type первого спора с заполненным результатом.
+    """
+    for dispute in disputes:
+        if dispute.resolution_type:
+            return dispute.resolution_type.value
+    return ""
+
+
+def _calculate_dispute_fines(
+    disputes: list, target_user_id: int | None, is_penalty: bool = True
+) -> float:
+    """Вычисляет суммарный штраф по списку споров для конкретного пользователя.
+
+    Args:
+        disputes: Список споров заказа.
+        target_user_id: user_id пользователя, для которого считаем штраф.
+        is_penalty: True — штраф считается отрицательным (для оштрафованного),
+                    False — штраф считается положительным (для получателя компенсации).
+
+    Returns:
+        Суммарная сумма штрафов (может быть отрицательной).
+    """
+    if not disputes or target_user_id is None:
+        return 0.0
+
+    total = 0.0
+    for dispute in disputes:
+        if dispute.fine_amount and dispute.fined_user_id:
+            if dispute.fined_user_id == target_user_id:
+                # Штраф назначен этому пользователю
+                total -= float(dispute.fine_amount) if is_penalty else 0.0
+            else:
+                # Штраф назначен другой стороне — выгода для target
+                total += float(dispute.fine_amount) if not is_penalty else 0.0
+    return total
+
+
+def _calculate_shop_dispute_fee(
+    disputes: list, shop_user_id: int, courier_user_id: int | None
+) -> float:
+    """Вычисляет штраф с точки зрения магазина.
+
+    - Штраф курьеру → +fee (в пользу магазина)
+    - Штраф магазину → -fee (магазин оштрафован)
+    """
+    fee = 0.0
+    for dispute in disputes:
+        if not dispute.fine_amount:
+            continue
+        if dispute.fined_user_id == courier_user_id:
+            fee += float(dispute.fine_amount)
+        elif dispute.fined_user_id == shop_user_id:
+            fee -= float(dispute.fine_amount)
+    return fee
+
+
+def _calculate_courier_dispute_fee(
+    disputes: list, courier_user_id: int, shop_user_id: int | None
+) -> float:
+    """Вычисляет штраф с точки зрения курьера.
+
+    - Штраф курьеру → -fee (курьер оштрафован)
+    - Штраф магазину → +fee (в пользу курьера)
+    """
+    fee = 0.0
+    for dispute in disputes:
+        if not dispute.fine_amount:
+            continue
+        if dispute.fined_user_id == courier_user_id:
+            fee -= float(dispute.fine_amount)
+        elif dispute.fined_user_id == shop_user_id:
+            fee += float(dispute.fine_amount)
+    return fee
+
+
+async def _load_transactions_map(db: AsyncSession, order_ids: list[int]) -> dict[int, list]:
+    """Пакетная загрузка транзакций для списка заказов (устранение N+1).
+
+    Returns:
+        Словарь {order_id: [Transaction, ...]}.
+    """
+    if not order_ids:
+        return {}
+
+    stmt = select(Transaction).where(Transaction.order_id.in_(order_ids))
+    result = await db.execute(stmt)
+    all_transactions = result.scalars().all()
+
+    transactions_map: dict[int, list] = defaultdict(list)
+    for t in all_transactions:
+        transactions_map[t.order_id].append(t)
+    return transactions_map
+
+
+def _extract_transaction_amounts(
+    transactions: list, courier_user_id: int | None = None
+) -> tuple[float, float]:
+    """Извлекает суммы ORDER_CREDIT и SERVICE_FEE из списка транзакций.
+
+    Args:
+        transactions: Список транзакций заказа.
+        courier_user_id: Если указан, фильтрует транзакции по user_id курьера.
+
+    Returns:
+        Кортеж (courier_payment, service_fee).
+    """
+    courier_payment = 0.0
+    service_fee = 0.0
+    for trans in transactions:
+        if courier_user_id and trans.user_id != courier_user_id:
+            continue
+        if trans.type == TransactionType.ORDER_CREDIT:
+            courier_payment = float(trans.amount)
+        elif trans.type == TransactionType.SERVICE_FEE:
+            service_fee = float(trans.amount)
+    return courier_payment, service_fee
+
+
 async def export_shop_statistics(
     db: AsyncSession,
     shop_id: int,
@@ -645,23 +795,22 @@ async def export_shop_statistics(
     stats_type: str,
     from_last_payment: bool = False,
 ) -> StreamingResponse:
-    """
-    Экспорт статистики по конкретному магазину в Excel.
+    """Экспорт статистики по конкретному магазину в Excel.
 
     Args:
-        db: Сессия базы данных
-        shop_id: ID магазина
-        date_from: Начальная дата (игнорируется если from_last_payment=True)
-        date_to: Конечная дата
-        stats_type: "common" или "advanced"
-        from_last_payment: Если True, берётся дата последней CASH_COLLECTION
+        db: Сессия базы данных.
+        shop_id: ID магазина.
+        date_from: Начало периода.
+        date_to: Конец периода.
+        stats_type: Тип статистики ('common' или 'advanced').
+        from_last_payment: Если True — период начинается с последней инкассации.
     """
-    # Проверяем существование магазина
+    # 1. Проверяем существование магазина
     shop = await db.get(Shop, shop_id)
     if not shop:
         raise ValueError(f"Магазин с ID {shop_id} не найден")
 
-    # Определяем начальную дату
+    # 2. Определяем начальную дату (при from_last_payment)
     if from_last_payment:
         last_payment = await _get_last_cash_collection_date(db, shop_id)
         if last_payment:
@@ -669,14 +818,14 @@ async def export_shop_statistics(
         else:
             logger.warning(f"Для магазина ID {shop_id} нет ни платежей, ни заказов")
 
-    # Получаем заказы
+    # 3. Загружаем заказы за указанный период
     stmt = (
         select(Order)
         .options(
-            selectinload(Order.courier),  # ← Загружаем курьера
-            selectinload(Order.dispute),  # ← Загружаем спор
-            selectinload(Order.rating),  # ← Загружаем рейтинг
-            selectinload(Order.shop),  # ← Загружаем магазин
+            selectinload(Order.courier),
+            selectinload(Order.disputes),
+            selectinload(Order.rating),
+            selectinload(Order.shop),
         )
         .where(
             and_(
@@ -690,12 +839,17 @@ async def export_shop_statistics(
     result = await db.execute(stmt)
     orders = result.scalars().all()
 
-    # Создаём Excel
+    # 4. Пакетная загрузка транзакций (только для advanced)
+    transactions_map: dict[int, list] = {}
+    if orders and stats_type != "common":
+        order_ids = [o.id for o in orders]
+        transactions_map = await _load_transactions_map(db, order_ids)
+
+    # 5. Создаём Excel
     wb = Workbook()
     ws = wb.active
     ws.title = "Статистика заказов"
 
-    # Заголовки
     if stats_type == "common":
         headers = [
             "ID заказа",
@@ -708,7 +862,7 @@ async def export_shop_statistics(
             "Спор",
             "Штраф",
         ]
-    else:  # advanced
+    else:
         headers = [
             "ID заказа",
             "Дата создания",
@@ -727,109 +881,68 @@ async def export_shop_statistics(
 
     _format_header_row(ws, headers)
 
-    # Заполняем данные
-    total_price = 0
-    total_courier_payment = 0
-    total_service_fee = 0
-    total_fee = 0
+    # 6. Заполняем данные
+    total_price = 0.0
+    total_courier_payment = 0.0
+    total_service_fee = 0.0
+    total_fee = 0.0
 
     for idx, order in enumerate(orders, start=2):
-        # Получаем связанные данные
         courier_name = order.courier.full_name if order.courier else "Не назначен"
-        dispute_text = "Да" if order.dispute else "Нет"
+        dispute_text = _has_disputes_text(order.disputes)
+        created_at_naive = _prepare_naive_date(order.created_at)
+        completed_at_naive = _prepare_naive_date(order.completed_at)
+        price = _safe_price(order.price)
 
-        # Штраф из dispute
-        fee = 0
-        if order.dispute and order.dispute.fine_amount:
-            # Если оштрафован курьер - это плюс для магазина
-            if order.dispute.fined_user_id == order.courier_id:
-                fee = float(order.dispute.fine_amount)
-            # Если оштрафован магазин - это минус
-            elif order.dispute.fined_user_id == shop.user_id:
-                fee = -float(order.dispute.fine_amount)
-
+        # Штраф с точки зрения магазина (используем user_id, а не courier_id!)
+        courier_user_id = order.courier.user_id if order.courier else None
+        fee = _calculate_shop_dispute_fee(order.disputes, shop.user_id, courier_user_id)
         total_fee += fee
 
         if stats_type == "common":
             ws.cell(row=idx, column=1, value=order.id)
-            ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
+            ws.cell(row=idx, column=2, value=created_at_naive).number_format = "YYYY-MM-DD HH:MM"
             ws.cell(
-                row=idx,
-                column=3,
-                value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
-            )
+                row=idx, column=3, value=completed_at_naive or ""
+            ).number_format = "YYYY-MM-DD HH:MM"
             ws.cell(row=idx, column=4, value=order.order_type.value)
             ws.cell(row=idx, column=5, value=order.description or "")
             ws.cell(row=idx, column=6, value=courier_name)
-            ws.cell(row=idx, column=7, value=float(order.price))
+            ws.cell(row=idx, column=7, value=price)
             ws.cell(row=idx, column=8, value=dispute_text)
             ws.cell(row=idx, column=9, value=fee)
-
-            total_price += float(order.price)
-
-        else:  # advanced
-            # Получаем рейтинг
-            rating = order.rating.rating if order.rating else None
-
-            # Вычисляем courier_payment и service_fee
-            # Предполагаем, что это хранится в транзакциях
-            courier_payment = 0
-            service_fee = 0
-
-            # Находим транзакции по заказу
-            transactions_stmt = select(Transaction).where(Transaction.order_id == order.id)
-            trans_result = await db.execute(transactions_stmt)
-            transactions = trans_result.scalars().all()
-
-            for trans in transactions:
-                if trans.type == TransactionType.ORDER_CREDIT:
-                    courier_payment = float(trans.amount)
-                elif trans.type == TransactionType.SERVICE_FEE:
-                    service_fee = float(trans.amount)
-
-            # Длительность
-            duration = ""
-            if order.completed_at:
-                delta = order.completed_at - order.created_at
-                hours = delta.total_seconds() / 3600
-                duration = f"{hours:.1f}ч"
+            total_price += price
+        else:
+            rating = order.rating.rating if order.rating else ""
+            duration = _calculate_order_duration(order)
+            courier_payment, service_fee = _extract_transaction_amounts(
+                transactions_map.get(order.id, [])
+            )
 
             ws.cell(row=idx, column=1, value=order.id)
-            ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
+            ws.cell(row=idx, column=2, value=created_at_naive).number_format = "YYYY-MM-DD HH:MM"
             ws.cell(
-                row=idx,
-                column=3,
-                value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
-            )
+                row=idx, column=3, value=completed_at_naive or ""
+            ).number_format = "YYYY-MM-DD HH:MM"
             ws.cell(row=idx, column=4, value=duration)
             ws.cell(row=idx, column=5, value=order.order_type.value)
             ws.cell(row=idx, column=6, value=order.description or "")
             ws.cell(row=idx, column=7, value=courier_name)
-            ws.cell(row=idx, column=8, value=rating if rating else "")
-            ws.cell(row=idx, column=9, value=float(order.price))
+            ws.cell(row=idx, column=8, value=rating)
+            ws.cell(row=idx, column=9, value=price)
             ws.cell(row=idx, column=10, value=courier_payment)
             ws.cell(row=idx, column=11, value=service_fee)
             ws.cell(row=idx, column=12, value=fee)
             ws.cell(row=idx, column=13, value=dispute_text)
-
-            total_price += float(order.price)
+            total_price += price
             total_courier_payment += courier_payment
             total_service_fee += service_fee
 
-    # Добавляем итоговую строку
+    # 7. Итоговая строка
     total_row = len(orders) + 2
-
     if stats_type == "common":
-        _add_total_row(
-            ws,
-            total_row,
-            {
-                "F": "ИТОГО:",
-                "G": total_price,
-                "I": total_fee,
-            },
-        )
-    else:  # advanced
+        _add_total_row(ws, total_row, {"F": "ИТОГО:", "G": total_price, "I": total_fee})
+    else:
         _add_total_row(
             ws,
             total_row,
@@ -842,9 +955,7 @@ async def export_shop_statistics(
             },
         )
 
-    # Формируем имя файла
     filename = f"shop_{shop_id}_{stats_type}_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.xlsx"
-
     return _create_excel_response(wb, filename)
 
 
@@ -856,15 +967,22 @@ async def export_courier_statistics(
     stats_type: str,
     from_last_payout: bool = False,
 ) -> StreamingResponse:
+    """Экспорт статистики по конкретному курьеру в Excel.
+
+    Args:
+        db: Сессия базы данных.
+        courier_id: ID курьера.
+        date_from: Начало периода.
+        date_to: Конец периода.
+        stats_type: Тип статистики ('common' или 'advanced').
+        from_last_payout: Если True — период начинается с последней выплаты.
     """
-    Экспорт статистики по конкретному курьеру в Excel.
-    """
-    # Проверяем существование курьера
+    # 1. Проверяем существование курьера
     courier = await db.get(Courier, courier_id)
     if not courier:
         raise ValueError(f"Курьер с ID {courier_id} не найден")
 
-    # Определяем начальную дату
+    # 2. Определяем начальную дату
     if from_last_payout:
         last_payout = await _get_last_payout_date(db, courier_id)
         if last_payout:
@@ -872,12 +990,12 @@ async def export_courier_statistics(
         else:
             logger.warning(f"Для курьера ID {courier_id} нет ни выплат, ни заработков")
 
-    # Получаем заказы
+    # 3. Загружаем заказы
     stmt = (
         select(Order)
         .options(
             selectinload(Order.courier),
-            selectinload(Order.dispute),
+            selectinload(Order.disputes),
             selectinload(Order.rating),
             selectinload(Order.shop),
         )
@@ -893,12 +1011,17 @@ async def export_courier_statistics(
     result = await db.execute(stmt)
     orders = result.scalars().all()
 
-    # Создаём Excel
+    # 4. Пакетная загрузка транзакций (для всех типов — курьеру нужен заработок)
+    transactions_map: dict[int, list] = {}
+    if orders:
+        order_ids = [o.id for o in orders]
+        transactions_map = await _load_transactions_map(db, order_ids)
+
+    # 5. Создаём Excel
     wb = Workbook()
     ws = wb.active
     ws.title = "Статистика заказов"
 
-    # Заголовки
     if stats_type == "common":
         headers = [
             "ID заказа",
@@ -915,7 +1038,7 @@ async def export_courier_statistics(
             "Спор",
             "Результат спора",
         ]
-    else:  # advanced
+    else:
         headers = [
             "ID заказа",
             "Дата создания",
@@ -935,68 +1058,38 @@ async def export_courier_statistics(
 
     _format_header_row(ws, headers)
 
-    # Заполняем данные
-    total_earnings = 0
-    total_price = 0
-    total_service_fee = 0
-    total_fee = 0
+    # 6. Заполняем данные
+    total_earnings = 0.0
+    total_price = 0.0
+    total_service_fee = 0.0
+    total_fee = 0.0
 
     for idx, order in enumerate(orders, start=2):
         shop_name = order.shop.name if order.shop else "Неизвестно"
         rating = order.rating.rating if order.rating else ""
         rating_comment = order.rating.comment if order.rating else ""
+        duration = _calculate_order_duration(order)
+        dispute_text = _has_disputes_text(order.disputes)
+        # disputes — это СПИСОК, итерируем корректно
+        dispute_result = _get_dispute_resolution_text(order.disputes)
 
-        dispute_text = "Да" if order.dispute else "Нет"
-        dispute_result = ""
-        if order.dispute and order.dispute.resolution_type:
-            dispute_result = order.dispute.resolution_type.value
-
-        # Штраф
-        fee = 0
-        if order.dispute and order.dispute.fine_amount:
-            # Если оштрафован курьер - это минус
-            if order.dispute.fined_user_id == courier.user_id:
-                fee = -float(order.dispute.fine_amount)
-            # Если оштрафован магазин - это плюс для курьера
-            elif order.dispute.fined_user_id == order.shop.user_id:
-                fee = float(order.dispute.fine_amount)
-
+        # Штраф с точки зрения курьера (используем user_id!)
+        shop_user_id = order.shop.user_id if order.shop else None
+        fee = _calculate_courier_dispute_fee(order.disputes, courier.user_id, shop_user_id)
         total_fee += fee
 
-        # Получаем транзакции
-        earnings = 0
-        service_fee = 0
-
-        transactions_stmt = select(Transaction).where(
-            and_(
-                Transaction.order_id == order.id,
-                Transaction.user_id == courier.user_id,
-            )
+        # Транзакции — из предзагруженного map (без N+1!)
+        earnings, service_fee = _extract_transaction_amounts(
+            transactions_map.get(order.id, []), courier_user_id=courier.user_id
         )
-        trans_result = await db.execute(transactions_stmt)
-        transactions = trans_result.scalars().all()
 
-        for trans in transactions:
-            if trans.type == TransactionType.ORDER_CREDIT:
-                earnings = float(trans.amount)
-            elif trans.type == TransactionType.SERVICE_FEE:
-                service_fee = float(trans.amount)
-
-        # Длительность
-        duration = ""
-        if order.completed_at:
-            delta = order.completed_at - order.created_at
-            hours = delta.total_seconds() / 3600
-            duration = f"{hours:.1f}ч"
+        created_str = order.created_at.strftime("%Y-%m-%d %H:%M")
+        completed_str = order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else ""
 
         if stats_type == "common":
             ws.cell(row=idx, column=1, value=order.id)
-            ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
-            ws.cell(
-                row=idx,
-                column=3,
-                value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
-            )
+            ws.cell(row=idx, column=2, value=created_str)
+            ws.cell(row=idx, column=3, value=completed_str)
             ws.cell(row=idx, column=4, value=duration)
             ws.cell(row=idx, column=5, value=shop_name)
             ws.cell(row=idx, column=6, value=order.order_type.value)
@@ -1007,47 +1100,32 @@ async def export_courier_statistics(
             ws.cell(row=idx, column=11, value=service_fee)
             ws.cell(row=idx, column=12, value=dispute_text)
             ws.cell(row=idx, column=13, value=dispute_result)
-
             total_earnings += earnings
-
-        else:  # advanced
+        else:
+            price = _safe_price(order.price)
             ws.cell(row=idx, column=1, value=order.id)
-            ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
-            ws.cell(
-                row=idx,
-                column=3,
-                value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
-            )
+            ws.cell(row=idx, column=2, value=created_str)
+            ws.cell(row=idx, column=3, value=completed_str)
             ws.cell(row=idx, column=4, value=duration)
             ws.cell(row=idx, column=5, value=shop_name)
             ws.cell(row=idx, column=6, value=order.order_type.value)
             ws.cell(row=idx, column=7, value=rating)
             ws.cell(row=idx, column=8, value=rating_comment)
             ws.cell(row=idx, column=9, value=earnings)
-            ws.cell(row=idx, column=10, value=float(order.price))
+            ws.cell(row=idx, column=10, value=price)
             ws.cell(row=idx, column=11, value=service_fee)
             ws.cell(row=idx, column=12, value=fee)
             ws.cell(row=idx, column=13, value=dispute_text)
             ws.cell(row=idx, column=14, value=dispute_result)
-
             total_earnings += earnings
-            total_price += float(order.price)
+            total_price += price
             total_service_fee += service_fee
 
-    # Добавляем итоговую строку
+    # 7. Итоговая строка
     total_row = len(orders) + 2
-
     if stats_type == "common":
-        _add_total_row(
-            ws,
-            total_row,
-            {
-                "H": "ИТОГО:",
-                "I": total_earnings,
-                "J": total_fee,
-            },
-        )
-    else:  # advanced
+        _add_total_row(ws, total_row, {"H": "ИТОГО:", "I": total_earnings, "J": total_fee})
+    else:
         _add_total_row(
             ws,
             total_row,
@@ -1060,7 +1138,6 @@ async def export_courier_statistics(
             },
         )
 
-    # Формируем имя файла
     filename = f"courier_{courier_id}_{stats_type}_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.xlsx"
     return _create_excel_response(wb, filename)
 
@@ -1070,15 +1147,19 @@ async def export_all_shops_statistics(
     date_from: datetime,
     date_to: datetime,
 ) -> StreamingResponse:
+    """Экспорт статистики по всем заказам всех магазинов в Excel.
+
+    Args:
+        db: Сессия базы данных.
+        date_from: Начало периода.
+        date_to: Конец периода.
     """
-    Экспорт статистики по всем заказам всех магазинов в Excel.
-    """
-    # Получаем все заказы за период
+    # 1. Загружаем все заказы за период
     stmt = (
         select(Order)
         .options(
             selectinload(Order.courier),
-            selectinload(Order.dispute),
+            selectinload(Order.disputes),
             selectinload(Order.rating),
             selectinload(Order.shop),
         )
@@ -1093,17 +1174,23 @@ async def export_all_shops_statistics(
     result = await db.execute(stmt)
     orders = result.scalars().all()
 
-    # Создаём Excel
+    # 2. Пакетная загрузка транзакций (устранение N+1)
+    transactions_map: dict[int, list] = {}
+    if orders:
+        order_ids = [o.id for o in orders]
+        transactions_map = await _load_transactions_map(db, order_ids)
+
+    # 3. Создаём Excel
     wb = Workbook()
     ws = wb.active
     ws.title = "Все заказы"
 
-    # Заголовки
     headers = [
         "ID заказа",
         "Дата создания",
         "Дата завершения",
         "Длительность",
+        "Магазин",
         "Тип заказа",
         "Описание",
         "Курьер",
@@ -1117,80 +1204,67 @@ async def export_all_shops_statistics(
 
     _format_header_row(ws, headers)
 
-    # Заполняем данные
-    total_price = 0
-    total_courier_payment = 0
-    total_service_fee = 0
-    total_fee = 0
+    # 4. Заполняем данные
+    total_price = 0.0
+    total_courier_payment = 0.0
+    total_service_fee = 0.0
+    total_fee = 0.0
 
     for idx, order in enumerate(orders, start=2):
+        shop_name = order.shop.name if order.shop else "Неизвестно"
         courier_name = order.courier.full_name if order.courier else "Не назначен"
         rating = order.rating.rating if order.rating else ""
-        dispute_text = "Да" if order.dispute else "Нет"
+        dispute_text = _has_disputes_text(order.disputes)
+        duration = _calculate_order_duration(order)
+        price = _safe_price(order.price)
 
-        # Штраф
-        fee = 0
-        if order.dispute and order.dispute.fine_amount:
-            fee = float(order.dispute.fine_amount)
+        # Штраф — суммируем все fine_amount из disputes (список!)
+        fee = 0.0
+        for dispute in order.disputes:
+            if dispute.fine_amount:
+                fee += float(dispute.fine_amount)
 
-        # Получаем транзакции
-        courier_payment = 0
-        service_fee = 0
+        # Транзакции из предзагруженного map
+        courier_payment, service_fee = _extract_transaction_amounts(
+            transactions_map.get(order.id, [])
+        )
 
-        transactions_stmt = select(Transaction).where(Transaction.order_id == order.id)
-        trans_result = await db.execute(transactions_stmt)
-        transactions = trans_result.scalars().all()
-
-        for trans in transactions:
-            if trans.type == TransactionType.ORDER_CREDIT:
-                courier_payment = float(trans.amount)
-            elif trans.type == TransactionType.SERVICE_FEE:
-                service_fee = float(trans.amount)
-
-        # Длительность
-        duration = ""
-        if order.completed_at:
-            delta = order.completed_at - order.created_at
-            hours = delta.total_seconds() / 3600
-            duration = f"{hours:.1f}ч"
+        created_str = order.created_at.strftime("%Y-%m-%d %H:%M")
+        completed_str = order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else ""
 
         ws.cell(row=idx, column=1, value=order.id)
-        ws.cell(row=idx, column=2, value=order.created_at.strftime("%Y-%m-%d %H:%M"))
-        ws.cell(
-            row=idx,
-            column=3,
-            value=order.completed_at.strftime("%Y-%m-%d %H:%M") if order.completed_at else "",
-        )
+        ws.cell(row=idx, column=2, value=created_str)
+        ws.cell(row=idx, column=3, value=completed_str)
         ws.cell(row=idx, column=4, value=duration)
-        ws.cell(row=idx, column=5, value=order.order_type.value)
-        ws.cell(row=idx, column=6, value=order.description or "")
-        ws.cell(row=idx, column=7, value=courier_name)
-        ws.cell(row=idx, column=8, value=rating)
-        ws.cell(row=idx, column=9, value=float(order.price))
-        ws.cell(row=idx, column=10, value=courier_payment)
-        ws.cell(row=idx, column=11, value=service_fee)
-        ws.cell(row=idx, column=12, value=fee)
-        ws.cell(row=idx, column=13, value=dispute_text)
+        ws.cell(row=idx, column=5, value=shop_name)
+        ws.cell(row=idx, column=6, value=order.order_type.value)
+        ws.cell(row=idx, column=7, value=order.description or "")
+        ws.cell(row=idx, column=8, value=courier_name)
+        ws.cell(row=idx, column=9, value=rating)
+        ws.cell(row=idx, column=10, value=price)
+        ws.cell(row=idx, column=11, value=courier_payment)
+        ws.cell(row=idx, column=12, value=service_fee)
+        ws.cell(row=idx, column=13, value=fee)
+        ws.cell(row=idx, column=14, value=dispute_text)
 
-        total_price += float(order.price)
+        total_price += price
         total_courier_payment += courier_payment
         total_service_fee += service_fee
         total_fee += fee
 
-    # Добавляем итоговую строку
+    # 5. Итоговая строка
     total_row = len(orders) + 2
     _add_total_row(
         ws,
         total_row,
         {
-            "H": "ИТОГО:",
-            "I": total_price,
-            "J": total_courier_payment,
-            "K": total_service_fee,
-            "L": total_fee,
+            "I": "ИТОГО:",
+            "J": total_price,
+            "K": total_courier_payment,
+            "L": total_service_fee,
+            "M": total_fee,
         },
     )
 
-    # Формируем имя файла
     filename = f"all_shops_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.xlsx"
     return _create_excel_response(wb, filename)

@@ -1,15 +1,9 @@
-"""
-Упрощенный менеджер JWT токенов с использованием только Redis.
-
-Ключевые изменения:
-- Убрана зависимость от FSM (используется только Redis)
-- Упрощена логика работы с токенами
-- Улучшена обработка ошибок
-"""
+from datetime import UTC, datetime, timedelta
 
 from backend.src.core.logging import get_logger
 from bot.clients.auth_client import AuthClient
 from bot.redis_storage import UserCacheData, UserDataStorage
+from bot.utils.helpers import parse_user_role
 
 logger = get_logger(__name__)
 
@@ -58,13 +52,12 @@ class TokenManager:
             logger.warning(
                 f"Refresh токен истек для пользователя {telegram_id}, пробуем повторный login"
             )
-            await self.storage.invalidate_tokens(telegram_id)
             return await self._login_and_cache(telegram_id)
 
         # Если access токен валиден и не требует обновления
         if not force_refresh and user_data.has_valid_token and not user_data.needs_token_refresh:
             logger.debug(f"Используем кэшированный токен для {telegram_id}")
-            await self.storage.update_activity(telegram_id)
+            await self.storage.update_activity_optimized(telegram_id)
             return user_data.access_token
 
         # Обновляем токен через refresh
@@ -110,22 +103,20 @@ class TokenManager:
                     user_id=user_info.get("id"),
                     telegram_id=telegram_id,
                     name=user_info.get("name"),
-                    role=user_info.get("role", "guest"),
+                    role=parse_user_role(user_info.get("role")),
                     username=user_info.get("username"),
                 )
 
-            # Сохраняем токены
-            success = await self.storage.save_tokens(
-                telegram_id=telegram_id,
-                access_token=access_token,
-                refresh_token=refresh_token,
-                access_expires_in=expires_in,
-                refresh_expires_in=refresh_expires_in,
+            now = datetime.now(UTC)
+            user_data.access_token = access_token
+            user_data.refresh_token = refresh_token
+            user_data.token_expires_at = now + timedelta(seconds=expires_in)
+            user_data.refresh_expires_at = now + timedelta(seconds=refresh_expires_in)
+            success = await self.storage.save_user_data(
+                telegram_id, user_data, ttl=refresh_expires_in
             )
 
             if success:
-                # Также обновляем данные пользователя
-                await self.storage.save_user_data(telegram_id, user_data)
                 logger.info(f"Токены сохранены для {telegram_id} (expires_in={expires_in}s)")
 
             return success
@@ -173,7 +164,7 @@ class TokenManager:
             # Получаем существующие данные пользователя (если есть)
             user_data = await self.storage.get_user_data(telegram_id)
 
-            # Сохраняем токены
+            # Сохраняем токены (одна запись в Redis)
             await self.save_token_from_response(result.data, telegram_id, user_data)
 
             return result.data["access_token"]
@@ -197,7 +188,7 @@ class TokenManager:
             result = await self.auth_client.refresh_token(user_data.refresh_token)
 
             if result.success and isinstance(result.data, dict):
-                # Сохраняем новые токены
+                # Сохраняем новые токены (одна запись в Redis)
                 await self.save_token_from_response(result.data, telegram_id, user_data)
                 return result.data["access_token"]
             else:
@@ -205,7 +196,6 @@ class TokenManager:
                     f"Не удалось обновить токен для {telegram_id}: "
                     f"{result.status_code} - {result.detail}"
                 )
-                # Инвалидируем токены при ошибке
                 await self.storage.invalidate_tokens(telegram_id)
                 return None
 

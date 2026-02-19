@@ -48,9 +48,9 @@ class OrderHistory(Base):
     )
 
     # Связи
-    order: Mapped[Order] = relationship(back_populates="history", lazy="joined")
+    order: Mapped[Order] = relationship(back_populates="history", lazy="noload")
     changed_by_user: Mapped[User | None] = relationship(
-        back_populates="order_history_entries", lazy="joined"
+        back_populates="order_history_entries", lazy="noload"
     )
 
     __table_args__ = (Index("ix_order_history_order_created", "order_id", "created_at"),)

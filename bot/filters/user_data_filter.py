@@ -79,18 +79,20 @@ class UserDataFilter(BaseFilter):
 
         if login_result.success and isinstance(login_result.data, dict):
             # Успешный login - сохраняем данные и создаем DTO
-            user_dto = await self._handle_successful_login(telegram_id, username, login_result.data)
-            # Получаем обновленные полные данные
-            new_user_data = await self.storage.get_user_data(telegram_id)
-            return {"user": user_dto, "user_data": new_user_data}
+            user_dto, new_user_data = await self._handle_successful_login(
+                telegram_id, username, login_result.data
+            )
+            result = {"user": user_dto, "user_data": new_user_data}
+
+            # Сохраняем в L1 кэш
+            self._l1_cache[cache_key] = (now, result)
+            return result
 
         # Login не удался - создаем гостя
         status_code = login_result.status_code
         logger.info(f"Login не удался для {telegram_id} (код: {status_code}), создаем гостя")
 
-        user_dto = await self._create_guest(telegram_id, username)
-        # Получаем созданные данные гостя
-        guest_user_data = await self.storage.get_user_data(telegram_id)
+        user_dto, guest_user_data = await self._create_guest(telegram_id, username)
         return {"user": user_dto, "user_data": guest_user_data}
 
     def _create_dto_from_cache(self, user_data: UserCacheData, username: str | None) -> UserDTO:
@@ -104,48 +106,45 @@ class UserDataFilter(BaseFilter):
 
     async def _handle_successful_login(
         self, telegram_id: int, username: str | None, response_data: dict
-    ) -> UserDTO:
+    ) -> tuple[UserDTO, UserCacheData]:
         """
         Обрабатывает успешный login:
-        - Сохраняет токены
-        - Сохраняет данные пользователя
+        - Сохраняет токены и данные пользователя за ОДНУ запись в Redis
         - Создает DTO
         """
         user_info = response_data.get("user", {})
+        now = datetime.now(UTC)
+        expires_in = response_data["expires_in"]
+        refresh_expires_in = response_data["refresh_expires_in"]
 
-        # Создаем объект данных пользователя
         user_data = UserCacheData(
             user_id=user_info.get("id"),
             telegram_id=telegram_id,
             name=user_info.get("name"),
             role=parse_user_role(user_info.get("role")),
             username=username,
-            cached_at=datetime.now(UTC),  # Явно устанавливаем время кэширования
-        )
-
-        # Сохраняем токены
-        await self.storage.save_tokens(
-            telegram_id=telegram_id,
+            cached_at=now,
             access_token=response_data["access_token"],
             refresh_token=response_data["refresh_token"],
-            access_expires_in=response_data["expires_in"],
-            refresh_expires_in=response_data["refresh_expires_in"],
+            token_expires_at=now + timedelta(seconds=expires_in),
+            refresh_expires_at=now + timedelta(seconds=refresh_expires_in),
         )
 
-        # Сохраняем данные пользователя
-        await self.storage.save_user_data(telegram_id, user_data)
+        await self.storage.save_user_data(telegram_id, user_data, ttl=refresh_expires_in)
 
         logger.info(f"Данные пользователя {telegram_id} сохранены после login")
 
-        # Создаем DTO
-        return UserDTO(
+        user_dto = UserDTO(
             user_id=user_data.user_id,
             telegram_id=user_data.telegram_id,
             name=user_data.name,
             role=user_data.role,
         )
+        return user_dto, user_data
 
-    async def _create_guest(self, telegram_id: int, username: str | None) -> UserDTO:
+    async def _create_guest(
+        self, telegram_id: int, username: str | None
+    ) -> tuple[UserDTO, UserCacheData]:
         """
         Создает гостя и сохраняет его в Redis.
 
@@ -158,7 +157,7 @@ class UserDataFilter(BaseFilter):
             name=None,
             role=UserRole.GUEST,
             username=username,
-            cached_at=datetime.now(UTC),  # Явно устанавливаем время кэширования
+            cached_at=datetime.now(UTC),
         )
 
         # Сохраняем гостя в Redis с коротким TTL (5 минут)
@@ -166,12 +165,13 @@ class UserDataFilter(BaseFilter):
 
         logger.debug(f"Создан гость для {telegram_id}")
 
-        return UserDTO(
+        user_dto = UserDTO(
             user_id=None,
             telegram_id=telegram_id,
             name=None,
             role=UserRole.GUEST,
         )
+        return user_dto, user_data
 
 
 __all__ = ["UserDataFilter"]
