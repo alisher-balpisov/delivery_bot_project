@@ -1,5 +1,4 @@
 from fastapi import HTTPException, status
-from icecream import ic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -219,7 +218,6 @@ async def get_dispute_by_id(
 
     opened_by_user = dispute.opened_by_user
     opened_by_role = opened_by_user.role if opened_by_user else UserRole.GUEST
-    ic(dispute.order.shop)
 
     return DisputeResponse(
         id=dispute.id,

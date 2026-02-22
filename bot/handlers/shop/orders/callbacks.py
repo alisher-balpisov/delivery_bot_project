@@ -30,6 +30,7 @@ class OrderActionCallback(CallbackData, prefix="shop_order_act"):
     action: str
     page: int = 1
     status: str = "all"
+    source: str | None = None
 
 
 class OrdersListCallback(CallbackData, prefix="shop_orders"):
@@ -45,6 +46,7 @@ class OrderDetailCallback(CallbackData, prefix="shop_order_det"):
     order_id: int
     from_page: int = 1
     from_status: str = "all"
+    source: str | None = None
 
 
 class OrderRefundCallback(CallbackData, prefix="shop_dispute"):

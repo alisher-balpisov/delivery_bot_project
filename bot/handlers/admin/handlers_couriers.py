@@ -214,7 +214,8 @@ async def courier_history_handler_impl(
                         callback_data=CouriersCallback(
                             action="open",
                             courier_id=courier_id,
-                            page=1,
+                            page=callback_data.list_page,
+                            list_page=callback_data.list_page,
                             filter_type=callback_data.filter_type,
                         ).pack(),
                     )
@@ -229,6 +230,7 @@ async def courier_history_handler_impl(
                 action=action,
                 courier_id=courier_id,
                 page=page,
+                list_page=callback_data.list_page,
                 filter_type=callback_data.filter_type,
                 order_id=order_id,
             ).pack()
@@ -236,7 +238,8 @@ async def courier_history_handler_impl(
         back_callback = CouriersCallback(
             action="open",
             courier_id=courier_id,
-            page=1,
+            page=callback_data.list_page,
+            list_page=callback_data.list_page,
             filter_type=callback_data.filter_type,
         ).pack()
 
@@ -279,6 +282,7 @@ async def courier_order_detail_handler(
         action="history",
         courier_id=callback_data.courier_id,
         page=callback_data.page,
+        list_page=callback_data.list_page,
         filter_type=callback_data.filter_type,
     ).pack()
 

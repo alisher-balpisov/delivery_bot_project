@@ -35,9 +35,11 @@ async def _initiate_edit(
     prompt_message: str,
 ):
     """Универсальная функция для старта редактирования поля."""
-    order_id = OrderActionCallback.unpack(callback.data).order_id
+    cb_data = OrderActionCallback.unpack(callback.data)
     await state.set_state(target_state)
-    await state.update_data(order_id=order_id)
+    await state.update_data(
+        order_id=cb_data.order_id, page=cb_data.page, status=cb_data.status, source=cb_data.source
+    )
     await callback.message.answer(prompt_message, parse_mode="HTML")
     await callback.answer()
 
@@ -103,7 +105,12 @@ async def shop_cancel_order_handler(
     if result.success:
         await callback.answer("Заказ успешно отменен", show_alert=True)
         # Обновляем детали заказа
-        new_callback_data = OrderDetailCallback(order_id=order_id)
+        new_callback_data = OrderDetailCallback(
+            order_id=order_id,
+            from_page=callback_data.page,
+            from_status=callback_data.status,
+            source=callback_data.source,
+        )
         from bot.handlers.shop.orders.current.details import shop_order_details_handler
 
         await shop_order_details_handler(
@@ -140,7 +147,12 @@ async def shop_complete_order_handler(
 
     if result.success:
         await callback.answer("✅ Заказ успешно завершен", show_alert=True)
-        new_callback_data = OrderDetailCallback(order_id=order_id)
+        new_callback_data = OrderDetailCallback(
+            order_id=order_id,
+            from_page=callback_data.page,
+            from_status=callback_data.status,
+            source=callback_data.source,
+        )
         from bot.handlers.shop.orders.current.details import shop_order_details_handler
 
         await shop_order_details_handler(
@@ -184,7 +196,12 @@ async def shop_edit_order_handler(
 
     order = result.data
     # back_callback returns to order details
-    back_callback = OrderDetailCallback(order_id=order_id).pack()
+    back_callback = OrderDetailCallback(
+        order_id=order_id,
+        from_page=callback_data.page,
+        from_status=callback_data.status,
+        source=callback_data.source,
+    ).pack()
 
     keyboard = get_shop_edit_menu_keyboard(
         order_id=order_id,
@@ -192,6 +209,9 @@ async def shop_edit_order_handler(
         can_edit_price=True,
         can_edit_description=True,
         can_edit_courier=False,
+        page=callback_data.page,
+        status=callback_data.status,
+        source=callback_data.source,
     )
 
     await callback.message.edit_text(
@@ -338,8 +358,13 @@ async def shop_edit_description_handler(
         current=html.escape(current_description)
     )
 
-    # Кнопка отмены возвращает в меню редактирования
-    cancel_callback = OrderActionCallback(order_id=order_id, action="edit").pack()
+    cancel_callback = OrderActionCallback(
+        order_id=order_id,
+        action="edit",
+        page=callback_data.page,
+        status=callback_data.status,
+        source=callback_data.source,
+    ).pack()
 
     await callback.message.edit_text(
         text=text,
@@ -352,7 +377,12 @@ async def shop_edit_description_handler(
     )
 
     await state.set_state(OrderActionStates.waiting_for_description)
-    await state.update_data(order_id=order_id)
+    await state.update_data(
+        order_id=order_id,
+        page=callback_data.page,
+        status=callback_data.status,
+        source=callback_data.source,
+    )
     await callback.answer()
 
 
@@ -372,6 +402,9 @@ async def process_order_description_update(
 
     data = await state.get_data()
     order_id = data.get("order_id")
+    page = data.get("page", 1)
+    status_filter = data.get("status", "all")
+    source = data.get("source")
     token_manager = TokenManager(auth_client, user_storage)
 
     # Обновляем описание
@@ -406,19 +439,26 @@ async def process_order_description_update(
     order = result.data
     text = format_order_details(order, role=UserRole.SHOP.value)
 
-    # Кнопка "Назад" в список заказов
     from bot.handlers.shop.orders.callbacks import OrdersListCallback
 
-    back_callback = OrdersListCallback(page=1, status="all").pack()
+    if source == "dispute":
+        back_callback = OrderActionCallback(
+            order_id=order_id, action="view_dispute", page=page, status=status_filter
+        ).pack()
+    else:
+        back_callback = OrdersListCallback(page=page, status=status_filter).pack()
 
     keyboard = get_shop_order_details_keyboard(
         order_id=order_id,
         status=order.get("status"),
         back_callback=back_callback,
+        page=page,
+        orders_status=status_filter,
         courier_id=order.get("courier_id")
         or (order.get("courier").get("id") if order.get("courier") else None),
         dispute_id=order.get("dispute_id"),
         has_price=order.get("price") is not None,
+        source=source,
     )
 
     await message.answer(

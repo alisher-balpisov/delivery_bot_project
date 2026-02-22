@@ -41,6 +41,8 @@ class OrderDetailCallback(CallbackData, prefix="admin_order_det"):
 class OrderActionCallback(CallbackData, prefix="admin_order_act"):
     order_id: int
     action: str  # cancel, etc.
+    page: int = 1
+    status: str = "all"
 
 
 async def execute_api_call(
@@ -184,7 +186,12 @@ async def order_details_handler(
     keyboard = get_order_details_keyboard(
         back_callback_data=back_callback,
         order_status=order.get("status"),
-        cancel_callback_data=OrderActionCallback(order_id=order_id, action="cancel").pack(),
+        cancel_callback_data=OrderActionCallback(
+            order_id=order_id,
+            action="cancel",
+            page=callback_data.from_page,
+            status=callback_data.from_status,
+        ).pack(),
     )
 
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
@@ -219,7 +226,11 @@ async def cancel_order_handler(
         # Для простоты можно просто перезагрузить текущее состояние.
         # Но так как мы находимся в OrderActionCallback, проще всего вызвать
         # обновление текста через get_order_details и новую клавиатуру.
-        new_callback_data = OrderDetailCallback(order_id=order_id)
+        new_callback_data = OrderDetailCallback(
+            order_id=order_id,
+            from_page=callback_data.page,
+            from_status=callback_data.status,
+        )
         await order_details_handler(
             callback, auth_client, admin_client, user_storage, new_callback_data
         )

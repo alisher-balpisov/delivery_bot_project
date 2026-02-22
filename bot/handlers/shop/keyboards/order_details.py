@@ -2,7 +2,7 @@
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from backend.src.common.enums import OrderStatus
+from backend.src.common.enums import DisputeStatus, OrderStatus
 
 from bot.handlers.shop.orders.callbacks import OrderActionCallback
 
@@ -17,6 +17,7 @@ def get_shop_order_details_keyboard(
     dispute_id: int | None = None,
     dispute_status: str | None = None,
     has_price: bool = True,
+    source: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Клавиатура деталей заказа с динамическими кнопками."""
     builder = InlineKeyboardBuilder()
@@ -25,7 +26,13 @@ def get_shop_order_details_keyboard(
     if courier_id:
         builder.button(
             text="👤 Посмотреть курьера",
-            callback_data=OrderActionCallback(order_id=order_id, action="view_courier").pack(),
+            callback_data=OrderActionCallback(
+                order_id=order_id,
+                action="view_courier",
+                page=page,
+                status=orders_status,
+                source=source,
+            ).pack(),
         )
 
     # 2. Споры
@@ -34,7 +41,11 @@ def get_shop_order_details_keyboard(
         builder.button(
             text="⚖️ Посмотреть спор",
             callback_data=OrderActionCallback(
-                order_id=order_id, action="view_dispute", page=page, status=orders_status
+                order_id=order_id,
+                action="view_dispute",
+                page=page,
+                status=orders_status,
+                source="order",
             ).pack(),
         )
     # Если спора нет ИЛИ последний спор завершен/отменен - показываем "Открыть спор"
@@ -43,7 +54,11 @@ def get_shop_order_details_keyboard(
             builder.button(
                 text="⚖️ Открыть спор",
                 callback_data=OrderActionCallback(
-                    order_id=order_id, action="open_dispute", page=page, status=orders_status
+                    order_id=order_id,
+                    action="open_dispute",
+                    page=page,
+                    status=orders_status,
+                    source="order",
                 ).pack(),
             )
         # Если есть завершенный спор, также даем возможность посмотреть историю (опционально,
@@ -53,7 +68,11 @@ def get_shop_order_details_keyboard(
             builder.button(
                 text="⚖️ Посмотреть спор",
                 callback_data=OrderActionCallback(
-                    order_id=order_id, action="view_dispute", page=page, status=orders_status
+                    order_id=order_id,
+                    action="view_dispute",
+                    page=page,
+                    status=orders_status,
+                    source="order",
                 ).pack(),
             )
 
@@ -61,34 +80,48 @@ def get_shop_order_details_keyboard(
     if status not in [OrderStatus.COMPLETED.value, OrderStatus.CANCELED.value]:
         builder.button(
             text="✏️ Редактировать",
-            callback_data=OrderActionCallback(order_id=order_id, action="edit").pack(),
+            callback_data=OrderActionCallback(
+                order_id=order_id, action="edit", page=page, status=orders_status, source=source
+            ).pack(),
         )
 
     # 4. Добавить заметку
     builder.button(
         text="📝 Добавить заметку",
-        callback_data=OrderActionCallback(order_id=order_id, action="add_note").pack(),
+        callback_data=OrderActionCallback(
+            order_id=order_id, action="add_note", page=page, status=orders_status, source=source
+        ).pack(),
     )
 
     # 5. Завершить
     if status == OrderStatus.AWAITING_CONFIRMATION.value and has_price:
         builder.button(
             text="✅ Завершить заказ",
-            callback_data=OrderActionCallback(order_id=order_id, action="complete").pack(),
+            callback_data=OrderActionCallback(
+                order_id=order_id, action="complete", page=page, status=orders_status, source=source
+            ).pack(),
         )
 
     # 6. Установить цену
     if not has_price and status not in [OrderStatus.COMPLETED.value, OrderStatus.CANCELED.value]:
         builder.button(
             text="💰 Установить цену",
-            callback_data=OrderActionCallback(order_id=order_id, action="set_price").pack(),
+            callback_data=OrderActionCallback(
+                order_id=order_id,
+                action="set_price",
+                page=page,
+                status=orders_status,
+                source=source,
+            ).pack(),
         )
 
     # 7. Отменить
     if status in [OrderStatus.PENDING.value, OrderStatus.PENDING_COURIER.value]:
         builder.button(
             text="❌ Отменить заказ",
-            callback_data=OrderActionCallback(order_id=order_id, action="cancel").pack(),
+            callback_data=OrderActionCallback(
+                order_id=order_id, action="cancel", page=page, status=orders_status, source=source
+            ).pack(),
         )
 
     builder.adjust(1)
@@ -103,6 +136,9 @@ def get_shop_edit_menu_keyboard(
     can_edit_price: bool = True,
     can_edit_description: bool = True,
     can_edit_courier: bool = False,
+    page: int = 1,
+    status: str = "all",
+    source: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Меню редактирования заказа."""
     builder = InlineKeyboardBuilder()
@@ -110,21 +146,29 @@ def get_shop_edit_menu_keyboard(
     if can_edit_price:
         builder.button(
             text="💰 Изменить цену",
-            callback_data=OrderActionCallback(order_id=order_id, action="set_price").pack(),
+            callback_data=OrderActionCallback(
+                order_id=order_id, action="set_price", page=page, status=status, source=source
+            ).pack(),
         )
 
     if can_edit_description:
         builder.button(
             text="📝 Изменить описание",
             callback_data=OrderActionCallback(
-                order_id=order_id, action="edit_order_description"
+                order_id=order_id,
+                action="edit_order_description",
+                page=page,
+                status=status,
+                source=source,
             ).pack(),
         )
 
     if can_edit_courier:
         builder.button(
             text="👤 Изменить курьера",
-            callback_data=OrderActionCallback(order_id=order_id, action="change_courier").pack(),
+            callback_data=OrderActionCallback(
+                order_id=order_id, action="change_courier", page=page, status=status, source=source
+            ).pack(),
         )
 
     builder.adjust(1)

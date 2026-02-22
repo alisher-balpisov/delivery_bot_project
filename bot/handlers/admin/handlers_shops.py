@@ -196,7 +196,8 @@ async def shop_history_handler(
                         callback_data=ShopsCallback(
                             action="open",
                             shop_id=shop_id,
-                            page=1,
+                            page=callback_data.list_page,
+                            list_page=callback_data.list_page,
                             filter_type=callback_data.filter_type,
                         ).pack(),
                     )
@@ -217,6 +218,7 @@ async def shop_history_handler(
                 action=action,
                 shop_id=shop_id,
                 page=page,
+                list_page=callback_data.list_page,
                 filter_type=callback_data.filter_type,
                 order_id=order_id,
             ).pack()
@@ -224,7 +226,8 @@ async def shop_history_handler(
         back_callback = ShopsCallback(
             action="open",
             shop_id=shop_id,
-            page=1,
+            page=callback_data.list_page,
+            list_page=callback_data.list_page,
             filter_type=callback_data.filter_type,
         ).pack()
 
@@ -270,6 +273,7 @@ async def shop_order_detail_handler(
         action="history",
         shop_id=callback_data.shop_id,
         page=callback_data.page,
+        list_page=callback_data.list_page,
         filter_type=callback_data.filter_type,
     ).pack()
 

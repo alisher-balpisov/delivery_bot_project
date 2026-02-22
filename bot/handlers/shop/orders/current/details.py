@@ -53,9 +53,17 @@ async def shop_order_details_handler(
     text = format_order_details(order, role=UserRole.SHOP.value)
 
     # Кнопка назад с сохранением контекста
-    back_callback = OrdersListCallback(
-        page=callback_data.from_page, status=callback_data.from_status
-    ).pack()
+    if callback_data.source == "dispute":
+        back_callback = OrderActionCallback(
+            order_id=order_id,
+            action="view_dispute",
+            page=callback_data.from_page,
+            status=callback_data.from_status,
+        ).pack()
+    else:
+        back_callback = OrdersListCallback(
+            page=callback_data.from_page, status=callback_data.from_status
+        ).pack()
 
     keyboard = get_shop_order_details_keyboard(
         order_id=order_id,
@@ -68,6 +76,7 @@ async def shop_order_details_handler(
         dispute_id=order.get("dispute_id"),
         dispute_status=order.get("dispute_status"),
         has_price=order.get("price") is not None,
+        source=callback_data.source,
     )
 
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
@@ -109,7 +118,12 @@ async def shop_view_courier_handler(
     text = format_courier_card(courier)
 
     # Кнопка назад к деталям заказа
-    back_callback = OrderDetailCallback(order_id=order_id).pack()
+    back_callback = OrderDetailCallback(
+        order_id=order_id,
+        from_page=callback_data.page,
+        from_status=callback_data.status,
+        source=callback_data.source,
+    ).pack()
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=back_callback))
 

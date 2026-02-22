@@ -116,7 +116,7 @@ async def shop_dispute_card_handler(
     )
 
     keyboard = get_dispute_card_keyboard(
-        order_id, main_dispute_id, can_cancel, page=page, status=status
+        order_id, main_dispute_id, can_cancel, page=page, status=status, source=callback_data.source
     )
 
     try:

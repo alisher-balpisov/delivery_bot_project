@@ -3,7 +3,6 @@ from enum import StrEnum
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from backend.src.couriers.schemas import CourierListItem
-from icecream import ic
 
 
 class CourierFilter(StrEnum):
@@ -16,6 +15,7 @@ class CourierFilter(StrEnum):
 class CouriersCallback(CallbackData, prefix="couriers"):
     action: str  # list, open, history
     page: int = 1
+    list_page: int = 1
     filter_type: CourierFilter = CourierFilter.ACTIVE
     courier_id: int | None = None
     order_id: int | None = None
@@ -54,6 +54,7 @@ def get_couriers_list_keyboard(
                     callback_data=CouriersCallback(
                         action="list",
                         page=1,  # Reset to page 1 on filter change
+                        list_page=1,
                         filter_type=filter_val,
                     ).pack(),
                 )
@@ -62,7 +63,6 @@ def get_couriers_list_keyboard(
 
     # 2. Courier List
     for courier in couriers:
-        ic(courier, courier.is_active)
         status_emoji = "🟢" if courier.is_active else "🔴"
         keyboard.append(
             [
@@ -72,6 +72,7 @@ def get_couriers_list_keyboard(
                         action="open",
                         courier_id=courier.id,
                         page=page,
+                        list_page=page,
                         filter_type=current_filter,
                     ).pack(),
                 )
@@ -87,6 +88,7 @@ def get_couriers_list_keyboard(
                 callback_data=CouriersCallback(
                     action="list",
                     page=page - 1,
+                    list_page=page - 1,
                     filter_type=current_filter,
                 ).pack(),
             )
@@ -106,6 +108,7 @@ def get_couriers_list_keyboard(
                 callback_data=CouriersCallback(
                     action="list",
                     page=page + 1,
+                    list_page=page + 1,
                     filter_type=current_filter,
                 ).pack(),
             )
@@ -146,6 +149,7 @@ def get_courier_card_keyboard(
         back_callback_data = CouriersCallback(
             action="list",
             page=page,
+            list_page=page,
             filter_type=current_filter,
         ).pack()
 
@@ -156,6 +160,7 @@ def get_courier_card_keyboard(
                 callback_data=CouriersCallback(
                     action="history",
                     page=1,
+                    list_page=page,
                     filter_type=current_filter,
                     courier_id=courier_id,
                 ).pack(),
@@ -212,6 +217,7 @@ def get_couriers_list_for_stats_keyboard(
                     callback_data=CouriersCallback(
                         action="stats_list_couriers",
                         page=1,
+                        list_page=1,
                         filter_type=filter_val,
                     ).pack(),
                 )
@@ -229,6 +235,7 @@ def get_couriers_list_for_stats_keyboard(
                         action="stats_select_courier",
                         courier_id=courier.id,
                         page=page,
+                        list_page=page,
                         filter_type=current_filter,
                     ).pack(),
                 )
@@ -244,6 +251,7 @@ def get_couriers_list_for_stats_keyboard(
                 callback_data=CouriersCallback(
                     action="stats_list_couriers",
                     page=page - 1,
+                    list_page=page - 1,
                     filter_type=current_filter,
                 ).pack(),
             )
@@ -263,6 +271,7 @@ def get_couriers_list_for_stats_keyboard(
                 callback_data=CouriersCallback(
                     action="stats_list_couriers",
                     page=page + 1,
+                    list_page=page + 1,
                     filter_type=current_filter,
                 ).pack(),
             )

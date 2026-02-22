@@ -106,7 +106,12 @@ def get_dispute_created_keyboard(
 
 
 def get_dispute_card_keyboard(
-    order_id: int, dispute_id: int, can_cancel: bool = False, page: int = 1, status: str = "all"
+    order_id: int,
+    dispute_id: int,
+    can_cancel: bool = False,
+    page: int = 1,
+    status: str = "all",
+    source: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Клавиатура карточки спора."""
     builder = InlineKeyboardBuilder()
@@ -120,11 +125,28 @@ def get_dispute_card_keyboard(
         )
 
     builder.button(
-        text="⬅️ Назад к заказу",
+        text="К заказу",
         callback_data=OrderDetailCallback(
-            order_id=order_id, from_page=page, from_status=status
+            order_id=order_id, from_page=page, from_status=status, source="dispute"
         ).pack(),
     )
+
+    # Кнопка назад к списку споров или к заказу
+    if source == "order":
+        back_callback = OrderDetailCallback(
+            order_id=order_id, from_page=page, from_status=status
+        ).pack()
+    else:
+        # Default to disputes list
+        back_callback = DisputesListCallback(page=page, status=status).pack()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=back_callback,
+        )
+    )
+
     builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="shop_main_menu"))
     return builder.as_markup()
 

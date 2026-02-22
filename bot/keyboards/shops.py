@@ -15,6 +15,7 @@ class ShopFilter(StrEnum):
 class ShopsCallback(CallbackData, prefix="shops"):
     action: str  # list, open, history
     page: int = 1
+    list_page: int = 1
     filter_type: ShopFilter = ShopFilter.ACTIVE
     shop_id: int | None = None
     order_id: int | None = None
@@ -52,6 +53,7 @@ def get_shops_list_keyboard(
                     callback_data=ShopsCallback(
                         action="list",
                         page=1,  # Reset to page 1 on filter change
+                        list_page=1,
                         filter_type=filter_val,
                     ).pack(),
                 )
@@ -69,6 +71,7 @@ def get_shops_list_keyboard(
                         action="open",
                         shop_id=shop.id,
                         page=page,
+                        list_page=page,
                         filter_type=current_filter,
                     ).pack(),
                 )
@@ -84,6 +87,7 @@ def get_shops_list_keyboard(
                 callback_data=ShopsCallback(
                     action="list",
                     page=page - 1,
+                    list_page=page - 1,
                     filter_type=current_filter,
                 ).pack(),
             )
@@ -103,6 +107,7 @@ def get_shops_list_keyboard(
                 callback_data=ShopsCallback(
                     action="list",
                     page=page + 1,
+                    list_page=page + 1,
                     filter_type=current_filter,
                 ).pack(),
             )
@@ -146,6 +151,7 @@ def get_shop_card_keyboard(
         back_callback_data = ShopsCallback(
             action="list",
             page=page,
+            list_page=page,
             filter_type=current_filter,
         ).pack()
 
@@ -156,6 +162,7 @@ def get_shop_card_keyboard(
                 callback_data=ShopsCallback(
                     action="history",
                     page=1,
+                    list_page=page,
                     filter_type=current_filter,
                     shop_id=shop_id,
                 ).pack(),
@@ -220,6 +227,7 @@ def get_shops_list_for_stats_keyboard(
                     callback_data=ShopsCallback(
                         action="stats_list",  # ← Отдельный action для статистики
                         page=1,
+                        list_page=1,
                         filter_type=filter_val,
                     ).pack(),
                 )
@@ -237,6 +245,7 @@ def get_shops_list_for_stats_keyboard(
                         action="stats_select_shop",  # ← Специальный action
                         shop_id=shop.id,
                         page=page,
+                        list_page=page,
                         filter_type=current_filter,
                     ).pack(),
                 )
@@ -252,6 +261,7 @@ def get_shops_list_for_stats_keyboard(
                 callback_data=ShopsCallback(
                     action="stats_list",
                     page=page - 1,
+                    list_page=page - 1,
                     filter_type=current_filter,
                 ).pack(),
             )
@@ -271,6 +281,7 @@ def get_shops_list_for_stats_keyboard(
                 callback_data=ShopsCallback(
                     action="stats_list",
                     page=page + 1,
+                    list_page=page + 1,
                     filter_type=current_filter,
                 ).pack(),
             )
