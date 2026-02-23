@@ -19,7 +19,7 @@ class OrderCreateRequest(BaseModel):
     price: int | None = Field(
         None,
         ge=3000,
-        le=20000,
+        le=50000,
         multiple_of=1,
         description="Цена доставки, устанавливаемая магазином (необязательно)",
     )
@@ -105,7 +105,7 @@ class OrderUpdate(BaseModel):
     price: int | None = Field(
         None,
         ge=3000,
-        le=20000,
+        le=50000,
         description="Цена доставки (обновление магазином)",
     )
     description: str | None = Field(None, max_length=1000, description="Описание заказа")

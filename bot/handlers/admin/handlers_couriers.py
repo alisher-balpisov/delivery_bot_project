@@ -10,6 +10,16 @@ from bot.clients.couriers_client import CouriersClient
 from bot.clients.orders_client import OrdersClient
 from bot.dto import UserDTO
 from bot.filters.filters import RoleFilter
+from bot.handlers.admin.messages_courier import (
+    courier_card_error,
+    courier_card_text,
+    courier_history_empty,
+    courier_history_error,
+    courier_history_text,
+    courier_order_detail_error,
+    couriers_list_error,
+    couriers_list_text,
+)
 from bot.keyboards.couriers import (
     CourierFilter,
     CouriersCallback,
@@ -75,7 +85,6 @@ async def list_couriers(
     """Общая логика получения и отображения списка курьеров."""
     token = await token_manager.get_token(user.telegram_id)
 
-    # Маппинг фильтра UI на параметры API
     api_status = None
     if filter_val == CourierFilter.ACTIVE:
         api_status = "active"
@@ -83,7 +92,6 @@ async def list_couriers(
         api_status = "inactive"
     elif filter_val == CourierFilter.ON_SHIFT:
         api_status = "on_shift"
-    # ALL -> None
 
     result = await couriers_client.get_couriers(
         token=token,
@@ -93,7 +101,7 @@ async def list_couriers(
     )
 
     if not result.success:
-        await callback.answer("Ошибка при загрузке списка курьеров", show_alert=True)
+        await callback.answer(couriers_list_error(), show_alert=True)
         return
 
     data = result.data
@@ -101,9 +109,7 @@ async def list_couriers(
     total = data.get("total", 0)
     size = data.get("size", 10)
 
-    # Конвертируем dict в объекты с атрибутами
     courier_objects = [SimpleNamespace(**item) for item in items]
-
     total_pages = (total + size - 1) // size if size > 0 else 1
 
     keyboard = get_couriers_list_keyboard(
@@ -113,9 +119,8 @@ async def list_couriers(
         current_filter=filter_val,
     )
 
-    text = f"📋 <b>Список курьеров</b>\nВсего: {total}"
+    text = couriers_list_text(total)
 
-    # Если это новое сообщение или редактирование
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception:
@@ -139,29 +144,19 @@ async def open_courier_card(
     result = await couriers_client.get_courier_details(token, courier_id)
 
     if not result.success:
-        await callback.answer("Не удалось загрузить данные курьера", show_alert=True)
+        await callback.answer(courier_card_error(), show_alert=True)
         return
 
     courier = result.data
-    # Формируем текст карточки
-
-    full_name = courier.get("full_name")
-    username = courier.get("username")
-    username_text = f"@{username}" if username else "Нет"
     phones = ", ".join(courier.get("phone_numbers", [])) or "Нет"
-    rating = courier.get("rating")
-    rating_text = f"{rating:.1f} ⭐️" if rating else "Нет оценок"
 
-    status_emoji = "🟢 На смене" if courier.get("is_active") else "🔴 Не на смене"
-    user_status = courier.get("status", "unknown")
-
-    text = (
-        f"👤 <b>Курьер: {full_name.split()[1] if full_name else 'Не указано'}</b>\n\n"
-        f"📱 Телеграм: {username_text}\n"
-        f"📞 Телефон: {phones}\n"
-        f"⭐️ Рейтинг: {rating_text}\n"
-        f"🔄 Статус смены: {status_emoji}\n"
-        f"🔒 Статус аккаунта: {user_status}\n"
+    text = courier_card_text(
+        full_name=courier.get("full_name"),
+        username=courier.get("username"),
+        phones=phones,
+        rating=courier.get("rating"),
+        is_active=courier.get("is_active"),
+        status=courier.get("status", "unknown"),
     )
 
     keyboard = get_courier_card_keyboard(
@@ -196,7 +191,7 @@ async def courier_history_handler_impl(
     )
 
     if not result.success:
-        await callback.answer("Не удалось загрузить историю заказов", show_alert=True)
+        await callback.answer(courier_history_error(), show_alert=True)
         return
 
     data = result.data
@@ -205,7 +200,7 @@ async def courier_history_handler_impl(
     total_pages = (total + limit - 1) // limit if limit > 0 else 1
 
     if not orders:
-        text = "📭 История заказов пуста"
+        text = courier_history_empty()
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -223,7 +218,7 @@ async def courier_history_handler_impl(
             ]
         )
     else:
-        text = f"📜 <b>История заказов (Всего: {total})</b>\nВыберите заказ для просмотра деталей:"
+        text = courier_history_text(total)
 
         def callback_factory(action: str, page: int, order_id: int | None) -> str:
             return CouriersCallback(
@@ -270,12 +265,10 @@ async def courier_order_detail_handler(
     result = await orders_client.get_order_details(token, order_id)
 
     if not result.success:
-        await callback.answer("Не удалось загрузить детали заказа", show_alert=True)
+        await callback.answer(courier_order_detail_error(), show_alert=True)
         return
 
     order = result.data
-
-    # Формирование текста деталей заказа с использованием унифицированного форматтера
     text = format_order_details(order, role=UserRole.ADMIN.value)
 
     back_callback = CouriersCallback(

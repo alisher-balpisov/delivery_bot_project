@@ -76,7 +76,7 @@ async def process_price_input(
 
     if error:
         await message.answer(
-            f"❌ {error}\n\n<i>Введите цену от 3 000 до 20 000 ₸</i>",
+            f"❌ {error}\n\n<i>Введите цену от 3 000 до 50 000 ₸</i>",
             reply_markup=get_price_input_keyboard(back_callback=back_callback),
             parse_mode="HTML",
         )

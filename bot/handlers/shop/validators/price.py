@@ -1,7 +1,7 @@
 """Валидатор цены заказа."""
 
 MIN_ORDER_PRICE = 3000
-MAX_ORDER_PRICE = 20000
+MAX_ORDER_PRICE = 50000
 
 
 def validate_price(price_text: str) -> tuple[int | None, str | None]:
