@@ -206,9 +206,11 @@ def get_confirmation_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="✅ Подтвердить заказ", callback_data="order_confirm"),
-                InlineKeyboardButton(text="❌ Отменить", callback_data="order_cancel"),
             ],
             [InlineKeyboardButton(text="🔙 Изменить заказ", callback_data="edit_order_menu")],
+            [
+                InlineKeyboardButton(text="❌ Отменить", callback_data="order_cancel"),
+            ],
         ]
     )
 

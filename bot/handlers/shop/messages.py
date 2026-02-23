@@ -25,7 +25,7 @@ class MainMenuButtons:
     ORDER_HISTORY = "История заказов"
     STATISTICS = "Статистика"
     EDIT_PROFILE = "Профиль"
-    MY_DISPUTES = "🗂 Мои споры"
+    MY_DISPUTES = "Мои споры"
 
 
 class ProfileMessages:
