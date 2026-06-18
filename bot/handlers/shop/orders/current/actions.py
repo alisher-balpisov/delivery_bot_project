@@ -194,7 +194,6 @@ async def shop_edit_order_handler(
         await callback.answer("Не удалось загрузить заказ", show_alert=True)
         return
 
-    order = result.data
     # back_callback returns to order details
     back_callback = OrderDetailCallback(
         order_id=order_id,

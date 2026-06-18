@@ -6,8 +6,9 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, joinedload
 
+from backend.src.billing.service import BillingService
 from backend.src.common.constants import COURIER_ALLOWED_FIELDS, PaginatedResponse
-from backend.src.common.enums import OrderStatus, OrderType, UserRole, UserStatus
+from backend.src.common.enums import OrderStatus, OrderType, TransactionType, UserRole, UserStatus
 from backend.src.common.types import RESPONSE_SCHEMAS
 from backend.src.common.utils.paginaters import get_paginated_list
 from backend.src.core.logging import get_logger
@@ -15,6 +16,7 @@ from backend.src.models.courier import Courier
 from backend.src.models.order import Order
 from backend.src.models.order_note import OrderNote
 from backend.src.models.shop import Shop
+from backend.src.models.transaction import Transaction
 from backend.src.models.user import User
 from backend.src.users.exceptions import UserNotFoundException
 
@@ -121,8 +123,6 @@ async def _validate_courier_active(db: AsyncSession, courier_id: int) -> None:
     Raises:
         HTTPException: Если курьер не найден или неактивен
     """
-    from sqlalchemy import and_
-
     result = await db.execute(
         select(Courier)
         .join(User, Courier.user_id == User.id)
@@ -235,6 +235,7 @@ async def update_order(
 
     # Обрабатываем побочные эффекты
     _handle_status_change_side_effects(order, previous_status, current_user)
+    await _process_completion_billing_if_needed(db, order)
 
     # Сохраняем
     await db.flush()
@@ -402,6 +403,37 @@ def _handle_status_change_side_effects(
 
     logger.info(
         f"Статус заказа {order.id} изменён: {previous_status.value} -> {order.status.value}"
+    )
+
+
+async def _process_completion_billing_if_needed(db: AsyncSession, order: Order) -> None:
+    """Создаёт финансовые транзакции при первом завершении заказа."""
+    if order.status != OrderStatus.COMPLETED:
+        return
+
+    existing = await db.scalar(
+        select(Transaction.id).where(
+            Transaction.order_id == order.id,
+            Transaction.type == TransactionType.ORDER_DEBIT,
+        )
+    )
+    if existing:
+        return
+
+    if order.price is None:
+        raise OrderUpdateForbiddenException("Нельзя завершить заказ без установленной цены")
+    if order.courier_id is None:
+        raise OrderUpdateForbiddenException("Нельзя завершить заказ без назначенного курьера")
+
+    shop = await db.get(Shop, order.shop_id)
+    courier = await db.get(Courier, order.courier_id)
+    if not shop or not courier:
+        raise OrderUpdateForbiddenException("Не найдены профили магазина или курьера")
+
+    await BillingService(db).process_order_completion(
+        order=order,
+        shop_user_id=shop.user_id,
+        courier_user_id=courier.user_id,
     )
 
 
@@ -617,6 +649,42 @@ async def get_orders_list(
     return PaginatedResponse(total=total, items=items)
 
 
+async def get_available_orders_for_courier(db: AsyncSession, courier: User) -> list[dict[str, Any]]:
+    """Возвращает заказы, назначенные курьеру и ожидающие принятия."""
+    if not courier.courier:
+        raise OrderAccessForbiddenException("У вас нет профиля курьера")
+
+    stmt = (
+        select(Order)
+        .where(
+            Order.courier_id == courier.courier.id,
+            Order.status == OrderStatus.PENDING_COURIER,
+        )
+        .options(
+            joinedload(Order.shop).joinedload(Shop.user),
+            joinedload(Order.courier).joinedload(Courier.user),
+        )
+        .order_by(Order.created_at.asc())
+        .limit(20)
+    )
+    result = await db.execute(stmt)
+    orders = result.unique().scalars().all()
+
+    return [
+        {
+            "id": order.id,
+            "status": order.status.value,
+            "order_type": order.order_type.value,
+            "description": order.description,
+            "price": order.price,
+            "pickup_address": order.shop.address if order.shop else None,
+            "shop_name": order.shop.name if order.shop else None,
+            "created_at": order.created_at.isoformat(),
+        }
+        for order in orders
+    ]
+
+
 def _validate_filters_for_role(user: User, filters: OrderListFilters) -> None:
     """
     Проверяет допустимость фильтров для роли.
@@ -703,6 +771,7 @@ async def complete_order(
     order.status = OrderStatus.COMPLETED
     order.photo_report_id = photo_report_id
     order.completed_at = datetime.now(UTC)
+    await _process_completion_billing_if_needed(db, order)
 
     await db.flush()
     await db.refresh(order)

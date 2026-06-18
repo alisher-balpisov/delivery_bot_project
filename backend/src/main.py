@@ -241,6 +241,16 @@ def create_app() -> FastAPI:
             },
         }
 
+    @app.get(f"{settings.api_prefix}/info")
+    async def system_info():
+        return {
+            "app_name": settings.app_name,
+            "version": settings.app_version,
+            "environment": settings.environment,
+            "debug": settings.debug,
+            "api_prefix": settings.api_prefix,
+        }
+
     return app
 
 

@@ -54,15 +54,24 @@ class DatabaseConfig(BaseModel):
         Returns:
             Словарь с параметрами для настройки движка SQLAlchemy.
         """
-        return {
+        kwargs: dict[str, Any] = {
             "echo": self.echo,
             "future": self.future,
-            "pool_size": self.pool_size,
-            "max_overflow": self.max_overflow,
-            "pool_pre_ping": self.pool_pre_ping,
-            "pool_recycle": self.pool_recycle,
-            "pool_timeout": self.pool_timeout,
         }
+
+        # SQLite/aiosqlite does not accept QueuePool-specific arguments.
+        if not self.url.get_secret_value().startswith("sqlite"):
+            kwargs.update(
+                {
+                    "pool_size": self.pool_size,
+                    "max_overflow": self.max_overflow,
+                    "pool_pre_ping": self.pool_pre_ping,
+                    "pool_recycle": self.pool_recycle,
+                    "pool_timeout": self.pool_timeout,
+                }
+            )
+
+        return kwargs
 
     def session_kwargs(self) -> dict[str, Any]:
         """
@@ -271,6 +280,8 @@ class AdminConfig(BaseModel):
         (удобно для переменных окружения).
         Например: "12345, 67890" -> [12345, 67890].
         """
+        if isinstance(v, int):
+            return [v]
         if isinstance(v, str):
             return [int(id_str.strip()) for id_str in v.split(",") if id_str.strip().isdigit()]
         return v

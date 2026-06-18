@@ -229,6 +229,40 @@ async def add_order_note(
 
 
 @router.get(
+    "/my",
+    response_model=PaginatedResponse[
+        OrderListItemForAdmin | OrderListItemForShop | OrderListItemForCourier
+    ],
+    summary="Получить мои заказы",
+    tags=["Orders - All Roles"],
+)
+async def get_my_orders(
+    current_user: RequireAllRoles,
+    db: DbSession,
+    pagination: PaginationParams,
+    status: Annotated[OrderStatus | None, Query(description="Фильтр по статусу")] = None,
+    current: Annotated[bool | None, Query(description="true=активные, false=завершённые")] = None,
+):
+    """Возвращает список заказов текущего пользователя."""
+    page, limit = pagination
+    filters = OrderListFilters(page=page, limit=limit, status=status, current=current)
+    return await service.get_orders_list(db=db, user=current_user, filters=filters)
+
+
+@router.get(
+    "/available",
+    summary="Получить доступные заказы для курьера",
+    tags=["Orders - Courier"],
+)
+async def get_available_orders(
+    current_user: RequireCourier,
+    db: DbSession,
+):
+    """Возвращает заказы, назначенные текущему курьеру и ожидающие принятия."""
+    return await service.get_available_orders_for_courier(db=db, courier=current_user)
+
+
+@router.get(
     "/history",
     response_model=PaginatedResponse[
         OrderListItemForAdmin | OrderListItemForShop | OrderListItemForCourier

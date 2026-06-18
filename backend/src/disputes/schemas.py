@@ -6,7 +6,6 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from backend.src.common.enums import DisputeStatus, UserRole
-from backend.src.models import User
 from backend.src.models.dispute import Dispute
 
 

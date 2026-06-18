@@ -11,6 +11,7 @@ from .schemas import (
     AuthByCodeRequest,
     AuthSuccessResponse,
     LoginRequest,
+    LogoutResponse,
     RefreshTokenRequest,
     RefreshTokenResponse,
     UserInfo,
@@ -202,6 +203,17 @@ async def refresh_token(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Внутренняя ошибка сервера",
         )
+
+
+@router.post("/logout", response_model=LogoutResponse)
+async def logout() -> LogoutResponse:
+    """
+    Завершение клиентской сессии.
+
+    Access/refresh токены сейчас являются stateless JWT, поэтому серверной
+    инвалидизации здесь нет. Бот при logout удаляет токены из Redis.
+    """
+    return LogoutResponse()
 
 
 @router.post("/token", response_model=AuthSuccessResponse)

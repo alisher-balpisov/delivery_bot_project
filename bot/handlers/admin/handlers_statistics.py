@@ -420,8 +420,8 @@ async def _perform_export(
 
     try:
         await callback.message.edit_text(loading_text, reply_markup=keyboard, parse_mode="HTML")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Не удалось обновить сообщение загрузки экспорта: %s", e)
 
     await callback.answer("Генерация файла...", cache_time=0)
 

@@ -1,24 +1,28 @@
+# ruff: noqa: E402
 import asyncio
 import os
 import uuid
 
 import pytest
-from dotenv import load_dotenv
+
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+
+os.environ.setdefault("TELEGRAM__BOT_TOKEN", "123456:test-token")
+os.environ["DATABASE__URL"] = TEST_DATABASE_URL
+os.environ.setdefault("JWT__SECRET_KEY", "test-secret")
+os.environ.setdefault("ADMIN__SUPER_ADMIN_TELEGRAM_IDS", "1")
+
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.src.auth.service import create_access_token
-from backend.src.common.enums import UserRole
+from backend.src.common.enums import UserRole, UserStatus
 from backend.src.core.database import Base, get_db
 from backend.src.main import app
 from backend.src.models.user import User
-
-# In-memory SQLite database for tests
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-# загружаем .env из корня проекта
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 
 @pytest.fixture(scope="session")
@@ -32,14 +36,26 @@ def event_loop():
 @pytest.fixture(scope="session")
 async def test_engine():
     """Create test database engine."""
-    engine = create_async_engine(
-        TEST_DATABASE_URL,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    test_url = make_url(TEST_DATABASE_URL)
+    engine_kwargs = {}
+
+    if test_url.drivername.startswith("sqlite"):
+        engine_kwargs = {
+            "connect_args": {"check_same_thread": False},
+            "poolclass": StaticPool,
+        }
+    elif "test" not in (test_url.database or "").lower():
+        raise RuntimeError("TEST_DATABASE_URL must point to a test database.")
+
+    engine = create_async_engine(TEST_DATABASE_URL, **engine_kwargs)
     async with engine.begin() as conn:
+        import backend.src.models  # noqa: F401
+
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
@@ -78,9 +94,10 @@ async def test_user(db_session: AsyncSession) -> User:
     """Creates a test user with a random telegram_id and saves it to the DB."""
     user = User(
         telegram_id=int(uuid.uuid4().int & (1 << 31) - 1),
-        name="Test User",
+        username="test_user",
         role=UserRole.SHOP,
-        is_deleted=False,
+        status=UserStatus.ACTIVE,
+        registration_attempts=0,
     )
     db_session.add(user)
     await db_session.commit()
@@ -94,13 +111,7 @@ async def authenticated_client(client: AsyncClient, test_user: User) -> AsyncCli
     Creates a test client that is pre-authenticated as the test_user.
     """
     # Create a JWT token for the test user
-    token = create_access_token(
-        data={
-            "sub": str(test_user.id),
-            "role": test_user.role.value,
-            "tid": str(test_user.telegram_id),
-        }
-    )
+    token = create_access_token(test_user)
     # Set the Authorization header for all subsequent requests with this client
     client.headers = {"Authorization": f"Bearer {token}"}
     return client

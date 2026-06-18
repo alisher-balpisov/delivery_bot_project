@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from enum import Enum
 
 from aiogram.filters.callback_data import CallbackData
@@ -230,19 +231,6 @@ def get_back_to_menu_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def get_back_to_menu_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура для возврата в главное меню."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=AdminKeyboardMessages.BACK, callback_data="admin_back_to_menu"
-                )
-            ]
-        ]
-    )
-
-
 # ==================== Споры (Disputes) ====================
 
 # Эмодзи для статусов споров
@@ -267,8 +255,8 @@ def get_disputes_list_keyboard(
     page: int,
     total_pages: int,
     filter_status: str = "all",
-    callback_factory: callable = None,
-    filter_callback_factory: callable = None,
+    callback_factory: Callable | None = None,
+    filter_callback_factory: Callable | None = None,
 ) -> InlineKeyboardMarkup:
     """Генерация клавиатуры со списком споров и пагинацией."""
     builder = InlineKeyboardBuilder()

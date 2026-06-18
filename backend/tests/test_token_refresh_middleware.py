@@ -2,7 +2,6 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
-# ruff: noqa: S106
 import pytest
 from bot.clients.auth_client import AuthClient
 from bot.dto import UserDTO

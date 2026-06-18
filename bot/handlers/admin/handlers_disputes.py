@@ -376,7 +376,6 @@ async def view_courier_from_dispute(
     Кнопка "Назад" ведёт обратно к карточке спора.
     """
     token_manager = TokenManager(auth_client, user_storage)
-    token = await token_manager.get_token(callback.from_user.id)
 
     result = await execute_api_call(
         token_manager,

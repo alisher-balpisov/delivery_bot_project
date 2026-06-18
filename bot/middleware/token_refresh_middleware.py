@@ -54,9 +54,17 @@ class TokenRefreshMiddleware(BaseMiddleware):
         user: UserDTO | None = data.get("user")
         user_data: UserCacheData | None = data.get("user_data")
 
-        # Обрабатываем только аутентифицированных пользователей
-        if user and user.role != UserRole.GUEST and user.telegram_id and user_data:
-            await self._check_and_refresh_token(user_data, data)
+        # Обрабатываем только аутентифицированных пользователей.
+        # Обычно user_data кладёт UserDataFilter, но fallback делает middleware
+        # устойчивым к прямым вызовам и будущим router/filter перестановкам.
+        if user and user.role != UserRole.GUEST and user.telegram_id:
+            if user_data is None:
+                user_data = await self.storage.get_user_data(user.telegram_id)
+                if user_data is not None:
+                    data["user_data"] = user_data
+
+            if user_data is not None:
+                await self._check_and_refresh_token(user_data, data)
 
         # Продолжаем обработку
         return await handler(event, data)
@@ -85,19 +93,13 @@ class TokenRefreshMiddleware(BaseMiddleware):
                 logger.debug(f"Токен пользователя {telegram_id} не требует обновления")
                 return
 
-            # ОПТИМИЗАЦИЯ: Если токен еще валиден (хотя и близок к истечению),
-            # выполняем обновление фоном, не блокируя хендлер.
+            # Если токен скоро истекает, обновляем его до handler, чтобы текущий
+            # запрос не ушёл в API со старым access token.
             if user_data.has_valid_token:
-                logger.info(f"Запуск фонового обновления токена для {telegram_id}")
-                task = asyncio.create_task(
-                    self._refresh_token_with_lock(telegram_id, user_data, data)
-                )
-                self._active_refresh_tasks.add(task)
-                task.add_done_callback(self._active_refresh_tasks.discard)
+                logger.info(f"Плановое обновление токена для {telegram_id}")
             else:
-                # Если токен уже истек - блокируем и ждем обновления
-                logger.info(f"Срочное (блокирующее) обновление токена для {telegram_id}")
-                await self._refresh_token_with_lock(telegram_id, user_data, data)
+                logger.info(f"Срочное обновление токена для {telegram_id}")
+            await self._refresh_token_with_lock(telegram_id, user_data, data)
 
         except Exception as e:
             logger.error(

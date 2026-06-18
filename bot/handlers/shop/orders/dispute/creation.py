@@ -6,6 +6,7 @@ from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from backend.src.common.enums import UserRole
+from backend.src.core.logging import get_logger
 
 from bot.clients.auth_client import AuthClient
 from bot.clients.disputes_client import DisputesClient
@@ -23,6 +24,8 @@ from bot.handlers.shop.orders.dispute.states import DisputeStates
 from bot.redis_storage import UserDataStorage
 from bot.utils.api_helper import execute_api_call
 from bot.utils.token_manager import TokenManager
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # 1. Открытие спора (Pre-dispute)
@@ -216,9 +219,9 @@ async def _create_dispute(
         if message.from_user.is_bot:  # Это сообщение бота (edit)
             await message.edit_text("⏳ Создаем спор...")
         else:
-            temp_msg = await message.answer("⏳ Создаем спор...")
-    except Exception:
-        pass
+            await message.answer("⏳ Создаем спор...")
+    except Exception as e:
+        logger.debug("Не удалось показать индикатор создания спора: %s", e)
 
     # Создаем спор
     result = await execute_api_call(

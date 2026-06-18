@@ -54,3 +54,10 @@ class RefreshTokenResponse(BaseModel):
     token_type: TokenType = TokenType.BEARER
     expires_in: int
     refresh_expires_in: int
+
+
+class LogoutResponse(BaseModel):
+    """Ответ на выход пользователя."""
+
+    success: bool = True
+    detail: str = "Logged out"

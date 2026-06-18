@@ -181,8 +181,10 @@ def _import_models() -> None:
         dispute,
         order,
         order_history,
+        order_note,
         registration_code,
         shop,
+        transaction,
         user,
     )
 

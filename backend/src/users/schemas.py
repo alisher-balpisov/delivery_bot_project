@@ -25,6 +25,7 @@ class UserCreateWithoutPassword(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("name")
+    @classmethod
     def validate_name_input(cls, v):
         return validate_no_malicious_content(validate_string_length(v, max_length=100))
 

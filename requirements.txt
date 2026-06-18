@@ -57,3 +57,4 @@ faker>=40.1.2
 ruff==0.14.14
 rich==14.3.2
 openpyxl==3.1.5
+aiogram-dialog>=2.4.0

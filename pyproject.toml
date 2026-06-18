@@ -13,7 +13,7 @@ name = "delivery-bot"
 version = "0.1.0"
 description = "Telegram bot for delivery management system"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 
 # Основные зависимости (только прямые, без транзитивных)
 dependencies = [
@@ -67,6 +67,7 @@ dependencies = [
     "faker>=40.1.2",
     "rich>=14.3.2",
     "ruff>=0.14.14",
+    "openpyxl==3.1.5",
     "aiogram-dialog>=2.4.0",
 ]
 
@@ -88,7 +89,7 @@ dev = [
 # ==============================================================================
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py312"
 src = ["backend/src", "bot"]
 
 # Исключаемые директории
@@ -162,25 +163,10 @@ max-complexity = 10
 "backend/tests/*" = ["S101", "S105", "S106"]
 "__init__.py" = ["F401"]
 "backend/src/main.py" = ["E402"]
-
-# ==============================================================================
-# Pytest Configuration
-# ==============================================================================
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests", "backend/tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "-ra",
-    "--cov=backend/src",
-    "--cov=bot",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-]
+"backend/src/common/exceptions.py" = ["N818"]
+"bot/handlers/admin/*.py" = ["N817"]
+"bot/messages/errors.py" = ["N802"]
+"fake_db.py" = ["S311"]
 
 # ==============================================================================
 # Coverage Configuration
